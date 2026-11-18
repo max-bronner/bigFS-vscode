@@ -1,0 +1,8 @@
+out
+dist
+node_modules
+.vscode-test/
+*.vsix
+*.tsbuildinfo
+src/test/fixtures/*.big
+bigfs.vsix

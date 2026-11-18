@@ -1,0 +1,229 @@
+import { findScriptProblems } from '../../formats/ini/sageIniScripts';
+import {
+  Diagnostic,
+  DiagnosticSeverity,
+  Range,
+  languages,
+  workspace,
+} from 'vscode';
+import type { Disposable, TextDocument } from 'vscode';
+import { SAGE_INI_LANGUAGE } from '../../constants';
+import { findUnresolvedReferences } from '../../formats/ini/sageIniReferenceCheck';
+import { findSageIniProblems } from '../../formats/ini/sageIniProblems';
+import { findGameTextLabels, missingTextMessage } from '../../game/text/gameTextLabels';
+import type { SageProblem } from '../../formats/ini/sageIniProblems';
+import type { SageDocument } from '../../formats/ini/sageIniParser';
+import type { SageIniSchema } from '../../formats/ini/sageIniSchema';
+import type { SageIniIndex } from '../../services/ini/sageIniIndex';
+import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
+import { includeExists, resolveIncludeUri } from '../../services/ini/sageIniInclude';
+import type { EntryLocator } from '../../services/entryLocator';
+import { onDidChangeSetting, settings } from '../../platform/settings';
+import { checkedAssetDiagnostics } from './sageIniAssetCheck';
+
+const SOURCE = 'bigFS';
+
+const CHECK_DELAY_MS = 300;
+
+const toDiagnostic = (
+  document: TextDocument,
+  { line, start, end, message, severity }: SageProblem,
+): Diagnostic => {
+  const diagnostic = new Diagnostic(
+    new Range(line, start, line, end ?? document.lineAt(line).text.length),
+    message,
+    severity === 'error'
+      ? DiagnosticSeverity.Error
+      : DiagnosticSeverity.Warning,
+  );
+
+  diagnostic.source = SOURCE;
+
+  return diagnostic;
+};
+
+const getReferenceDiagnostics = async (
+  parsed: SageDocument,
+  schema: SageIniSchema,
+  index: SageIniIndex,
+): Promise<Diagnostic[]> => {
+  const mode = settings.iniCheckReferences.get();
+
+  if (mode === 'off') {
+    return [];
+  }
+
+  await index.whenReady();
+
+  return findUnresolvedReferences(parsed, schema, index, mode === 'on').map(
+    ({ name, line, start, end, namespaces }) => {
+      const diagnostic = new Diagnostic(
+        new Range(line, start, line, end),
+        `No ${namespaces.join(' or ')} named '${name}' is defined in the workspace`,
+        DiagnosticSeverity.Information,
+      );
+
+      diagnostic.source = SOURCE;
+
+      return diagnostic;
+    },
+  );
+};
+
+const AUTO_MINIMUM_STRINGS = 1000;
+
+const getStringDiagnostics = async (
+  parsed: SageDocument,
+  index: SageIniIndex,
+): Promise<Diagnostic[]> => {
+  const mode = settings.iniCheckStrings.get();
+
+  if (mode === 'off') {
+    return [];
+  }
+  await index.whenReady();
+  if (mode === 'auto' && index.stringCount < AUTO_MINIMUM_STRINGS) {
+    return [];
+  }
+
+  return findGameTextLabels(parsed)
+    .filter((label) => !index.findString(label.text))
+    .map((label) => {
+      const diagnostic = new Diagnostic(
+        new Range(label.line, label.start, label.line, label.end),
+        missingTextMessage(label.text),
+        DiagnosticSeverity.Warning,
+      );
+
+      diagnostic.source = SOURCE;
+      return diagnostic;
+    });
+};
+
+const getIncludeDiagnostics = async (
+  document: TextDocument,
+  parsed: SageDocument,
+): Promise<Diagnostic[]> => {
+  const missing = await Promise.all(
+    parsed.includes.map(
+      async (include) =>
+        !(await includeExists(resolveIncludeUri(document.uri, include.path))),
+    ),
+  );
+
+  return parsed.includes
+    .filter((_, index) => missing[index])
+    .map((include) => {
+      const diagnostic = new Diagnostic(
+        new Range(include.line, include.start, include.line, include.end),
+        `Included file not found: ${include.path}`,
+        DiagnosticSeverity.Warning,
+      );
+
+      diagnostic.source = SOURCE;
+
+      return diagnostic;
+    });
+};
+
+export const watchSageIniDiagnostics = (
+  documents: SageIniDocuments,
+  index: SageIniIndex,
+  locator?: EntryLocator,
+): Disposable => {
+  const collection = languages.createDiagnosticCollection(SAGE_INI_LANGUAGE);
+  const pending = new Map<string, NodeJS.Timeout>();
+
+  const check = async (document: TextDocument): Promise<void> => {
+    if (document.languageId !== SAGE_INI_LANGUAGE) {
+      collection.delete(document.uri);
+      return;
+    }
+
+    const version = document.version;
+    const [parsed, schema] = await Promise.all([
+      documents.parse(document),
+      documents.getSchema(),
+    ]);
+    const diagnostics = [
+      ...findSageIniProblems(parsed, schema).map((problem) =>
+        toDiagnostic(document, problem),
+      ),
+      ...(await getIncludeDiagnostics(document, parsed)),
+      ...(await getReferenceDiagnostics(parsed, schema, index)),
+      ...(await getStringDiagnostics(parsed, index)),
+      ...(await checkedAssetDiagnostics(parsed, locator, SOURCE).catch(
+        () => [],
+      )),
+      ...findScriptProblems(
+        Array.from(
+          { length: document.lineCount },
+          (_, line) => document.lineAt(line).text,
+        ),
+        parsed.scripts.filter((script) => script.endLine > script.startLine),
+      ).map((problem) => {
+        const diagnostic = new Diagnostic(
+          new Range(
+            problem.line,
+            problem.column,
+            problem.line,
+            document.lineAt(Math.min(problem.line, document.lineCount - 1)).text
+              .length,
+          ),
+          problem.message,
+          DiagnosticSeverity.Warning,
+        );
+
+        diagnostic.source = SOURCE;
+
+        return diagnostic;
+      }),
+    ];
+
+    if (!document.isClosed && document.version === version) {
+      collection.set(document.uri, diagnostics);
+    }
+  };
+
+  const checkSoon = (document: TextDocument): void => {
+    const key = document.uri.toString();
+
+    clearTimeout(pending.get(key));
+    pending.set(
+      key,
+      setTimeout(() => {
+        pending.delete(key);
+        void check(document);
+      }, CHECK_DELAY_MS),
+    );
+  };
+
+  const checkAll = (): void => workspace.textDocuments.forEach(checkSoon);
+
+  checkAll();
+
+  const subscriptions = [
+    collection,
+    workspace.onDidOpenTextDocument(checkSoon),
+    workspace.onDidChangeTextDocument(({ document }) => checkSoon(document)),
+    workspace.onDidCloseTextDocument((document) =>
+      collection.delete(document.uri),
+    ),
+    documents.onDidChangeSchema(checkAll),
+    onDidChangeSetting(
+      [
+        settings.iniCheckReferences,
+        settings.iniCheckStrings,
+        settings.iniCheckAssets,
+      ],
+      checkAll,
+    ),
+  ];
+
+  return {
+    dispose: () => {
+      pending.forEach((timeout) => clearTimeout(timeout));
+      subscriptions.forEach((subscription) => subscription.dispose());
+    },
+  };
+};

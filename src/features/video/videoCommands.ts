@@ -1,0 +1,474 @@
+import * as vscode from 'vscode';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import { decodePng } from '../../node/png';
+import { Vp6Movie } from '../../formats/vp6/container';
+import {
+  MAX_SIDE,
+  encodeMovie,
+  resizeRgba,
+} from '../../formats/vp6/encodeMovie';
+import type { FrameSource } from '../../formats/vp6/encodeMovie';
+import { registerCommand } from '../../platform/commands';
+import { settings } from '../../platform/settings';
+import { webviewPage } from '../../platform/webview/webviewPage';
+import { ffmpegSource, probe, run } from '../../node/ffmpeg';
+import { decodeDds, decodeTga } from '../../formats/texture/textureTools';
+import { toUri } from '../../services/archives/commandTarget';
+import type { FromVideoPage, ToVideoPage } from '../../webview/video/protocol';
+import type { CommandTarget } from '../../services/archives/commandTarget';
+
+const IMAGE = /\.(png|tga|dds)$/i;
+const VIDEO = /\.(mp4|m4v|mov|webm|ogv|ogg|mkv|avi|wmv|mpg|mpeg|gif|bik|vp6)$/i;
+const BROWSER_VIDEO = /\.(webm|ogv|ogg|mp4|m4v|mov)$/i;
+
+type Target = CommandTarget;
+
+const QUALITIES = [
+  { label: 'High', description: 'quantizer 54, larger files', q: 54 },
+  { label: 'Medium', description: 'quantizer 42', q: 42 },
+  { label: 'Low', description: 'quantizer 28, smallest files', q: 28 },
+];
+
+const decodeImage = (name: string, bytes: Uint8Array) =>
+  /\.png$/i.test(name)
+    ? decodePng(bytes)
+    : (/\.dds$/i.test(name) ? decodeDds(bytes) : decodeTga(bytes)).levels[0];
+
+const findFfmpeg = async (): Promise<string | undefined> => {
+  const configured = settings.ffmpegPath.get();
+
+  for (const candidate of [configured, 'ffmpeg'].filter(Boolean) as string[]) {
+    try {
+      if ((await run(candidate, ['-version'])).code === 0) {
+        return candidate;
+      }
+    } catch {
+    }
+  }
+  return undefined;
+};
+
+class BrowserFrames {
+  private readonly panel: vscode.WebviewPanel;
+  private readonly pending = new Map<number, (data: Uint8Array) => void>();
+  public readonly meta: Promise<{
+    width: number;
+    height: number;
+    duration: number;
+  }>;
+
+  public constructor(file: vscode.Uri, extensionUri: vscode.Uri) {
+    const folder = vscode.Uri.joinPath(file, '..');
+    const scripts = vscode.Uri.joinPath(extensionUri, 'dist', 'webview');
+
+    this.panel = vscode.window.createWebviewPanel(
+      'bigfs.videoFrames',
+      `Reading ${path.basename(file.path)}`,
+      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
+      { enableScripts: true, localResourceRoots: [folder, scripts] },
+    );
+
+    let failed: (error: Error) => void = () => {};
+
+    this.meta = new Promise((resolve, reject) => {
+      failed = reject;
+      this.panel.webview.onDidReceiveMessage((message: FromVideoPage) => {
+        if (message.kind === 'meta') {
+          resolve(message);
+        } else if (message.kind === 'error') {
+          reject(new Error(message.message));
+        } else if (message.kind === 'frame') {
+          this.pending.get(message.index)?.(new Uint8Array(message.data));
+          this.pending.delete(message.index);
+        }
+      });
+    });
+    this.panel.onDidDispose(() =>
+      failed(new Error('The reading panel was closed')),
+    );
+    this.panel.webview.html = browserPage(
+      this.panel.webview.asWebviewUri(file),
+      this.panel.webview,
+      scripts,
+    );
+  }
+
+  public frame(
+    index: number,
+    time: number,
+    width: number,
+    height: number,
+  ): Promise<Uint8Array> {
+    return new Promise((resolve) => {
+      this.pending.set(index, resolve);
+      const request: ToVideoPage = {
+        kind: 'frame',
+        index,
+        time,
+        width,
+        height,
+      };
+
+      void this.panel.webview.postMessage(request);
+    });
+  }
+
+  public dispose(): void {
+    this.panel.dispose();
+  }
+}
+
+const browserPage = (
+  video: vscode.Uri,
+  webview: vscode.Webview,
+  scripts: vscode.Uri,
+): string => {
+  return webviewPage({
+    allow: { media: webview.cspSource, script: webview.cspSource },
+    scriptFiles: [
+      webview.asWebviewUri(vscode.Uri.joinPath(scripts, 'video.js')).toString(),
+    ],
+    style: `body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vscode-font-family); padding: 10px; } canvas { max-width: 100%; }`,
+    body: `<div id="status">Reading frames…</div>
+<video id="video" src="${video}" muted preload="auto" hidden></video>
+<canvas id="canvas"></canvas>`,
+  });
+};
+
+const askNumber = async (
+  prompt: string,
+  value: string,
+  test: (value: number) => boolean,
+): Promise<number | undefined> => {
+  const answer = await vscode.window.showInputBox({
+    prompt,
+    value,
+    validateInput: (text) =>
+      test(Number(text)) ? undefined : 'Enter a number in range',
+  });
+
+  return answer === undefined ? undefined : Number(answer);
+};
+
+const askSize = async (
+  width: number,
+  height: number,
+): Promise<[number, number] | undefined> => {
+  const fit = Math.min(1, MAX_SIDE / Math.max(width, height));
+  const source: [number, number] = [
+    Math.round(width * fit),
+    Math.round(height * fit),
+  ];
+  const picked = await vscode.window.showQuickPick(
+    [
+      {
+        label: `${source[0]}×${source[1]}`,
+        description: 'source size',
+        size: source,
+      },
+      {
+        label: `${Math.round(source[0] / 2)}×${Math.round(source[1] / 2)}`,
+        description: 'half',
+        size: [Math.round(source[0] / 2), Math.round(source[1] / 2)] as [
+          number,
+          number,
+        ],
+      },
+      { label: 'Other size…', size: undefined },
+    ],
+    { placeHolder: 'Movie size' },
+  );
+
+  if (!picked) {
+    return undefined;
+  }
+  if (picked.size) {
+    return picked.size;
+  }
+
+  const text = await vscode.window.showInputBox({
+    prompt: 'Width x height',
+    value: `${source[0]}x${source[1]}`,
+    validateInput: (value) => {
+      const match = /^(\d+)x(\d+)$/.exec(value);
+
+      return match &&
+        Number(match[1]) >= 16 &&
+        Number(match[2]) >= 16 &&
+        Number(match[1]) <= MAX_SIDE &&
+        Number(match[2]) <= MAX_SIDE
+        ? undefined
+        : `16 to ${MAX_SIDE} pixels a side, e.g. 800x600`;
+    },
+  });
+
+  return text ? (text.split('x').map(Number) as [number, number]) : undefined;
+};
+
+const rateOf = (fps: number): [number, number] => {
+  const whole = Math.round(fps * 1.001);
+
+  return !Number.isInteger(fps) && Math.abs((whole * 1000) / 1001 - fps) < 0.01
+    ? [whole * 1000, 1001]
+    : [Math.round(fps * 1000), 1000];
+};
+
+const keyInterval = (fps: number): number => {
+  const seconds = settings.vp6KeyFrameSeconds.get();
+
+  return seconds > 0 ? Math.max(1, Math.round(seconds * fps)) : 1;
+};
+
+const convert = async (
+  target: Target,
+  extensionUri: vscode.Uri,
+): Promise<vscode.Uri | undefined> => {
+  let input = toUri(target);
+
+  if (!input) {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: true,
+      openLabel: 'Convert',
+      title: 'A video, or a folder of numbered PNG, TGA or DDS frames',
+    });
+
+    input = picked?.[0];
+  }
+  if (!input) {
+    return undefined;
+  }
+
+  const isFolder =
+    ((await vscode.workspace.fs.stat(input)).type &
+      vscode.FileType.Directory) !==
+    0;
+  const name = path.basename(input.path).replace(/\.[^.]*$/, '');
+  let cleanup: (() => Promise<void>) | undefined;
+  let stop: (() => void) | undefined;
+
+  try {
+    let width: number;
+    let height: number;
+    let fps: number;
+    let makeSource: (w: number, h: number, rate: number) => FrameSource['next'];
+
+    if (isFolder || IMAGE.test(input.path)) {
+      const files = isFolder
+        ? (await vscode.workspace.fs.readDirectory(input))
+            .filter(
+              ([file, type]) =>
+                type === vscode.FileType.File && IMAGE.test(file),
+            )
+            .map(([file]) => file)
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+            .map((file) => vscode.Uri.joinPath(input!, file))
+        : [input];
+
+      if (!files.length) {
+        throw new Error('The folder holds no PNG, TGA or DDS frames');
+      }
+
+      const first = decodeImage(
+        files[0].path,
+        await vscode.workspace.fs.readFile(files[0]),
+      );
+
+      [width, height, fps] = [first.width, first.height, 30];
+      makeSource = (w, h) => {
+        let index = 0;
+
+        return async () => {
+          const file = files[index++];
+
+          if (!file) {
+            return undefined;
+          }
+
+          const image = decodeImage(
+            file.path,
+            await vscode.workspace.fs.readFile(file),
+          );
+
+          return resizeRgba(image.pixels, image.width, image.height, w, h);
+        };
+      };
+    } else {
+      if (!VIDEO.test(input.path)) {
+        throw new Error('Pick a video, an image, or a folder of frames');
+      }
+
+      let file = input;
+
+      if (input.scheme !== 'file') {
+        const folder = await mkdtemp(path.join(os.tmpdir(), 'bigfs-video-'));
+        const copy = path.join(folder, path.basename(input.path));
+
+        await writeFile(copy, await vscode.workspace.fs.readFile(input));
+        file = vscode.Uri.file(copy);
+        cleanup = () => rm(folder, { recursive: true, force: true });
+      }
+
+      const ffmpeg = await findFfmpeg();
+
+      if (ffmpeg) {
+        ({ width, height, fps } = await probe(ffmpeg, file.fsPath));
+        makeSource = (w, h, rate) => {
+          const source = ffmpegSource(ffmpeg, file.fsPath, w, h, rate);
+
+          stop = source.stop;
+          return source.next;
+        };
+      } else {
+        if (!BROWSER_VIDEO.test(input.path)) {
+          throw new Error(
+            `Reading ${path.extname(input.path)} needs FFmpeg; install it or set ${settings.ffmpegPath.key}`,
+          );
+        }
+
+        const browser = new BrowserFrames(file, extensionUri);
+        const meta = await browser.meta;
+
+        stop = () => browser.dispose();
+        [width, height, fps] = [meta.width, meta.height, 30];
+        makeSource = (w, h, rate) => {
+          const count = Math.max(1, Math.floor(meta.duration * rate));
+          let index = 0;
+
+          return async () =>
+            index < count
+              ? browser.frame(index, index++ / rate + 0.5 / rate, w, h)
+              : undefined;
+        };
+      }
+    }
+
+    const size = await askSize(width, height);
+
+    if (!size) {
+      return undefined;
+    }
+
+    const rate = await askNumber(
+      'Frames per second',
+      String(Math.round(fps * 1000) / 1000),
+      (value) => value > 0 && value <= 120,
+    );
+
+    if (!rate) {
+      return undefined;
+    }
+
+    const quality = await vscode.window.showQuickPick(QUALITIES, {
+      placeHolder: 'Quality',
+    });
+
+    if (!quality) {
+      return undefined;
+    }
+
+    const output =
+      input.scheme === 'file'
+        ? vscode.Uri.joinPath(input, '..', `${name}.vp6`)
+        : await vscode.window.showSaveDialog({
+            defaultUri: vscode.workspace.workspaceFolders?.[0]
+              ? vscode.Uri.joinPath(
+                  vscode.workspace.workspaceFolders[0].uri,
+                  `${name}.vp6`,
+                )
+              : undefined,
+            filters: { 'VP6 movies': ['vp6'] },
+          });
+
+    if (!output) {
+      return undefined;
+    }
+
+    const next = makeSource(size[0], size[1], rate);
+    const firstFrame = await next();
+
+    if (!firstFrame) {
+      throw new Error('The source has no frames');
+    }
+
+    let alpha = false;
+
+    for (let at = 3; at < firstFrame.length; at += 4) {
+      if (firstFrame[at] < 255) {
+        alpha = true;
+        break;
+      }
+    }
+
+    let pending: Uint8Array | undefined = firstFrame;
+    const [rateNumerator, rateDenominator] = rateOf(rate);
+    const bytes = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Converting ${path.basename(input.path)} to VP6`,
+        cancellable: true,
+      },
+      (progress, token) =>
+        encodeMovie(
+          {
+            width: size[0],
+            height: size[1],
+            rateNumerator,
+            rateDenominator,
+            alpha,
+            next: async () => {
+              const frame = pending ?? (await next());
+
+              pending = undefined;
+              return frame;
+            },
+          },
+          {
+            quality: quality.q,
+            keyInterval: keyInterval(rate),
+            cancelled: () => token.isCancellationRequested,
+            progress: (frames) =>
+              progress.report({
+                message: `${frames} frames`,
+              }),
+          },
+        ),
+    );
+
+    if (!bytes) {
+      return undefined;
+    }
+
+    const movie = new Vp6Movie(bytes);
+
+    for (const index of [0, movie.frameCount >> 1, movie.frameCount - 1]) {
+      movie.frame(index);
+    }
+
+    await vscode.workspace.fs.writeFile(output, bytes);
+    await vscode.commands.executeCommand(
+      'vscode.openWith',
+      output,
+      'bigfs.preview',
+    );
+    void vscode.window.showInformationMessage(
+      `${path.basename(output.path)}: ${movie.frameCount} frames, ${size[0]}×${size[1]}${alpha ? ' with alpha' : ''}, ${(bytes.length / 1024).toFixed(0)} KB`,
+    );
+    return output;
+  } finally {
+    stop?.();
+    await cleanup?.();
+  }
+};
+
+export const registerVideoCommands = (
+  context: vscode.ExtensionContext,
+): void => {
+  context.subscriptions.push(
+    registerCommand('bigfs.convertToVp6', (target: Target) =>
+      convert(target, context.extensionUri),
+    ),
+  );
+};

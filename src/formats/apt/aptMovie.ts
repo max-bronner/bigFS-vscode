@@ -1,0 +1,623 @@
+import { createByteReader, type ByteReader } from '../../core/byteReader';
+
+const outsideTheFile = (offset: number, length: number, size: number): string =>
+  `Read of ${length} bytes at ${offset} is outside the ${size} byte file`;
+
+export const CHARACTER_SIGNATURE = 0x09876543;
+
+const CONST_MAGIC = 'Apt constant file\x1a\0\0';
+
+export class AptReader {
+  private readonly cursor: ByteReader;
+
+  public constructor(public readonly bytes: Uint8Array) {
+    this.cursor = createByteReader(bytes, true, {
+      describeOverrun: outsideTheFile,
+    });
+  }
+
+  private at<T>(offset: number, length: number, read: (cursor: ByteReader) => T): T {
+    if (!Number.isInteger(offset) || offset < 0 || offset > this.bytes.length) {
+      throw new Error(outsideTheFile(offset, length, this.bytes.length));
+    }
+    this.cursor.seek(offset);
+    return read(this.cursor);
+  }
+
+  public u8(offset: number): number {
+    return this.at(offset, 1, (cursor) => cursor.u8());
+  }
+
+  public u16(offset: number): number {
+    return this.at(offset, 2, (cursor) => cursor.u16());
+  }
+
+  public u32(offset: number): number {
+    return this.at(offset, 4, (cursor) => cursor.u32());
+  }
+
+  public i32(offset: number): number {
+    return this.at(offset, 4, (cursor) => cursor.i32());
+  }
+
+  public f32(offset: number): number {
+    return this.at(offset, 4, (cursor) => cursor.f32());
+  }
+
+  public cstr(offset: number, maxLength = 65536): string {
+    this.u8(offset);
+    this.cursor.seek(offset);
+
+    let text: string;
+
+    try {
+      text = this.cursor.cstring();
+    } catch {
+      throw new Error(`Unterminated string at ${offset}`);
+    }
+    if (text.length > maxLength) {
+      throw new Error(`Unterminated string at ${offset}`);
+    }
+
+    return text;
+  }
+
+  public optionalString(pointer: number): string | undefined {
+    return pointer === 0 ? undefined : this.cstr(pointer);
+  }
+}
+
+export type ConstItem =
+  | { kind: 'string'; value: string; offset: number }
+  | { kind: 'number'; value: number };
+
+export interface ConstFile {
+  movieOffset: number;
+  items: ConstItem[];
+  itemsOffset: number;
+}
+
+export const parseConst = (bytes: Uint8Array): ConstFile => {
+  const reader = new AptReader(bytes);
+
+  if (
+    String.fromCharCode(...bytes.subarray(0, CONST_MAGIC.length)) !==
+    CONST_MAGIC
+  ) {
+    throw new Error('Not an APT constant file');
+  }
+
+  const movieOffset = reader.u32(0x14);
+  const count = reader.u32(0x18);
+  const itemsOffset = reader.u32(0x1c);
+
+  if (itemsOffset + count * 8 > bytes.length) {
+    throw new Error(`.const claims ${count} items, more than the file holds`);
+  }
+
+  const items: ConstItem[] = [];
+
+  for (let index = 0; index < count; index++) {
+    const type = reader.u32(itemsOffset + index * 8);
+    const value = reader.u32(itemsOffset + index * 8 + 4);
+
+    if (type === 1) {
+      items.push({ kind: 'string', value: reader.cstr(value), offset: value });
+    } else if (type === 4) {
+      items.push({ kind: 'number', value });
+    } else {
+      throw new Error(`.const item ${index} has unknown type ${type}`);
+    }
+  }
+
+  return { movieOffset, items, itemsOffset };
+};
+
+export type Rect = [number, number, number, number];
+
+export type Matrix2 = [number, number, number, number];
+
+export interface MovieRecord {
+  offset: number;
+  frameCount: number;
+  framesOffset: number;
+  characterCount: number;
+  charactersOffset: number;
+  screenWidth: number;
+  screenHeight: number;
+  unknown36: number;
+  importCount: number;
+  importsOffset: number;
+  exportCount: number;
+  exportsOffset: number;
+}
+
+export interface ButtonRecord {
+  offset: number;
+  flags: number;
+  character: number;
+  depth: number;
+  matrix: Matrix2;
+  translate: [number, number];
+  color: [number, number, number, number];
+  unknown: [number, number, number, number];
+}
+
+export interface TextGlyph {
+  index: number;
+  advance: number;
+}
+
+export interface TextRecord {
+  offset: number;
+  font: number;
+  color: [number, number, number, number];
+  unknown: Rect;
+  penOffset: [number, number];
+  textHeight: number;
+  glyphs: TextGlyph[];
+}
+
+export interface ButtonAction {
+  condition: number;
+  block: number;
+}
+
+export type Character = { id: number; offset: number } & (
+  | { type: 'shape'; bounds: Rect; geometry: number }
+  | {
+      type: 'editText';
+      bounds: Rect;
+      font: number;
+      alignment: number;
+      color: number;
+      fontHeight: number;
+      readonly: number;
+      multiline: number;
+      wordwrap: number;
+      text?: string;
+      variable?: string;
+    }
+  | { type: 'font'; name?: string; glyphs: number[] }
+  | {
+      type: 'button';
+      bounds: Rect;
+      records: ButtonRecord[];
+      actions: ButtonAction[];
+      hitTriangles: number;
+    }
+  | { type: 'sprite'; frameCount: number; framesOffset: number }
+  | { type: 'image'; texture: number }
+  | { type: 'morph'; startShape: number; endShape: number }
+  | { type: 'movie'; record: MovieRecord }
+  | {
+      type: 'text';
+      bounds: Rect;
+      matrix: Matrix2;
+      translate: [number, number];
+      records: TextRecord[];
+    }
+  | { type: 'placeholder' }
+  | { type: 'unknown'; characterType: number }
+);
+
+const CHARACTER_TYPES: Record<number, string> = {
+  1: 'shape',
+  2: 'editText',
+  3: 'font',
+  4: 'button',
+  5: 'sprite',
+  7: 'image',
+  8: 'morph',
+  9: 'movie',
+  10: 'text',
+};
+
+export const PLACE_FLAGS = {
+  move: 0x01,
+  hasCharacter: 0x02,
+  hasMatrix: 0x04,
+  hasColorTransform: 0x08,
+  hasRatio: 0x10,
+  hasName: 0x20,
+  hasClipDepth: 0x40,
+  hasClipActions: 0x80,
+};
+
+export type FrameItem = { offset: number } & (
+  | { type: 'action'; block: number }
+  | { type: 'frameLabel'; label: string; flags: number; frame: number }
+  | {
+      type: 'placeObject';
+      flags: number;
+      depth: number;
+      character?: number;
+      matrix?: Matrix2;
+      translate?: [number, number];
+      colorTransform?: number;
+      colorAdd?: number;
+      ratio?: number;
+      name?: string;
+      clipDepth?: number;
+      clipActions?: { events: number; block: number }[];
+    }
+  | { type: 'removeObject'; depth: number }
+  | { type: 'backgroundColor'; color: number }
+  | { type: 'initAction'; sprite: number; block: number }
+  | { type: 'unknown'; itemType: number }
+);
+
+export interface Frame {
+  items: FrameItem[];
+}
+
+export interface AptImport {
+  movie: string;
+  name: string;
+  character: number;
+}
+
+export interface AptExport {
+  name: string;
+  character: number;
+}
+
+export interface AptMovie {
+  record: MovieRecord;
+  characters: Character[];
+  imports: AptImport[];
+  exports: AptExport[];
+  frames: Frame[];
+}
+
+const readRect = (reader: AptReader, at: number): Rect => [
+  reader.f32(at),
+  reader.f32(at + 4),
+  reader.f32(at + 8),
+  reader.f32(at + 12),
+];
+
+const readMatrix = (reader: AptReader, at: number): Matrix2 => [
+  reader.f32(at),
+  reader.f32(at + 4),
+  reader.f32(at + 8),
+  reader.f32(at + 12),
+];
+
+export const parseMovieRecord = (
+  reader: AptReader,
+  offset: number,
+): MovieRecord => {
+  if (
+    reader.u32(offset) !== 9 ||
+    reader.u32(offset + 4) !== CHARACTER_SIGNATURE
+  ) {
+    throw new Error(`No Movie record at ${offset}`);
+  }
+
+  return {
+    offset,
+    frameCount: reader.u32(offset + 8),
+    framesOffset: reader.u32(offset + 12),
+    characterCount: reader.u32(offset + 20),
+    charactersOffset: reader.u32(offset + 24),
+    screenWidth: reader.u32(offset + 28),
+    screenHeight: reader.u32(offset + 32),
+    unknown36: reader.u32(offset + 36),
+    importCount: reader.u32(offset + 40),
+    importsOffset: reader.u32(offset + 44),
+    exportCount: reader.u32(offset + 48),
+    exportsOffset: reader.u32(offset + 52),
+  };
+};
+
+const checkCount = (reader: AptReader, count: number, stride: number): void => {
+  if (count * stride > reader.bytes.length) {
+    throw new Error(`A count of ${count} cannot fit in the file`);
+  }
+};
+
+const parseTextRecord = (reader: AptReader, at: number): TextRecord => {
+  const [left, top, right, bottom] = readRect(reader, at + 4);
+  const count = reader.u32(at + 48);
+  const glyphs = reader.u32(at + 52);
+
+  checkCount(reader, count, 8);
+
+  return {
+    offset: at,
+    font: reader.u32(at),
+    color: [top, left, bottom, right],
+    unknown: readRect(reader, at + 20),
+    penOffset: [reader.f32(at + 36), reader.f32(at + 40)],
+    textHeight: reader.f32(at + 44),
+    glyphs: Array.from({ length: count }, (_, index) => ({
+      index: reader.u32(glyphs + index * 8),
+      advance: reader.i32(glyphs + index * 8 + 4),
+    })),
+  };
+};
+
+const parseCharacter = (
+  reader: AptReader,
+  id: number,
+  offset: number,
+): Character => {
+  let type: number;
+
+  try {
+    type = reader.u32(offset);
+
+    if (reader.u32(offset + 4) !== CHARACTER_SIGNATURE) {
+      return { id, offset, type: 'placeholder' };
+    }
+  } catch {
+    return { id, offset, type: 'placeholder' };
+  }
+
+  switch (CHARACTER_TYPES[type]) {
+    case 'shape':
+      return {
+        id,
+        offset,
+        type: 'shape',
+        bounds: readRect(reader, offset + 8),
+        geometry: reader.u32(offset + 24),
+      };
+    case 'editText':
+      return {
+        id,
+        offset,
+        type: 'editText',
+        bounds: readRect(reader, offset + 8),
+        font: reader.u32(offset + 24),
+        alignment: reader.u32(offset + 28),
+        color: reader.u32(offset + 32),
+        fontHeight: reader.f32(offset + 36),
+        readonly: reader.u32(offset + 40),
+        multiline: reader.u32(offset + 44),
+        wordwrap: reader.u32(offset + 48),
+        text: reader.optionalString(reader.u32(offset + 52)),
+        variable: reader.optionalString(reader.u32(offset + 56)),
+      };
+    case 'font': {
+      const count = reader.u32(offset + 12);
+      const table = reader.u32(offset + 16);
+
+      checkCount(reader, count, 4);
+
+      return {
+        id,
+        offset,
+        type: 'font',
+        name: reader.optionalString(reader.u32(offset + 8)),
+        glyphs: Array.from({ length: count }, (_, index) =>
+          reader.u32(table + index * 4),
+        ),
+      };
+    }
+    case 'button': {
+      const recordCount = reader.u32(offset + 44);
+      const recordsOffset = reader.u32(offset + 48);
+      const actionCount = reader.u32(offset + 52);
+      const actionsOffset = reader.u32(offset + 56);
+
+      checkCount(reader, recordCount, 68);
+      checkCount(reader, actionCount, 8);
+
+      return {
+        id,
+        offset,
+        type: 'button',
+        bounds: readRect(reader, offset + 12),
+        hitTriangles: reader.u32(offset + 28),
+        records: Array.from({ length: recordCount }, (_, index) => {
+          const at = recordsOffset + index * 68;
+
+          return {
+            offset: at,
+            flags: reader.u32(at),
+            character: reader.u32(at + 4),
+            depth: reader.i32(at + 8),
+            matrix: readMatrix(reader, at + 12),
+            translate: [reader.f32(at + 28), reader.f32(at + 32)],
+            color: readMatrix(reader, at + 36),
+            unknown: readMatrix(reader, at + 52),
+          };
+        }),
+        actions: Array.from({ length: actionCount }, (_, index) => ({
+          condition: reader.u32(actionsOffset + index * 8),
+          block: reader.u32(actionsOffset + index * 8 + 4),
+        })),
+      };
+    }
+    case 'sprite':
+      return {
+        id,
+        offset,
+        type: 'sprite',
+        frameCount: reader.u32(offset + 8),
+        framesOffset: reader.u32(offset + 12),
+      };
+    case 'image':
+      return { id, offset, type: 'image', texture: reader.u32(offset + 8) };
+    case 'morph':
+      return {
+        id,
+        offset,
+        type: 'morph',
+        startShape: reader.u32(offset + 8),
+        endShape: reader.u32(offset + 12),
+      };
+    case 'movie':
+      return {
+        id,
+        offset,
+        type: 'movie',
+        record: parseMovieRecord(reader, offset),
+      };
+    case 'text': {
+      const count = reader.u32(offset + 48);
+      const records = reader.u32(offset + 52);
+
+      checkCount(reader, count, 56);
+
+      return {
+        id,
+        offset,
+        type: 'text',
+        bounds: readRect(reader, offset + 8),
+        matrix: readMatrix(reader, offset + 24),
+        translate: [reader.f32(offset + 40), reader.f32(offset + 44)],
+        records: Array.from({ length: count }, (_, index) =>
+          parseTextRecord(reader, records + index * 56),
+        ),
+      };
+    }
+    default:
+      return { id, offset, type: 'unknown', characterType: type };
+  }
+};
+
+const parseFrameItem = (reader: AptReader, offset: number): FrameItem => {
+  const type = reader.u32(offset);
+
+  switch (type) {
+    case 1:
+      return { offset, type: 'action', block: reader.u32(offset + 4) };
+    case 2:
+      return {
+        offset,
+        type: 'frameLabel',
+        label: reader.cstr(reader.u32(offset + 4)),
+        flags: reader.u32(offset + 8),
+        frame: reader.u32(offset + 12),
+      };
+    case 3: {
+      const flags = reader.u32(offset + 4);
+      const has = (bit: number) => (flags & bit) !== 0;
+      const clipActionsOffset = has(PLACE_FLAGS.hasClipActions)
+        ? reader.u32(offset + 60)
+        : 0;
+      let clipActions: { events: number; block: number }[] | undefined;
+
+      if (clipActionsOffset) {
+        const count = reader.u32(clipActionsOffset);
+        const array = reader.u32(clipActionsOffset + 4);
+
+        checkCount(reader, count, 12);
+        clipActions = Array.from({ length: count }, (_, index) => ({
+          events: reader.u32(array + index * 12),
+          block: reader.u32(array + index * 12 + 8),
+        }));
+      }
+
+      return {
+        offset,
+        type: 'placeObject',
+        flags,
+        depth: reader.i32(offset + 8),
+        character: has(PLACE_FLAGS.hasCharacter)
+          ? reader.u32(offset + 12)
+          : undefined,
+        matrix: has(PLACE_FLAGS.hasMatrix)
+          ? readMatrix(reader, offset + 16)
+          : undefined,
+        translate: has(PLACE_FLAGS.hasMatrix)
+          ? [reader.f32(offset + 32), reader.f32(offset + 36)]
+          : undefined,
+        colorTransform: has(PLACE_FLAGS.hasColorTransform)
+          ? reader.u32(offset + 40)
+          : undefined,
+        colorAdd: has(PLACE_FLAGS.hasColorTransform)
+          ? reader.u32(offset + 44)
+          : undefined,
+        ratio: has(PLACE_FLAGS.hasRatio) ? reader.f32(offset + 48) : undefined,
+        name: has(PLACE_FLAGS.hasName)
+          ? reader.optionalString(reader.u32(offset + 52))
+          : undefined,
+        clipDepth: has(PLACE_FLAGS.hasClipDepth)
+          ? reader.i32(offset + 56)
+          : undefined,
+        clipActions,
+      };
+    }
+    case 4:
+      return { offset, type: 'removeObject', depth: reader.i32(offset + 4) };
+    case 5:
+      return { offset, type: 'backgroundColor', color: reader.u32(offset + 4) };
+    case 8:
+      return {
+        offset,
+        type: 'initAction',
+        sprite: reader.u32(offset + 4),
+        block: reader.u32(offset + 8),
+      };
+    default:
+      return { offset, type: 'unknown', itemType: type };
+  }
+};
+
+export const parseFrames = (
+  reader: AptReader,
+  count: number,
+  offset: number,
+): Frame[] => {
+  checkCount(reader, count, 8);
+
+  return Array.from({ length: count }, (_, index) => {
+    const itemCount = reader.u32(offset + index * 8);
+    const items = reader.u32(offset + index * 8 + 4);
+
+    checkCount(reader, itemCount, 4);
+
+    return {
+      items: Array.from({ length: itemCount }, (_, item) =>
+        parseFrameItem(reader, reader.u32(items + item * 4)),
+      ),
+    };
+  });
+};
+
+export const parseAptMovie = (
+  apt: Uint8Array,
+  movieOffset: number,
+): AptMovie => {
+  const reader = new AptReader(apt);
+  const record = parseMovieRecord(reader, movieOffset);
+
+  checkCount(reader, record.characterCount, 4);
+  checkCount(reader, record.importCount, 16);
+  checkCount(reader, record.exportCount, 8);
+
+  return {
+    record,
+    characters: Array.from({ length: record.characterCount }, (_, id) =>
+      parseCharacter(reader, id, reader.u32(record.charactersOffset + id * 4)),
+    ),
+    imports: Array.from({ length: record.importCount }, (_, index) => {
+      const at = record.importsOffset + index * 16;
+
+      return {
+        movie: reader.cstr(reader.u32(at)),
+        name: reader.cstr(reader.u32(at + 4)),
+        character: reader.u32(at + 8),
+      };
+    }),
+    exports: Array.from({ length: record.exportCount }, (_, index) => {
+      const at = record.exportsOffset + index * 8;
+
+      return {
+        name: reader.cstr(reader.u32(at)),
+        character: reader.u32(at + 4),
+      };
+    }),
+    frames: parseFrames(reader, record.frameCount, record.framesOffset),
+  };
+};
+
+export const parseSpriteFrames = (
+  apt: Uint8Array,
+  sprite: Extract<Character, { type: 'sprite' }>,
+): Frame[] =>
+  parseFrames(new AptReader(apt), sprite.frameCount, sprite.framesOffset);
