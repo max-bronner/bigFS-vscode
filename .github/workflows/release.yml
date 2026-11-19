@@ -1,12 +1,11 @@
 name: Release
 
-# A pull request into master is tested and packaged; that job is the check
-# master's protection requires. A merge into master does the same and, when its
-# package.json version is not on the Marketplace yet, publishes it and tags the
-# commit v<version> with a GitHub release. A manual run stops after the package.
+# A merge into master publishes its package.json version when the Marketplace
+# does not have it yet, then tags the commit v<version> with a GitHub release.
+# The export script has already run the gate locally, so nothing is tested
+# here again, and a merge of a version already published stops after one
+# small job. A manual run stops after the package.
 on:
-  pull_request:
-    branches: [master]
   push:
     branches: [master]
   workflow_dispatch:
@@ -16,17 +15,48 @@ permissions: {}
 
 # Merges publish one after another, never two at once
 concurrency:
-  group: release-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: release
+  cancel-in-progress: false
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  build:
-    name: Test and package
+  # Reads the version and asks the Marketplace for it; no install, a few seconds
+  check:
+    name: Check the version
     if: github.repository == 'max-bronner/bigFS-vscode'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.published.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: package.json
+          sparse-checkout-cone-mode: false
+      - name: Ask the Marketplace for this version
+        id: published
+        run: |
+          id=$(jq -r '.publisher + "." + .name' package.json)
+          version=$(jq -r .version package.json)
+          query=$(jq -n --arg id "$id" '{filters: [{criteria: [{filterType: 7, value: $id}]}], flags: 1}')
+          versions=$(curl -sf -X POST https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery             -H 'Content-Type: application/json' -H 'Accept: application/json;api-version=7.2-preview.1'             -d "$query" | jq -r '.results[0].extensions[0].versions[]?.version') || versions=
+          if grep -qx "$version" <<< "$versions"; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "$id $version is already on the Marketplace: nothing to publish" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "$id $version is new: building and publishing it" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  build:
+    name: Package
+    needs: check
+    if: needs.check.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -35,7 +65,6 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       channel: ${{ steps.version.outputs.channel }}
       vsix: ${{ steps.version.outputs.vsix }}
-      publish: ${{ steps.published.outputs.publish }}
       sha256: ${{ steps.package.outputs.sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,37 +100,14 @@ jobs:
       # Install scripts of dependencies do not run; the build needs none of them
       - run: npm ci --ignore-scripts
 
-      # A version already published is built and tested but not published again
-      - name: Check whether the version is on the Marketplace yet
-        id: published
-        env:
-          EXTENSION_ID: ${{ steps.version.outputs.id }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          ./node_modules/.bin/vsce show "$EXTENSION_ID" --json > published.json || true
-          if node -e '
-            const versions = JSON.parse(require("node:fs").readFileSync("published.json", "utf8")).versions.map((each) => each.version);
-            process.exit(versions.includes(process.argv[1]) ? 0 : 1);
-          ' "$VERSION" 2>/dev/null; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "$VERSION is already on the Marketplace: nothing is published; raise the version to release" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "$VERSION is not on the Marketplace yet: merging into master publishes it" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          rm -f published.json
-
-      # Trusted publishing works from vsce 4.1.0; checked whenever a version would be published, on pull requests too
+      # Trusted publishing works from vsce 4.1.0
       - name: Check vsce can publish without a token
-        if: steps.published.outputs.publish == 'true'
         run: |
           installed=$(./node_modules/.bin/vsce --version)
           if ! printf '%s\n' 4.1.0 "$installed" | sort --version-sort --check=quiet; then
             echo "::error::@vscode/vsce $installed cannot publish with --oidc; the lockfile needs 4.1.0 or later"
             exit 1
           fi
-
-      - run: npm run test:unit
 
       # vsce runs vscode:prepublish first: type checks, lint and the production build
       - name: Package
@@ -137,8 +143,8 @@ jobs:
 
   marketplace:
     name: Publish to the Marketplace
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.build.outputs.publish == 'true'
+    needs: [check, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.check.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     # The Marketplace's Trusted Publishing policy names this workflow file and
     # this environment; renaming either one needs the policy changed with it
@@ -176,8 +182,8 @@ jobs:
   # Runs only when the repository variable PUBLISH_OPEN_VSX is true
   open-vsx:
     name: Publish to Open VSX
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.build.outputs.publish == 'true' && vars.PUBLISH_OPEN_VSX == 'true'
+    needs: [check, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.check.outputs.publish == 'true' && vars.PUBLISH_OPEN_VSX == 'true'
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -211,7 +217,7 @@ jobs:
 
   github-release:
     name: Tag and attach the package to a GitHub release
-    needs: [build, marketplace]
+    needs: [check, build, marketplace]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
