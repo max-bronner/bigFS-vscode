@@ -2,7 +2,7 @@ import { parseAptMovie } from '../../formats/apt/aptMovie';
 import { applyAptEdit } from '../../formats/apt/writer/applyAptEdit';
 import type { AptEdit, EditResult } from '../../formats/apt/writer/aptEdit';
 import { addBlock, replaceBlock } from '../../formats/apt/aptScript';
-import { referencesTo } from '../../formats/apt/aptManage';
+import { findReferencesTo } from '../../formats/apt/aptManage';
 import {
   getTexturePath,
   parseDat,
@@ -20,8 +20,6 @@ export type RecordChange = <T>(
   label: string,
   change: () => Promise<T>,
 ) => Promise<T>;
-
-const latin1 = decodeWindows1252;
 
 const applyEdit = async (
   document: AptDocument,
@@ -140,7 +138,7 @@ export const removeCharacter = async (
   id: number,
 ): Promise<void> => {
   const { movie } = await document.build();
-  const references = referencesTo(
+  const references = findReferencesTo(
     movie,
     movie.spriteFrames,
     movie.shapes,
@@ -169,7 +167,7 @@ export const removeCharacter = async (
       const datName = `${document.name}.dat`;
       const datBytes = await document.readBeside(datName);
       const dat = datBytes
-        ? parseDat(latin1(datBytes))
+        ? parseDat(decodeWindows1252(datBytes))
         : new Map<number, DatLocation>();
       const location = dat.get(character.texture);
       const stillUsed = movie.characters.some(

@@ -8,13 +8,13 @@ import {
   computeArchiveLayout,
   serializeIndexTable,
 } from '../formats/big/bigFormat';
-import type { ArchiveLayout, BigFileEntry, ParsedArchive } from '../formats/big/bigFormat';
+import type { ArchiveLayout, BigFileEntry, ArchiveIndex } from '../formats/big/bigFormat';
 
 const COPY_CHUNK_SIZE = 256 * 1024;
 
 export const readArchiveIndexTable = async (
   archivePath: string,
-): Promise<ParsedArchive> => {
+): Promise<ArchiveIndex> => {
   const archiveFile = await open(archivePath, 'r');
 
   try {
@@ -174,7 +174,7 @@ const copyEntryData = async (
 
 export const writeArchiveFile = async (
   archivePath: string,
-  { magic, trailer }: Pick<ParsedArchive, 'magic' | 'trailer'>,
+  { magic, trailer }: Pick<ArchiveIndex, 'magic' | 'trailer'>,
   entries: readonly BigFileEntry[] | ReadonlyMap<string, BigFileEntry>,
 ): Promise<ArchiveLayout> => {
   const layout = computeArchiveLayout(entries, trailer);

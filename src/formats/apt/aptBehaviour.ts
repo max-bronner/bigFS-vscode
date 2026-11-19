@@ -28,7 +28,7 @@ const CALLS: Record<string, 'play' | 'stop' | 'next' | 'prev'> = {
   prevframe: 'prev',
 };
 
-const pathOf = (text: string): TargetPath => {
+const parseTargetPath = (text: string): TargetPath => {
   const absolute = text.startsWith('/');
   const parts = text
     .split(/[/:]/)
@@ -39,16 +39,16 @@ const pathOf = (text: string): TargetPath => {
   return absolute ? ['_root', ...parts] : parts;
 };
 
-const targetOf = (expr: Expr): TargetPath | undefined => {
+const resolveTarget = (expr: Expr): TargetPath | undefined => {
   switch (expr.k) {
     case 'kw':
       return expr.v === 'this' ? [] : undefined;
     case 'var':
-      return pathOf(expr.name);
+      return parseTargetPath(expr.name);
     case 'str':
-      return pathOf(expr.v);
+      return parseTargetPath(expr.v);
     case 'member': {
-      const parent = targetOf(expr.obj);
+      const parent = resolveTarget(expr.obj);
 
       return parent && [...parent, expr.name];
     }
@@ -57,7 +57,7 @@ const targetOf = (expr: Expr): TargetPath | undefined => {
   }
 };
 
-const gotoArgument = (
+const parseGotoArgument = (
   expr: Expr | undefined,
 ): { frame?: number; label?: string } | undefined =>
   expr?.k === 'str'
@@ -66,7 +66,7 @@ const gotoArgument = (
       ? { frame: expr.v - 1 }
       : undefined;
 
-const callCommand = (
+const toCallCommand = (
   target: TargetPath,
   name: Expr,
   args: Expr[],
@@ -78,7 +78,7 @@ const callCommand = (
   const lower = name.v.toLowerCase();
 
   if (lower === 'gotoandplay' || lower === 'gotoandstop') {
-    const where = gotoArgument(args[0]);
+    const where = parseGotoArgument(args[0]);
 
     return (
       where && { op: 'goto', target, ...where, play: lower === 'gotoandplay' }
@@ -90,7 +90,7 @@ const callCommand = (
   return op && !args.length ? { op, target } : undefined;
 };
 
-export const behaviourOf = (
+export const readBehaviour = (
   apt: Uint8Array,
   block: number,
   constants: readonly ConstItem[],
@@ -121,18 +121,18 @@ export const behaviourOf = (
     let command: TimelineCommand | undefined;
 
     if (e?.k === 'call') {
-      command = callCommand(scope, e.name, e.args);
+      command = toCallCommand(scope, e.name, e.args);
     } else if (e?.k === 'mcall') {
-      const target = targetOf(e.obj);
+      const target = resolveTarget(e.obj);
 
-      command = target && callCommand([...scope, ...target], e.name, e.args);
+      command = target && toCallCommand([...scope, ...target], e.name, e.args);
     } else if (e?.k === 'intr') {
       const operand = e.operand;
 
       switch (e.op) {
         case 'SetTarget':
           if (operand?.k === 'str') {
-            scope = pathOf(operand.v);
+            scope = parseTargetPath(operand.v);
             continue;
           }
           break;

@@ -1,19 +1,19 @@
 import * as vscode from 'vscode';
-import { strRecord } from '../../game/objects/duplicateDefinition';
+import { formatStrRecord } from '../../formats/str/sageStringRecords';
 import {
-  buttonName,
-  copiedButton,
-  copiedObject,
-  displayLabel,
-  inheritingObject,
+  deriveButtonName,
+  copyButton,
+  copyObject,
+  formatDisplayLabel,
+  createInheritingObject,
   isLoadedObjectPath,
-  newObjectEntryPath,
-  slotLine,
+  chooseNewObjectEntryPath,
+  planSlotLine,
 } from '../../game/objects/newObject';
 import type { NewObjectMode, PlannedBlock } from '../../game/objects/newObject';
 import { parseSageIni, stripComment, tokenize } from '../../formats/ini/sageIniParser';
 import type { SageBlock } from '../../formats/ini/sageIniParser';
-import { insertLines, lineEndOf } from '../../formats/ini/iniTextEdits';
+import { insertLines, detectLineEnd } from '../../formats/ini/iniTextEdits';
 import type { LineInsertion } from '../../formats/ini/iniTextEdits';
 import {
   isArchiveUri,
@@ -60,7 +60,7 @@ export const registerNewObjectWizard = (
   index: SageIniIndex,
   archiveModel: ArchiveModel,
 ): vscode.Disposable => {
-  const blockAt = async (
+  const findBlockAt = async (
     uri: vscode.Uri,
     line: number,
     keyword?: string,
@@ -81,17 +81,17 @@ export const registerNewObjectWizard = (
       const [place] = index.findDefinitions(keyword, name);
 
       if (place) {
-        return blockAt(place.uri, place.line);
+        return findBlockAt(place.uri, place.line);
       }
     }
     return undefined;
   };
 
-  const buildersOf = async (source: string) => {
+  const findBuilders = async (source: string) => {
     const builders: { button: Located; set: Located }[] = [];
 
     for (const reference of index.findReferences('Object', source)) {
-      const button = await blockAt(
+      const button = await findBlockAt(
         reference.uri,
         reference.line,
         'CommandButton',
@@ -101,7 +101,7 @@ export const registerNewObjectWizard = (
         continue;
       }
       for (const use of index.findReferences('CommandButton', button.name)) {
-        const set = await blockAt(use.uri, use.line, 'CommandSet');
+        const set = await findBlockAt(use.uri, use.line, 'CommandSet');
 
         if (set) {
           builders.push({ button, set });
@@ -111,7 +111,7 @@ export const registerNewObjectWizard = (
     return builders;
   };
 
-  const ask = async (): Promise<NewObjectRequest | undefined> => {
+  const askRequest = async (): Promise<NewObjectRequest | undefined> => {
     await index.whenReady();
 
     const names = [
@@ -182,7 +182,7 @@ export const registerNewObjectWizard = (
       return undefined;
     }
 
-    const sets = await buildersOf(source);
+    const sets = await findBuilders(source);
     const set = await vscode.window.showQuickPick(
       [
         ...sets.map(({ button, set }) => ({
@@ -201,7 +201,7 @@ export const registerNewObjectWizard = (
     return { source, name, mode: mode.mode, text, commandSet: set.set };
   };
 
-  const targetFor = async (
+  const chooseTarget = async (
     original: Located,
     name: string,
     left: string[],
@@ -212,7 +212,7 @@ export const registerNewObjectWizard = (
       const node = archiveModel.getNode(uri);
 
       if (node) {
-        const entry = newObjectEntryPath(node.entryPath, name);
+        const entry = chooseNewObjectEntryPath(node.entryPath, name);
 
         return {
           uri:
@@ -248,13 +248,13 @@ export const registerNewObjectWizard = (
     }
     if (isArchiveUri(uri)) {
       left.push(
-        `${original.name} is in a base game archive, which is never changed: ${name} was written to ${newObjectEntryPath(undefined, name)} in ${folder.fsPath}`,
+        `${original.name} is in a base game archive, which is never changed: ${name} was written to ${chooseNewObjectEntryPath(undefined, name)} in ${folder.fsPath}`,
       );
     }
     return {
       uri: vscode.Uri.joinPath(
         folder,
-        ...newObjectEntryPath(undefined, name).split('/'),
+        ...chooseNewObjectEntryPath(undefined, name).split('/'),
       ),
       sameFile: false,
     };
@@ -272,7 +272,7 @@ export const registerNewObjectWizard = (
     const left: string[] = [];
     const edit = new vscode.WorkspaceEdit();
     const additions = new Map<string, EntryAdditions>();
-    const additionsTo = (uri: vscode.Uri) => {
+    const getAdditions = (uri: vscode.Uri) => {
       const key = uri.toString();
       const found = additions.get(key) ?? { uri, insertions: [], raw: [] };
 
@@ -281,8 +281,8 @@ export const registerNewObjectWizard = (
     };
     const blocks: PlannedBlock[] = [
       request.mode === 'inherit'
-        ? inheritingObject(request.name, original.name)
-        : copiedObject(
+        ? createInheritingObject(request.name, original.name)
+        : copyObject(
             original.lines,
             original.block.startLine,
             original.block.endLine,
@@ -291,7 +291,7 @@ export const registerNewObjectWizard = (
     ];
 
     if (request.commandSet) {
-      const builder = (await buildersOf(request.source)).find(
+      const builder = (await findBuilders(request.source)).find(
         ({ set }) =>
           set.name.toLowerCase() === request.commandSet!.toLowerCase(),
       );
@@ -302,14 +302,14 @@ export const registerNewObjectWizard = (
         );
       }
 
-      const newButton = buttonName(
+      const newButton = deriveButtonName(
         builder.button.name,
         request.source,
         request.name,
       );
 
       blocks.push(
-        copiedButton(
+        copyButton(
           builder.button.lines,
           builder.button.block.startLine,
           builder.button.block.endLine,
@@ -318,7 +318,7 @@ export const registerNewObjectWizard = (
         ),
       );
       if (isEditable(archiveModel, builder.set.uri)) {
-        const slot = slotLine(
+        const slot = planSlotLine(
           builder.set.lines.slice(
             builder.set.block.startLine,
             builder.set.block.endLine + 1,
@@ -328,7 +328,7 @@ export const registerNewObjectWizard = (
         const line = builder.set.block.startLine + slot.line;
 
         if (isArchiveUri(builder.set.uri)) {
-          additionsTo(builder.set.uri).insertions.push({
+          getAdditions(builder.set.uri).insertions.push({
             line,
             lines: [slot.text],
           });
@@ -349,7 +349,7 @@ export const registerNewObjectWizard = (
     const texts = [
       {
         from: undefined as string | undefined,
-        to: displayLabel(request.name),
+        to: formatDisplayLabel(request.name),
         text: request.text,
       },
       ...blocks.flatMap((block) =>
@@ -384,7 +384,7 @@ export const registerNewObjectWizard = (
         const key = table.uri.toString();
         const record = records.get(key) ?? { uri: table.uri, text: [] };
 
-        record.text.push(strRecord(entry.to, entry.text, '\n'));
+        record.text.push(formatStrRecord(entry.to, entry.text, '\n'));
         records.set(key, record);
       } else {
         left.push(`add ${entry.to} ("${entry.text}") to your string table`);
@@ -392,7 +392,7 @@ export const registerNewObjectWizard = (
     }
     for (const { uri, text } of records.values()) {
       if (isArchiveUri(uri)) {
-        additionsTo(uri).raw.push(...text);
+        getAdditions(uri).raw.push(...text);
         continue;
       }
 
@@ -402,7 +402,7 @@ export const registerNewObjectWizard = (
       edit.insert(uri, end.range.end, (end.text ? '\n' : '') + text.join(''));
     }
 
-    const target = await targetFor(original, request.name, left);
+    const target = await chooseTarget(original, request.name, left);
 
     if (!target) {
       return undefined;
@@ -411,7 +411,7 @@ export const registerNewObjectWizard = (
     const text = blocks.map((block) => block.lines.join('\n')).join('\n\n');
 
     if (isArchiveUri(target.uri)) {
-      additionsTo(target.uri).insertions.push(
+      getAdditions(target.uri).insertions.push(
         target.sameFile
           ? {
               line: original.block.endLine + 1,
@@ -459,7 +459,7 @@ export const registerNewObjectWizard = (
       } catch {
       }
 
-      const eol = lineEndOf(before);
+      const eol = detectLineEnd(before);
       const inserted = insertions.length
         ? insertLines(before, insertions)
         : before;
@@ -498,7 +498,7 @@ export const registerNewObjectWizard = (
   return registerCommand(
     'bigfs.newObject',
     async (given?: NewObjectRequest) => {
-      const request = given ?? (await ask());
+      const request = given ?? (await askRequest());
 
       if (!request) {
         return undefined;

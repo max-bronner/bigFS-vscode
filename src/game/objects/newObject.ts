@@ -9,7 +9,7 @@ export interface PlannedBlock {
   labels: LabelRename[];
 }
 
-export const displayLabel = (name: string) => `OBJECT:${name}`;
+export const formatDisplayLabel = (name: string) => `OBJECT:${name}`;
 
 export const setField = (
   lines: string[],
@@ -33,13 +33,13 @@ export const setField = (
     : [lines[0], written, ...lines.slice(1)];
 };
 
-export const inheritingObject = (
+export const createInheritingObject = (
   name: string,
   parent: string,
 ): PlannedBlock => ({
   lines: [
     `ChildObject ${name} ${parent}`,
-    `  DisplayName = ${displayLabel(name)}`,
+    `  DisplayName = ${formatDisplayLabel(name)}`,
     `  ; Write what differs from ${parent} here: a field replaces the`,
     '  ; inherited one, a module replaces the one with its tag',
     'End',
@@ -47,7 +47,7 @@ export const inheritingObject = (
   labels: [],
 });
 
-export const copiedObject = (
+export const copyObject = (
   lines: string[],
   startLine: number,
   endLine: number,
@@ -56,12 +56,12 @@ export const copiedObject = (
   const copy = duplicateDefinition(lines, startLine, endLine, name);
 
   return {
-    lines: setField(copy.lines, 'DisplayName', displayLabel(name)),
+    lines: setField(copy.lines, 'DisplayName', formatDisplayLabel(name)),
     labels: copy.labels,
   };
 };
 
-export const buttonName = (
+export const deriveButtonName = (
   button: string,
   source: string,
   name: string,
@@ -73,7 +73,7 @@ export const buttonName = (
     : `${button}_${name}`;
 };
 
-export const copiedButton = (
+export const copyButton = (
   lines: string[],
   startLine: number,
   endLine: number,
@@ -99,7 +99,7 @@ export const copiedButton = (
   };
 };
 
-export const slotLine = (
+export const planSlotLine = (
   setLines: string[],
   button: string,
 ): { line: number; text: string } => {
@@ -127,7 +127,7 @@ export const isLoadedObjectPath = (entryPath: string): boolean =>
     entryPath.replace(/\\/g, '/'),
   );
 
-export const newObjectEntryPath = (
+export const chooseNewObjectEntryPath = (
   sourceEntryPath: string | undefined,
   name: string,
 ): string =>

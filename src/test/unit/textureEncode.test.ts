@@ -5,7 +5,7 @@ import { encodeDds, encodeTga } from '../../formats/texture/textureEncode';
 import { decodePng, encodePng } from '../../node/png';
 import { compressEar } from '../../formats/refpack/refpack';
 
-const image = () => {
+const buildGradient = () => {
   const width = 8;
   const height = 4;
   const pixels = new Uint8Array(width * height * 4);
@@ -22,7 +22,7 @@ const image = () => {
 
 suite('Texture encoding', () => {
   test('PNG and TGA round-trip exactly', () => {
-    const source = image();
+    const source = buildGradient();
 
     assert.deepStrictEqual(decodePng(encodePng(source)), source);
     assert.deepStrictEqual(
@@ -41,7 +41,7 @@ suite('Texture encoding', () => {
   });
 
   test('DDS reads back in its format, with mips and close colours', () => {
-    const source = image();
+    const source = buildGradient();
 
     for (const format of ['DXT1', 'DXT3', 'DXT5', 'RGBA'] as const) {
       const decoded = decodeDds(encodeDds(source, format, true));
@@ -76,7 +76,7 @@ suite('Texture encoding', () => {
   });
 
   test('a PNG filtered with Paeth decodes', () => {
-    const source = image();
+    const source = buildGradient();
     const stride = source.width * 4;
     const raw = new Uint8Array((stride + 1) * source.height);
 
@@ -183,7 +183,7 @@ suite('Texture encoding', () => {
   });
 
   test('an EAR-wrapped TGA and DDS decode', () => {
-    const source = image();
+    const source = buildGradient();
 
     assert.deepStrictEqual(
       decodeTga(compressEar(encodeTga(source, true))).levels[0].pixels,

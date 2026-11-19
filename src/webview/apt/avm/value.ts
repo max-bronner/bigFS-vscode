@@ -1,5 +1,5 @@
 import type { AptFunction } from '../../../formats/apt/aptBytecode';
-import type { Instance } from '../player';
+import type { Instance } from '../instance';
 import type { PageMovie } from '../protocol';
 
 export const SCRIPT_DEPTH_BIAS = 16384;
@@ -20,7 +20,22 @@ export type NativeFunction = (
   args: Value[],
 ) => Value;
 
+export type BuiltinProtos = Record<
+  | 'object'
+  | 'function'
+  | 'array'
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'movieClip'
+  | 'button'
+  | 'textField',
+  AsObject
+>;
+
 export interface NativeHost {
+  readonly global: AsObject;
+  readonly protos: BuiltinProtos;
   string(value: Value): string;
   member(object: Value, name: string): Value;
   setMember(object: Value, name: string, value: Value): void;
@@ -35,6 +50,10 @@ export interface NativeHost {
   now(): number;
   interval(callee: Value, self: Value, ms: number, args: Value[]): number;
   clearInterval(id: number): void;
+  join(array: AsObject, separator: string): string;
+  native(name: string, call: NativeFunction): AsObject;
+  goto(clip: Instance, target: Value, stop: boolean): void;
+  loadMovie(into: Instance | number, url: string): void;
 }
 
 export interface StageHost {

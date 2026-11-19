@@ -1,11 +1,6 @@
-import type {
-  NumericField,
-  ParticleDef,
-  Vec3,
-} from '../../formats/particles/particleIni';
-import { cameraBasis, viewProjection } from './camera';
-import { canvas } from './graphics';
-import { $, library, post, state, world } from './page';
+import type { NumericField } from '../../formats/particles/particleValueEdits';
+import type { ParticleDef, Vec3 } from '../../formats/particles/particleDef';
+import { $, library, post, state, viewer, world } from './page';
 
 interface Handle {
   at: Vec3;
@@ -16,6 +11,7 @@ interface Handle {
   label: string;
 }
 
+const { canvas } = viewer;
 const overlay = $<HTMLCanvasElement>('handles');
 const RADIUS = 6;
 
@@ -76,7 +72,7 @@ const point = (names: string[], label: string): Handle[] => {
   ];
 };
 
-const handlesOf = (def: ParticleDef): Handle[] => {
+const listHandles = (def: ParticleDef): Handle[] => {
   const volume = def.volume;
 
   switch (volume.type) {
@@ -138,7 +134,7 @@ const handlesOf = (def: ParticleDef): Handle[] => {
   }
 };
 
-const target = () => {
+const findTarget = () => {
   const name =
     state.scene?.root?.kind === 'system' ? state.scene.root.name : '';
   const def = library.systems.get(name.toLowerCase());
@@ -184,8 +180,8 @@ let drag:
     }
   | undefined;
 
-const shown = () =>
-  ($<HTMLInputElement>('showVolume').checked && target()) || undefined;
+const findShownTarget = () =>
+  ($<HTMLInputElement>('showVolume').checked && findTarget()) || undefined;
 
 export const drawHandles = (): void => {
   const ratio = window.devicePixelRatio || 1;
@@ -202,16 +198,16 @@ export const drawHandles = (): void => {
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
-  const found = shown();
+  const found = findShownTarget();
 
   if (!found) {
     return;
   }
 
-  const matrix = viewProjection(cameraBasis(), canvas);
+  const { matrix } = viewer.getCamera();
 
   ctx.font = '10px sans-serif';
-  for (const handle of handlesOf(found.def)) {
+  for (const handle of listHandles(found.def)) {
     const at = project(matrix, add(found.origin, handle.at));
 
     if (!at) {
@@ -251,7 +247,7 @@ export const attachHandles = (): void => {
   canvas.addEventListener(
     'pointerdown',
     (event) => {
-      const found = shown();
+      const found = findShownTarget();
 
       if (!found || event.button !== 0) {
         return;
@@ -262,8 +258,8 @@ export const attachHandles = (): void => {
         event.clientX - box.left,
         event.clientY - box.top,
       ];
-      const matrix = viewProjection(cameraBasis(), canvas);
-      const handle = handlesOf(found.def).find((each) => {
+      const { matrix, basis } = viewer.getCamera();
+      const handle = listHandles(found.def).find((each) => {
         const at = project(matrix, add(found.origin, each.at));
 
         return (
@@ -289,7 +285,7 @@ export const attachHandles = (): void => {
           along: [to[0] - from[0], to[1] - from[1]],
         };
       } else {
-        const { right, up } = cameraBasis();
+        const { right, up } = basis;
         const step = project(matrix, add(base, right)) ?? from;
 
         drag = {

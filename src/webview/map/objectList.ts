@@ -1,7 +1,7 @@
 import { element } from '../shared/element';
 import type { MapActions } from './actions';
 import { objectList } from './elements';
-import { filterObjects, nameOf } from './mapModel';
+import { filterObjects, getObjectName } from './mapModel';
 import { state } from './state';
 
 const MAX_LISTED = 500;
@@ -19,7 +19,7 @@ export const showObjects = (actions: MapActions): void => {
         `object${state.selected === object.index ? ' selected' : ''}`,
       );
 
-      row.append(element('span', object.template), element('span', nameOf(object), 'muted'));
+      row.append(element('span', object.template), element('span', getObjectName(object), 'muted'));
       row.onclick = () => actions.select(object.index);
       return row;
     }),

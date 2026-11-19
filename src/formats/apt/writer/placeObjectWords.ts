@@ -3,7 +3,7 @@ import type { Matrix2 } from '../aptMovie';
 import type { PlaceSpec } from '../aptTimeline';
 import { AptImage } from './aptImage';
 
-export const placeObjectWords = (
+export const encodePlaceObject = (
   flags: number,
   depth: number,
   character: number,
@@ -31,7 +31,7 @@ export const placeObjectWords = (
   ];
 };
 
-export const placeSpecWords = (image: AptImage, place: PlaceSpec): number[] => {
+export const encodePlaceSpec = (image: AptImage, place: PlaceSpec): number[] => {
   const f = (value: number) =>
     new Uint32Array(new Float32Array([value]).buffer)[0];
   const flags =

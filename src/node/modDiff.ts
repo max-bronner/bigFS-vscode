@@ -103,7 +103,7 @@ export const readBaseEntry = async (entry: BaseEntry): Promise<Uint8Array> => {
   }
 };
 
-export type Change = 'added' | 'changed' | 'same';
+export type ComparisonKind = 'added' | 'changed' | 'same';
 
 export interface ModFile {
   entryPath: string;
@@ -113,12 +113,12 @@ export interface ModFile {
 
 export interface ComparedFile {
   entryPath: string;
-  change: Change;
+  change: ComparisonKind;
   size: number;
   baseSize?: number;
 }
 
-const equalBytes = (a: Uint8Array, b: Uint8Array) =>
+const areBytesEqual = (a: Uint8Array, b: Uint8Array) =>
   a.length === b.length && a.every((byte, index) => byte === b[index]);
 
 export const compareWithBase = async (
@@ -157,7 +157,7 @@ export const compareWithBase = async (
 
       results.push({
         entryPath: file.entryPath,
-        change: equalBytes(mine, theirs) ? 'same' : 'changed',
+        change: areBytesEqual(mine, theirs) ? 'same' : 'changed',
         size: file.size,
         baseSize: entry.size,
       });

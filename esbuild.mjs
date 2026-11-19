@@ -44,7 +44,9 @@ const PAGES = [
   { name: 'map', entry: 'src/webview/map/main.ts' },
   { name: 'cah', entry: 'src/webview/cah/main.ts' },
   { name: 'strings', entry: 'src/webview/strings/main.ts' },
+  { name: 'cursors', entry: 'src/webview/cursors/main.ts' },
   { name: 'scripts', entry: 'src/webview/scripts/main.ts' },
+  { name: 'archiveSearch', entry: 'src/webview/archiveSearch/main.ts' },
 ];
 
 const shared = {

@@ -1,4 +1,4 @@
-import { isAudioSentinel, referencedNames } from '../../game/audio/sageAudioValues';
+import { isAudioSentinel, findReferencedNames } from './sageAudioValues';
 import { CONSTANT_NAME } from './sageReferenceFields';
 import type { SageDocument } from './sageIniParser';
 import type { SageIniSchema } from './sageIniSchema';
@@ -34,7 +34,7 @@ export const findUnresolvedReferences = (
   const unresolved: UnresolvedReference[] = [];
 
   for (const statement of parsed.statements) {
-    for (const reference of referencedNames(statement, schema)) {
+    for (const reference of findReferencedNames(statement, schema)) {
       const namespaces = reference.isAudio
         ? reference.namespaces
         : reference.namespaces.filter(

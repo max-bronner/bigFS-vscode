@@ -1,4 +1,4 @@
-export const editorRows = (value: string): number =>
+export const countEditorRows = (value: string): number =>
   Math.max(2, value.split('\n').length);
 
 export const isEdited = (original: string, edited: string): boolean =>

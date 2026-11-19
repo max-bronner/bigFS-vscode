@@ -27,9 +27,9 @@ const CONSTANTS: Record<string, number> = { pi: Math.PI, e: Math.E };
 
 export class ExpressionError extends Error {}
 
-type Node = (variables: Variables) => number;
+type CompiledExpression = (variables: Variables) => number;
 
-export const compileExpression = (source: string): Node => {
+export const compileExpression = (source: string): CompiledExpression => {
   const tokens =
     source.match(
       /\d+\.?\d*(?:e[-+]?\d+)?|\.\d+|[A-Za-z_]\w*|[-+*/%^(),]|\S/gi,
@@ -50,7 +50,7 @@ export const compileExpression = (source: string): Node => {
     return token;
   };
 
-  const sum = (): Node => {
+  const sum = (): CompiledExpression => {
     let left = product();
 
     while (peek() === '+' || peek() === '-') {
@@ -63,7 +63,7 @@ export const compileExpression = (source: string): Node => {
     }
     return left;
   };
-  const product = (): Node => {
+  const product = (): CompiledExpression => {
     let left = unary();
 
     while (peek() === '*' || peek() === '/' || peek() === '%') {
@@ -80,7 +80,7 @@ export const compileExpression = (source: string): Node => {
     }
     return left;
   };
-  const unary = (): Node => {
+  const unary = (): CompiledExpression => {
     if (peek() === '-') {
       take();
       const inner = unary();
@@ -93,7 +93,7 @@ export const compileExpression = (source: string): Node => {
     }
     return power();
   };
-  const power = (): Node => {
+  const power = (): CompiledExpression => {
     const base = atom();
 
     if (peek() === '^') {
@@ -104,7 +104,7 @@ export const compileExpression = (source: string): Node => {
     }
     return base;
   };
-  const atom = (): Node => {
+  const atom = (): CompiledExpression => {
     const token = take();
 
     if (/^(\d|\.)/.test(token)) {
@@ -129,7 +129,7 @@ export const compileExpression = (source: string): Node => {
         }
         take('(');
 
-        const args: Node[] = [];
+        const args: CompiledExpression[] = [];
 
         if (peek() !== ')') {
           args.push(sum());

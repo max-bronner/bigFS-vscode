@@ -1,16 +1,33 @@
-import { pathKey } from './avm/engine';
+import {
+  BACKDROP_CALL,
+  BACKDROP_KEY,
+  findEngineImage,
+} from '../../game/apt/engineImages';
+import {
+  findBindingSuggestion,
+  findExternSuggestion,
+  findImageSuggestion,
+  findParameterSuggestion,
+} from '../../game/apt/engineSuggestions';
+import { toPathKey } from './avm/engine';
 import type { FunctionEntry, ReadValue, Seen } from './avm/engine';
 import { AsObject } from './avm/value';
 import type { Value } from './avm/value';
-import { button, byId, heading, input, row } from './dom';
-import { engine, onEngineChange, saveAnswers } from './engineState';
+import { createButton, byId, createHeading, createInput, createRow } from './dom';
+import { createSoundButton } from '../shared/createSoundButton';
+import { pageSoundPlayer } from '../shared/pageSoundPlayer';
+import { engine, onEngineChange, postSoundRequest, saveAnswers } from './engineState';
 import { currentGadgets } from './gadgets';
-import { bindingsOf, writeBinding } from './gadgetModel';
-import { currentPlayer, render } from './stage';
+import { listBindings, writeBinding } from './gadgetModel';
+import { getImageKey } from './imageSurface';
+import { currentPlayer, play, render, view } from './stage';
+import { suggestFrom } from './suggestingInput';
 
 const panel = byId('engine');
 let restart = () => {};
 let filter = '';
+const drafts = new Map<string, string>();
+let isPressing = false;
 const MAX_ROWS = 150;
 
 export const onEngineRestart = (run: () => void): void => {
@@ -49,23 +66,40 @@ const changed = (apply: () => void) => {
 };
 
 const callRow = (entry: FunctionEntry) => {
-  const fields = entry.params.map((param) => {
-    const field = input('', () => {}, 'line');
+  const called = engine.repeatedCalls.get(entry.path.toLowerCase());
+  const fields = entry.params.map((param, at) => {
+    const draftKey = `${entry.path}#${at}`;
+    const field = createInput(
+      drafts.get(draftKey) ?? called?.[at] ?? '',
+      () => {},
+      'line',
+    );
+
+    field.addEventListener('input', () => drafts.set(draftKey, field.value));
+
+    const suggestion = findParameterSuggestion(entry.name, param);
 
     field.placeholder = param;
     field.classList.add('short');
+    if (suggestion) {
+      suggestFrom(field, suggestion);
+    }
     return field;
   });
 
-  return row(
+  return createRow(
     entry.path,
     ...fields,
-    button('Call', () => {
-      const result = engine.invoke(
+    createButton('Call', () => {
+      const result = engine.invokeAndRepeat(
         entry,
         fields.map((field) => field.value),
       );
 
+      saveAnswers();
+      if (!view.playing) {
+        play(true);
+      }
       render();
       panel
         .querySelector('.engine-result')
@@ -83,17 +117,17 @@ const overrideField = (
   placeholder: string,
   set: (value: string) => void,
 ) => {
-  const field = input(current, (value) => changed(() => set(value)), 'line');
+  const field = createInput(current, (value) => changed(() => set(value)), 'line');
 
   field.placeholder = placeholder;
   return field;
 };
 
 const valueRow = (read: ReadValue) =>
-  row(
+  createRow(
     read.name,
     overrideField(
-      engine.overrides.get(pathKey(read.name)) ?? '',
+      engine.overrides.get(toPathKey(read.name)) ?? '',
       preview(read.value),
       (value) => engine.override(read.name, value),
     ),
@@ -103,19 +137,32 @@ const valueRow = (read: ReadValue) =>
     ),
   );
 
+const externField = (name: string, placeholder: string) => {
+  const field = overrideField(
+    engine.externOverrides.get(name.toLowerCase()) ?? '',
+    placeholder,
+    (value) => engine.overrideExtern(name, value),
+  );
+  const suggestion = findExternSuggestion(name);
+
+  if (suggestion) {
+    suggestFrom(field, suggestion);
+  }
+  return field;
+};
+
 const externRow = (seen: Seen) =>
-  row(
+  createRow(
     seen.name,
-    overrideField(
-      engine.externOverrides.get(seen.name.toLowerCase()) ?? '',
+    externField(
+      seen.name,
       engine.externWrites.get(seen.name.toLowerCase())?.value ?? 'not set',
-      (value) => engine.overrideExtern(seen.name, value),
     ),
     text(`extern · read ${seen.count}×`, 'muted'),
   );
 
 const callReturnRow = (seen: Seen) => {
-  const field = input(
+  const field = createInput(
     engine.returns.get(seen.name.toLowerCase()) ?? '',
     (value) =>
       changed(() =>
@@ -127,7 +174,7 @@ const callReturnRow = (seen: Seen) => {
   );
 
   field.placeholder = 'returns';
-  return row(
+  return createRow(
     seen.name,
     field,
     text(
@@ -137,19 +184,34 @@ const callReturnRow = (seen: Seen) => {
   );
 };
 
+const imageFields = (key: string) => {
+  const supplied = findEngineImage(key);
+  const suggestion = findImageSuggestion(key);
+  const field = overrideField(
+    engine.imageOverrides.get(key.toLowerCase()) ?? '',
+    supplied?.image ?? 'MappedImage, or file.tga',
+    (value) => engine.overrideImage(key, value),
+  );
+
+  if (suggestion) {
+    suggestFrom(field, suggestion);
+  }
+  return [field, text(supplied ? `${key}: ${supplied.basis}` : key, 'muted')];
+};
+
 const gadgetRows = () => {
   const gadgets = currentGadgets().filter((each) =>
     matches(`${each.path ?? each.instance.path} ${each.kind} ${each.type ?? ''}`),
   );
 
   return [
-    heading('Gadgets'),
+    createHeading('Gadgets'),
     ...(gadgets.length
       ? limited(gadgets, (gadget) => {
           const where = gadget.path ?? `${gadget.instance.path} (unnamed)`;
-          const bound = bindingsOf(currentPlayer(), engine, gadget);
+          const bound = listBindings(currentPlayer(), engine, gadget);
 
-          return row(
+          return createRow(
             where,
             text(
               gadget.kind === 'unknown'
@@ -163,7 +225,7 @@ const gadgetRows = () => {
               const field = overrideField(
                 overridden
                   ? (engine.overrides.get(
-                      pathKey(`${gadget.path}.${binding.name}`),
+                      toPathKey(`${gadget.path}.${binding.name}`),
                     ) ?? '')
                   : '',
                 `${binding.name} = ${value}`,
@@ -171,12 +233,21 @@ const gadgetRows = () => {
                   writeBinding(currentPlayer(), engine, gadget, binding.name, typed),
               );
 
+              const suggestion = findBindingSuggestion(binding.name);
+
               field.title = binding.name;
+              if (suggestion) {
+                suggestFrom(field, suggestion);
+              }
               return field;
             }),
+            ...(gadget.kind === 'image' ? imageFields(getImageKey(gadget)) : []),
           );
         })
       : [text('No gadget surface (_type, _Load, _imageName) yet.', 'muted')]),
+    ...(engine.calls.has(BACKDROP_CALL.toLowerCase())
+      ? [createRow('Shell background', ...imageFields(BACKDROP_KEY))]
+      : []),
   ];
 };
 
@@ -187,19 +258,22 @@ const soundRows = () => {
   toggle.checked = engine.playMovieSounds;
   toggle.onchange = () => {
     engine.playMovieSounds = toggle.checked;
+    if (toggle.checked) {
+      pageSoundPlayer.unlock();
+    }
   };
 
   const label = document.createElement('label');
 
   label.append(toggle, ' Play movie sounds');
   return [
-    heading('Sounds the movie asks for'),
-    row('', label),
+    createHeading('Sounds the movie asks for'),
+    createRow('', label),
     ...(engine.sounds.size
       ? [...engine.sounds.values()].map((each) =>
-          row(
+          createRow(
             each.event,
-            button('▶ Play', () => engine.playSound(each.event)),
+            createSoundButton(each.event, postSoundRequest),
             text(`${each.count}×`, 'muted'),
           ),
         )
@@ -208,16 +282,16 @@ const soundRows = () => {
 };
 
 const addRow = () => {
-  const name = input('', () => {}, 'line');
-  const value = input('', () => {}, 'line');
+  const name = createInput('', () => {}, 'line');
+  const value = createInput('', () => {}, 'line');
 
   name.placeholder = 'path from _root, or extern.Key';
   value.placeholder = 'value';
-  return row(
+  return createRow(
     'Override',
     name,
     value,
-    button('Set', () => {
+    createButton('Set', () => {
       if (name.value.trim()) {
         changed(() => engine.override(name.value.trim(), value.value));
       }
@@ -244,6 +318,7 @@ export const showEngine = (): void => {
   const active = document.activeElement;
 
   if (
+    isPressing ||
     (active instanceof HTMLInputElement ||
       active instanceof HTMLTextAreaElement) &&
     panel.contains(active)
@@ -256,7 +331,7 @@ export const showEngine = (): void => {
   );
   const entries = functions.filter((each) => each.engineOnly);
   const others = functions.filter((each) => !each.engineOnly);
-  const overridden = (name: string) => engine.overrides.has(pathKey(name));
+  const overridden = (name: string) => engine.overrides.has(toPathKey(name));
   const reads = [...engine.reads.values()]
     .filter((each) => matches(each.name))
     .sort(
@@ -284,7 +359,7 @@ export const showEngine = (): void => {
   summary.textContent = `Other functions the movie defines (${others.length})`;
   more.append(summary, ...limited(others, callRow));
 
-  const search = input(filter, () => {}, 'line');
+  const search = createInput(filter, () => {}, 'line');
 
   search.placeholder = 'filter by name';
   search.oninput = () => {
@@ -299,11 +374,11 @@ export const showEngine = (): void => {
   const title = document.createElement('summary');
 
   wrapper.open = panel.querySelector('details')?.open ?? true;
-  title.textContent = `Engine: ${engine.overrides.size + engine.externOverrides.size} overrides · ${entries.length} entry points · ${engine.reads.size} values read · ${engine.calls.size} calls`;
+  title.textContent = `Engine: ${engine.overrides.size + engine.externOverrides.size + engine.imageOverrides.size} overrides · ${entries.length} entry points · ${engine.reads.size} values read · ${engine.calls.size} calls`;
   wrapper.append(
     title,
-    row('', search),
-    heading('Called by the engine'),
+    createRow('', search),
+    createHeading('Called by the engine'),
     ...(entries.length
       ? limited(entries, callRow)
       : [
@@ -314,14 +389,14 @@ export const showEngine = (): void => {
         ]),
     ...(others.length ? [more] : []),
     text('', 'engine-result muted'),
-    heading('Values'),
+    createHeading('Values'),
     text(
       'An override wins over what the movie holds, from the next read.',
       'muted',
     ),
     addRow(),
     ...unseen.map((key) =>
-      row(
+      createRow(
         key,
         overrideField(engine.overrides.get(key) ?? '', '', (value) =>
           engine.override(key, value),
@@ -330,17 +405,11 @@ export const showEngine = (): void => {
       ),
     ),
     ...unseenExterns.map((key) =>
-      row(
-        key,
-        overrideField(engine.externOverrides.get(key) ?? '', '', (value) =>
-          engine.overrideExtern(key, value),
-        ),
-        text('extern · not read yet', 'muted'),
-      ),
+      createRow(key, externField(key, ''), text('extern · not read yet', 'muted')),
     ),
     ...limited(externs, externRow),
     ...limited(written, (each) =>
-      row(
+      createRow(
         each.name,
         text(each.value),
         text('extern · written by the movie', 'muted'),
@@ -349,18 +418,32 @@ export const showEngine = (): void => {
     ...limited(reads, valueRow),
     ...gadgetRows(),
     ...soundRows(),
-    heading('Calls to the engine'),
+    createHeading('Calls to the engine'),
     ...(calls.length
       ? limited(calls, callReturnRow)
       : [text('No call to the engine yet.', 'muted')]),
-    row(
+    createRow(
       '',
-      button('Restart with these overrides', () => restart()),
-      button('Clear overrides', () => changed(() => engine.clear())),
+      createButton('Restart with these overrides', () => {
+        restart();
+        if (engine.repeatedCalls.size && !view.playing) {
+          play(true);
+        }
+      }),
+      createButton('Clear overrides', () => changed(() => engine.clear())),
     ),
   );
   panel.replaceChildren(wrapper);
 };
 
 onEngineChange(showEngine);
+panel.addEventListener('pointerdown', () => {
+  isPressing = true;
+});
+window.addEventListener('pointerup', () => {
+  if (isPressing) {
+    isPressing = false;
+    setTimeout(showEngine, 0);
+  }
+});
 panel.addEventListener('focusout', () => setTimeout(showEngine, 0));

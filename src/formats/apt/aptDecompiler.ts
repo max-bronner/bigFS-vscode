@@ -108,7 +108,7 @@ const POOL_OPERAND = new Set([
 
 const isCall = (expr: Expr) => expr.k === 'call' || expr.k === 'mcall';
 
-export const operandOf = (
+export const toOperand = (
   instruction: AptInstruction,
   labels: Map<number, string>,
 ): Operand | undefined => {
@@ -174,7 +174,7 @@ export const lift = (
     flush();
     stmts.push(stmt);
   };
-  const take = (count: number): Expr[] => {
+  const popOperands = (count: number): Expr[] => {
     if (stack.length >= count) {
       return stack.splice(stack.length - count);
     }
@@ -192,7 +192,7 @@ export const lift = (
     emit({
       k: 'asm',
       op: instruction.name,
-      operand: operandOf(instruction, labels),
+      operand: toOperand(instruction, labels),
     });
   const constItem = (index: number): Expr | undefined => {
     const item = context.constants[index];
@@ -301,7 +301,7 @@ export const lift = (
       const operator = OPERATORS[name];
 
       if (operator) {
-        const [a, b] = take(2);
+        const [a, b] = popOperands(2);
 
         stack.push({ k: 'bin', op: operator, a, b });
 
@@ -364,7 +364,7 @@ export const lift = (
 
           return true;
         case 'GetVariable': {
-          const [nameExpr] = take(1);
+          const [nameExpr] = popOperands(1);
 
           stack.push(
             nameExpr.k === 'str'
@@ -376,7 +376,7 @@ export const lift = (
         }
         case 'EA_GetStringMember':
         case 'EA_GetNamedMember': {
-          const [obj] = take(1);
+          const [obj] = popOperands(1);
 
           stack.push({
             k: 'member',
@@ -390,7 +390,7 @@ export const lift = (
           return true;
         }
         case 'GetMember': {
-          const [obj, key] = take(2);
+          const [obj, key] = popOperands(2);
 
           stack.push(
             key.k === 'str'
@@ -401,28 +401,28 @@ export const lift = (
           return true;
         }
         case 'LogicalNot': {
-          const [a] = take(1);
+          const [a] = popOperands(1);
 
           stack.push({ k: 'not', a });
 
           return true;
         }
         case 'SetRegister': {
-          const [value] = take(1);
+          const [value] = popOperands(1);
 
           stack.push({ k: 'setreg', n: operand as number, value });
 
           return true;
         }
         case 'Pop': {
-          const [e] = take(1);
+          const [e] = popOperands(1);
 
           emit({ k: 'expr', e, isVoid: isCall(e) });
 
           return true;
         }
         case 'Return': {
-          const [e] = take(1);
+          const [e] = popOperands(1);
 
           emit({ k: 'return', e });
 
@@ -437,7 +437,7 @@ export const lift = (
           return true;
         case 'BranchIfTrue':
         case 'EA_BranchIfFalse': {
-          const [cond] = take(1);
+          const [cond] = popOperands(1);
 
           emit({
             k: 'if',
@@ -451,7 +451,7 @@ export const lift = (
         case 'SetVariable':
         case 'EA_SetStringVar':
         case 'EA_ZeroVariable': {
-          const [target, given] = take(name === 'SetVariable' ? 2 : 1);
+          const [target, given] = popOperands(name === 'SetVariable' ? 2 : 1);
           const value: Expr =
             name === 'SetVariable'
               ? given
@@ -470,7 +470,7 @@ export const lift = (
         }
         case 'SetMember':
         case 'EA_SetStringMember': {
-          const [obj, key, given] = take(name === 'SetMember' ? 3 : 2);
+          const [obj, key, given] = popOperands(name === 'SetMember' ? 3 : 2);
 
           emit({
             k: 'setmember',
@@ -484,7 +484,7 @@ export const lift = (
         }
         case 'DefineLocal':
         case 'Var': {
-          const [target, value] = take(name === 'DefineLocal' ? 2 : 1);
+          const [target, value] = popOperands(name === 'DefineLocal' ? 2 : 1);
 
           if (target.k !== 'str') {
             stack.push(target, ...(value ? [value] : []));
@@ -610,8 +610,8 @@ export const lift = (
       const expr: Expr = {
         k: 'intr',
         op: name,
-        operand: operandOf(instruction, labels),
-        args: take(pops),
+        operand: toOperand(instruction, labels),
+        args: popOperands(pops),
       };
 
       if (pushes) {
@@ -631,7 +631,7 @@ export const lift = (
       }
 
       if (name.startsWith('EA_Call')) {
-        const [target] = take(1);
+        const [target] = popOperands(1);
 
         emit({ k: 'assignCall', target, call });
 
@@ -656,7 +656,7 @@ export const lift = (
     }
   }
 
-  return context.mode === 'script' ? structure(stmts) : stmts;
+  return context.mode === 'script' ? foldBranches(stmts) : stmts;
 };
 
 const countReferences = (stmts: Stmt[], counts = new Map<string, number>()) => {
@@ -671,7 +671,7 @@ const countReferences = (stmts: Stmt[], counts = new Map<string, number>()) => {
   return counts;
 };
 
-const structure = (stmts: Stmt[]): Stmt[] => {
+const foldBranches = (stmts: Stmt[]): Stmt[] => {
   const counts = countReferences(stmts);
   const labelAt = (name: string, from: number) =>
     stmts.findIndex(

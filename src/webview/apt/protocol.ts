@@ -1,3 +1,4 @@
+import type { PlaySoundRequest, SoundReply } from '../../core/soundClip';
 import type { AptMovie, Frame } from '../../formats/apt/aptMovie';
 import type { DatLocation, RuRun } from '../../formats/apt/aptGeometry';
 import type {
@@ -7,11 +8,18 @@ import type {
 import type { Behaviour } from '../../formats/apt/aptBehaviour';
 import type { AptInstruction } from '../../formats/apt/aptBytecode';
 import type { Problem } from '../../formats/apt/aptIntegrity';
+import type { ModelScene } from '../../formats/w3d/w3dScene';
+import type {
+  SuggestionKind,
+  SuggestionOption,
+} from '../../game/apt/suggestionKinds';
 
 export interface EngineValues {
   overrides?: Record<string, string>;
   externs?: Record<string, string>;
   returns: Record<string, string>;
+  images?: Record<string, string>;
+  calls?: Record<string, string[]>;
   values?: Record<string, string>;
 }
 
@@ -41,6 +49,7 @@ export interface TexturePixels {
 }
 
 export type ToPage =
+  | SoundReply
   | {
       kind: 'movie';
       summary: string;
@@ -66,8 +75,16 @@ export type ToPage =
       kind: 'mappedImages';
       images: Record<string, PageMappedImage | null>;
       textures: Record<string, TexturePixels>;
+      jpegs?: Record<string, Uint8Array>;
     }
+  | {
+      kind: 'suggestions';
+      field: SuggestionKind;
+      options: SuggestionOption[];
+    }
+  | { kind: 'renderObject'; name: string; scene?: ModelScene; error?: string }
   | { kind: 'select'; character: number }
+  | { kind: 'progress'; text: string }
   | { kind: 'integrity'; problems: Problem[] }
   | {
       kind: 'script';
@@ -84,10 +101,12 @@ export type FromPage =
   | { kind: 'ready' }
   | { kind: 'openTextView' }
   | { kind: 'mappedImages'; names: string[] }
+  | { kind: 'suggestions'; field: SuggestionKind }
+  | { kind: 'renderObject'; name: string }
   | { kind: 'script'; block: number }
   | { kind: 'engineAnswers'; values: EngineValues }
   | { kind: 'loadMovie'; name: string }
-  | { kind: 'playSound'; name: string }
+  | PlaySoundRequest
   | { kind: 'edit'; edit: AptEdit }
   | { kind: 'scriptEdit'; block: number; text: string }
   | { kind: 'openGeometry'; geometry: number }

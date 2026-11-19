@@ -30,12 +30,12 @@ export interface SaveSession {
   readonly movie: AptMovie;
   readonly sites: readonly ScriptSite[];
   readonly orders: Map<number, (number[] | undefined)[]>;
-  current(): MovieText;
+  readCurrentText(): MovieText;
   apply(edit: AptEdit): EditResult;
   changeConstant(change: ConstItemChange): void;
   addConstants(items: ConstItem[]): void;
   compile(script: ScriptText, line: number): number;
-  script(before: ScriptText, after: ScriptText): void;
+  noteScript(before: ScriptText, after: ScriptText): void;
   replaceScript(block: number, after: ScriptText): void;
 }
 
@@ -108,7 +108,7 @@ export const createSaveSession = (
     sites,
     orders,
 
-    current() {
+    readCurrentText() {
       text ??= movieToText(
         image.bytes,
         constBytes,
@@ -159,7 +159,7 @@ export const createSaveSession = (
       }
     },
 
-    script(before, after) {
+    noteScript(before, after) {
       if (before.block !== undefined) {
         sites.push({ block: before.block, before, after });
       }

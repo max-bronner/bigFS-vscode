@@ -8,7 +8,7 @@ import {
   parseHexColour,
 } from './blockModel';
 
-export const field = (label: string, ...controls: Node[]): HTMLDivElement => {
+export const createField = (label: string, ...controls: Node[]): HTMLDivElement => {
   const element = document.createElement('div');
   const name = document.createElement('label');
 
@@ -18,7 +18,7 @@ export const field = (label: string, ...controls: Node[]): HTMLDivElement => {
   return element;
 };
 
-export const section = (title: string): HTMLDivElement => {
+export const createSection = (title: string): HTMLDivElement => {
   const element = document.createElement('div');
 
   element.className = 'bk-section';

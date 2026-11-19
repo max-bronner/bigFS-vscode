@@ -66,7 +66,7 @@ export interface CompiledQuery {
 
 export class BulkQueryError extends Error {}
 
-const glob = (pattern: string) =>
+const globToRegExp = (pattern: string) =>
   new RegExp(
     `^${pattern
       .replace(/[.+^${}()|[\]\\]/g, '\\$&')
@@ -129,7 +129,7 @@ export const compileBulkQuery = (query: BulkQuery): CompiledQuery => {
 
   return {
     keyword,
-    name: name.length ? glob(name.join(' ')) : undefined,
+    name: name.length ? globToRegExp(name.join(' ')) : undefined,
     conditions,
     field: parseSelector(query.field),
     formula,
@@ -138,13 +138,13 @@ export const compileBulkQuery = (query: BulkQuery): CompiledQuery => {
 
 const NUMBER = /^([A-Za-z]:)?(-?(?:\d+\.?\d*|\.\d+))(%?)$/;
 
-const numberOf = (text: string): number | undefined => {
+const parseIniNumber = (text: string): number | undefined => {
   const match = NUMBER.exec(text);
 
   return match ? Number(match[2]) : undefined;
 };
 
-const write = (before: string, value: number): string => {
+const formatNumberLike = (before: string, value: number): string => {
   const [, prefix = '', digits, percent] = NUMBER.exec(before)!;
   const integer = !digits.includes('.');
   const text = integer
@@ -237,7 +237,7 @@ const createReader = (workspace: BulkWorkspace) => {
     }
   }
 
-  const macroOf = (token: SageToken, from: BulkSource) => {
+  const findMacro = (token: SageToken, from: BulkSource) => {
     const local = from.document.macros.find(
       (macro) => macro.name.toLowerCase() === token.text.toLowerCase(),
     );
@@ -257,7 +257,7 @@ const createReader = (workspace: BulkWorkspace) => {
     let via: string | undefined;
 
     for (let hops = 0; !NUMBER.test(text) && hops < MAX_DEPTH; hops++) {
-      const found = macroOf({ ...token, text }, target.source);
+      const found = findMacro({ ...token, text }, target.source);
 
       if (!found) {
         break;
@@ -341,7 +341,7 @@ const createReader = (workspace: BulkWorkspace) => {
   };
 
   const ownCache = new Map<SageBlock, FieldRef[]>();
-  const own = (unit: Unit) => {
+  const readOwnFields = (unit: Unit) => {
     let fields = ownCache.get(unit.block);
 
     if (!fields) {
@@ -351,7 +351,7 @@ const createReader = (workspace: BulkWorkspace) => {
     return fields;
   };
 
-  const parentOf = (unit: Unit): Unit | undefined => {
+  const findParent = (unit: Unit): Unit | undefined => {
     const parent = PARENT_KEYWORDS.test(unit.block.keyword)
       ? (unit.block.name ?? '').split(/\s+/)[1]
       : undefined;
@@ -364,13 +364,13 @@ const createReader = (workspace: BulkWorkspace) => {
     selector: FieldSelector,
     inheritedFrom?: Unit,
   ): { field: FieldRef; inheritedFrom?: Unit }[] => {
-    const found = own(unit).filter((field) => matches(selector, field));
+    const found = readOwnFields(unit).filter((field) => matches(selector, field));
 
     if (found.length) {
       return found.map((field) => ({ field, inheritedFrom }));
     }
 
-    const parent = parentOf(unit);
+    const parent = findParent(unit);
     let hops = 0;
 
     return parent && hops++ < MAX_DEPTH && parent.block !== unit.block
@@ -378,7 +378,7 @@ const createReader = (workspace: BulkWorkspace) => {
       : [];
   };
 
-  return { resolve, own, select, parentOf, macroOf };
+  return { resolve, own: readOwnFields, select, parentOf: findParent, macroOf: findMacro };
 };
 
 const expand = (
@@ -392,7 +392,7 @@ const expand = (
   return resolved && 'text' in resolved ? resolved.text : token.text;
 };
 
-export const bulkChangesAcross = (
+export const planBulkChangesAcross = (
   workspace: BulkWorkspace,
   query: CompiledQuery,
 ): BulkResult => {
@@ -437,7 +437,7 @@ export const bulkChangesAcross = (
       case '!~':
         return !values.some((value) => value.toLowerCase() === wanted);
       default: {
-        const value = values.map(numberOf).find((each) => each !== undefined);
+        const value = values.map(parseIniNumber).find((each) => each !== undefined);
 
         if (value === undefined || !Number.isFinite(number)) {
           return false;
@@ -491,7 +491,7 @@ export const bulkChangesAcross = (
             'text' in resolved &&
             NUMBER.test(resolved.text)
           ) {
-            variables[statement.keyword.text] = numberOf(resolved.text)!;
+            variables[statement.keyword.text] = parseIniNumber(resolved.text)!;
           }
         }
       }
@@ -537,8 +537,8 @@ export const bulkChangesAcross = (
             continue;
           }
 
-          const x = numberOf(resolved.text)!;
-          const after = write(
+          const x = parseIniNumber(resolved.text)!;
+          const after = formatNumberLike(
             resolved.text,
             query.formula({ ...variables, x }),
           );
@@ -581,11 +581,11 @@ export const bulkChangesAcross = (
   return result;
 };
 
-export const bulkChanges = (
+export const planBulkChanges = (
   document: SageDocument,
   query: CompiledQuery,
 ): BulkResult =>
-  bulkChangesAcross(
+  planBulkChangesAcross(
     { sources: [{ uri: '', document }], include: () => undefined },
     query,
   );

@@ -1,10 +1,9 @@
-import type {
-  FxListDef,
-  NumericField,
-  ParticleDef,
-} from '../../formats/particles/particleIni';
+import type { PlaySoundRequest, SoundReply } from '../../core/soundClip';
+import type { FxListDef } from '../../formats/particles/particleIni';
+import type { NumericField } from '../../formats/particles/particleValueEdits';
+import type { ParticleDef } from '../../formats/particles/particleDef';
 import type { KeyKind, KeyValue } from '../../formats/particles/particleKeys';
-import type { ModelScene } from '../../formats/w3d/w3dScene';
+import type { ModelScene, SceneSkeleton } from '../../formats/w3d/w3dScene';
 import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
 import type { ObjectScene, SceneFocus } from '../../game/objects/objectScene';
 
@@ -23,11 +22,17 @@ export interface SceneMessage {
 }
 
 export type ToPage =
+  | SoundReply
   | SceneMessage
   | { kind: 'notice'; message: string }
   | { kind: 'model'; model?: { name: string; scene: ModelScene } }
   | { kind: 'object'; object: ObjectScene; focus: SceneFocus }
-  | { kind: 'animation'; name: string; animation?: W3dAnimation };
+  | {
+      kind: 'animation';
+      name: string;
+      animation?: W3dAnimation;
+      skeleton?: SceneSkeleton;
+    };
 
 export type FromPage =
   | { kind: 'ready' }
@@ -43,4 +48,4 @@ export type FromPage =
   | { kind: 'apply' }
   | { kind: 'keys'; keyKind: KeyKind; keys: KeyValue[] }
   | { kind: 'reveal'; line: number }
-  | { kind: 'playSound'; name: string };
+  | PlaySoundRequest;

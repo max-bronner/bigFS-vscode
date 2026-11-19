@@ -4,7 +4,7 @@ import type {
   FrameItem,
 } from '../../../formats/apt/aptMovie';
 import { PLACE_FLAGS } from '../../../formats/apt/aptMovie';
-import { CLIP_EVENTS, bitNames } from '../scriptSites';
+import { CLIP_EVENTS, formatBitNames } from '../scriptSites';
 
 export type BlockKind =
   | 'movie'
@@ -103,7 +103,7 @@ export const kindOfCharacter = (character: Character): BlockKind =>
       ? 'shape'
       : character.type;
 
-export const itemTitle = (item: FrameItem): string => {
+export const getItemTitle = (item: FrameItem): string => {
   switch (item.type) {
     case 'placeObject':
       return `Place @${item.depth}`;
@@ -122,7 +122,7 @@ export const itemTitle = (item: FrameItem): string => {
   }
 };
 
-export const itemKind = (item: FrameItem): BlockKind => {
+export const getItemKind = (item: FrameItem): BlockKind => {
   switch (item.type) {
     case 'placeObject':
       return 'placement';
@@ -141,7 +141,7 @@ export const itemKind = (item: FrameItem): BlockKind => {
   }
 };
 
-export const itemSummary = (item: FrameItem): string => {
+export const summarizeItem = (item: FrameItem): string => {
   switch (item.type) {
     case 'placeObject': {
       const parts: string[] = [];
@@ -161,7 +161,7 @@ export const itemSummary = (item: FrameItem): string => {
       if (item.clipActions?.length) {
         parts.push(
           item.clipActions
-            .map((clip) => bitNames(clip.events, CLIP_EVENTS))
+            .map((clip) => formatBitNames(clip.events, CLIP_EVENTS))
             .join(', '),
         );
       }
@@ -178,7 +178,7 @@ export const itemSummary = (item: FrameItem): string => {
   }
 };
 
-export const buttonRecordSummary = (record: ButtonRecord): string => {
+export const summarizeButtonRecord = (record: ButtonRecord): string => {
   const states = (
     [
       ['up', 0x1],

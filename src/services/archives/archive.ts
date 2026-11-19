@@ -1,4 +1,4 @@
-﻿import { Uri, workspace } from 'vscode';
+import { Uri, workspace } from 'vscode';
 import path from 'path';
 import {
   IN_PLACE_THRESHOLD,
@@ -10,17 +10,10 @@ import {
 } from '../../node/archiveFile';
 import type { BigFileEntry } from '../../formats/big/bigFormat';
 import { movePath } from '../../core/paths';
-import {
-  buildVirtualTree,
-  copyNode,
-  getFileNodes,
-  insertDirectory,
-  insertFile,
-  moveNode,
-  removeNode,
-  syncFiles,
-} from './virtualNode';
-import type { VirtualNode } from './virtualNode';
+import { buildVirtualTree, copyNode, getFileNodes, insertDirectory, insertFile, moveNode, removeNode, syncFiles } from './virtualTree';
+import type { TreeNode } from './virtualTree';
+
+type ArchiveNode = TreeNode<Archive>;
 
 export type EntrySource =
   | { kind: 'data'; content: Uint8Array }
@@ -33,7 +26,7 @@ export type EntryChange =
   | { kind: 'copy'; from: string; to: string }
   | { kind: 'addDirectory'; path: string };
 
-const keysUnder = (
+const getKeysUnder = (
   entries: Map<string, BigFileEntry>,
   entryPath: string,
 ): string[] => {
@@ -68,7 +61,7 @@ const changeEntries = (
     }
 
     case 'remove': {
-      const keys = keysUnder(entries, change.path);
+      const keys = getKeysUnder(entries, change.path);
 
       keys.forEach((key) => entries.delete(key));
 
@@ -77,7 +70,7 @@ const changeEntries = (
 
     case 'move':
     case 'copy': {
-      const keys = keysUnder(entries, change.from);
+      const keys = getKeysUnder(entries, change.from);
 
       for (const key of keys) {
         const entry = entries.get(key);
@@ -104,7 +97,7 @@ const changeEntries = (
   }
 };
 
-const changeTree = (rootNode: VirtualNode, change: EntryChange): void => {
+const changeTree = (rootNode: ArchiveNode, change: EntryChange): void => {
   switch (change.kind) {
     case 'put':
       insertFile(rootNode, change.path);
@@ -133,7 +126,7 @@ export class Archive {
   public readonly sourceId: string;
   public readonly pathInSource: string;
 
-  public readonly root: VirtualNode;
+  public readonly root: ArchiveNode;
 
   private magic = '';
 
@@ -415,7 +408,7 @@ export class Archive {
     });
   }
 
-  public async readFileNodes<T extends { node: VirtualNode }>(
+  public async readFileNodes<T extends { node: ArchiveNode }>(
     items: readonly T[],
     onFile: (item: T, content: Uint8Array) => Promise<void>,
   ): Promise<void> {
@@ -442,7 +435,7 @@ export class Archive {
     });
   }
 
-  public getFileEntryPaths(node: VirtualNode): string[] {
+  public getFileEntryPaths(node: ArchiveNode): string[] {
     return getFileNodes(node).map((fileNode) => fileNode.entryPath);
   }
 }

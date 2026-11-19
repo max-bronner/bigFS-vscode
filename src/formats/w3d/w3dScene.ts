@@ -1,20 +1,29 @@
-import type { ToolBox } from "../../services/toolRegistry";
-import { decodeDdsTool, decodeTgaTool } from "../texture/textureTools";
+import type { ToolBox } from "../../core/toolRegistry";
 import type { RgbaImage } from "../texture/textureTools";
 import { parseW3dTool } from "./w3dTools";
 import type {
-  W3dBlend,
   W3dBox,
   W3dFile,
   W3dHierarchy,
-  W3dHlodArray,
+  W3dHlod,
   W3dMesh,
 } from "./w3dTools";
 import { parseW3dAnimations } from "./w3dAnimation";
 import type { W3dAnimation } from "./w3dAnimation";
+import { skinVertices, toBoneMatrix } from "./w3dSkin";
+import type { BoneSpaceMesh, Matrix } from "./w3dSkin";
+import type { W3dBlend } from "./w3dMaterialTypes";
+import { loadSceneDraws } from "./w3dSceneDraws";
+import type {
+  DecodePng,
+  LoadFile,
+  SceneDraw,
+  SceneTextureAddressing,
+} from "./w3dSceneDraws";
 
 export interface SceneMesh {
   name: string;
+  container: string;
   positions: Float32Array;
   normals?: Float32Array;
   uvs?: Float32Array;
@@ -23,11 +32,10 @@ export interface SceneMesh {
   alphaTest: boolean;
   blend: W3dBlend;
   hidden: boolean;
-  local?: {
-    positions: Float32Array;
-    normals?: Float32Array;
-    bones: Uint16Array;
-  };
+  pickProxy?: boolean;
+  draws?: SceneDraw[];
+  local?: BoneSpaceMesh;
+  bone?: number;
 }
 
 export interface SceneSkeleton {
@@ -51,6 +59,7 @@ export interface SceneLod {
 export interface SceneHlod {
   name: string;
   lods: SceneLod[];
+  skippedLodCount: number;
   aggregates: string[];
   proxies: string[];
 }
@@ -60,16 +69,14 @@ export interface ModelScene {
   boxes: SceneBox[];
   hlod?: SceneHlod;
   textures: RgbaImage[];
+  addressing?: SceneTextureAddressing[];
   missing: string[];
   hierarchy?: string;
   skeleton?: SceneSkeleton;
   animation?: W3dAnimation;
+  animationSkeleton?: SceneSkeleton;
   bounds: { min: [number, number, number]; max: [number, number, number] };
 }
-
-export type LoadFile = (fileName: string) => Promise<Uint8Array | undefined>;
-
-type Matrix = Float64Array;
 
 const multiply = (a: Matrix, b: Matrix): Matrix => {
   const out = new Float64Array(16);
@@ -89,34 +96,11 @@ const multiply = (a: Matrix, b: Matrix): Matrix => {
   return out;
 };
 
-const pivotMatrix = (
-  [tx, ty, tz]: [number, number, number],
-  [x, y, z, w]: [number, number, number, number],
-): Matrix =>
-  Float64Array.from([
-    1 - 2 * (y * y + z * z),
-    2 * (x * y + z * w),
-    2 * (x * z - y * w),
-    0,
-    2 * (x * y - z * w),
-    1 - 2 * (x * x + z * z),
-    2 * (y * z + x * w),
-    0,
-    2 * (x * z + y * w),
-    2 * (y * z - x * w),
-    1 - 2 * (x * x + y * y),
-    0,
-    tx,
-    ty,
-    tz,
-    1,
-  ]);
-
-const boneMatrices = (hierarchy: W3dHierarchy | undefined): Matrix[] => {
+const computeBoneMatrices = (hierarchy: W3dHierarchy | undefined): Matrix[] => {
   const matrices: Matrix[] = [];
 
   hierarchy?.pivots.forEach((pivot, index) => {
-    const local = pivotMatrix(pivot.translation, pivot.rotation);
+    const local = toBoneMatrix(pivot.translation, pivot.rotation);
     const parent =
       pivot.parent >= 0 && pivot.parent < index
         ? matrices[pivot.parent]
@@ -128,64 +112,11 @@ const boneMatrices = (hierarchy: W3dHierarchy | undefined): Matrix[] => {
   return matrices;
 };
 
-const transform = (
-  values: Float32Array,
-  matrixOf: (vertex: number) => Matrix | undefined,
-  isPoint: boolean,
-): Float32Array => {
-  const out = new Float32Array(values.length);
-
-  for (let vertex = 0; vertex < values.length / 3; vertex++) {
-    const m = matrixOf(vertex);
-    const [x, y, z] = values.subarray(vertex * 3, vertex * 3 + 3);
-
-    if (!m) {
-      out.set([x, y, z], vertex * 3);
-      continue;
-    }
-
-    const w = isPoint ? 1 : 0;
-
-    out[vertex * 3] = m[0] * x + m[4] * y + m[8] * z + m[12] * w;
-    out[vertex * 3 + 1] = m[1] * x + m[5] * y + m[9] * z + m[13] * w;
-    out[vertex * 3 + 2] = m[2] * x + m[6] * y + m[10] * z + m[14] * w;
-  }
-
-  return out;
-};
-
-const flipV = (uvs: Float32Array): Float32Array =>
-  uvs.map((value, index) => (index % 2 ? 1 - value : value));
-
-const stem = (fileName: string): string => fileName.replace(/\.[^.]*$/, "");
-
-const loadTexture = async (
-  name: string,
-  loadFile: LoadFile,
-  tools: ToolBox,
-): Promise<RgbaImage | undefined> => {
-  for (const [extension, tool] of [
-    [".dds", decodeDdsTool],
-    [".tga", decodeTgaTool],
-  ] as const) {
-    const bytes = await loadFile(`${stem(name)}${extension}`);
-
-    if (bytes) {
-      try {
-        return (await tools.use(tool)(bytes)).levels[0];
-      } catch {
-      }
-    }
-  }
-
-  return undefined;
-};
-
-const fullName = (container: string, name: string) =>
+const formatSubObjectName = (container: string, name: string) =>
   `${container}.${name}`.toLowerCase();
 
 const findSubObject = (file: W3dFile, container: string, name: string) => {
-  const wanted = fullName(container, name);
+  const wanted = formatSubObjectName(container, name);
 
   for (const lod of [...(file.hlod?.lods ?? [])].reverse()) {
     const found = lod.subObjects.find(
@@ -200,26 +131,52 @@ const findSubObject = (file: W3dFile, container: string, name: string) => {
   return undefined;
 };
 
-const vertexBones = (
+const scaleWeights = (percentages: Uint16Array): Float32Array =>
+  Float32Array.from(percentages, (percentage) => percentage * 0.01);
+
+const bindToBones = (
   mesh: W3dMesh,
   file: W3dFile,
-): ((vertex: number) => number | undefined) => {
-  if (mesh.isSkin && mesh.bones) {
-    const bones = mesh.bones;
+  boneCount: number,
+): BoneSpaceMesh | undefined => {
+  const { positions, normals, secondPositions, secondNormals } = mesh;
 
-    return (vertex) => bones[vertex];
+  if (mesh.isSkin) {
+    return mesh.bones && mesh.weights && boneCount
+      ? {
+          positions,
+          normals,
+          bones: mesh.bones,
+          weights: scaleWeights(mesh.weights),
+          secondPositions,
+          secondNormals,
+        }
+      : undefined;
   }
 
-  const subObject = findSubObject(file, mesh.container, mesh.name);
+  const bone = findSubObject(file, mesh.container, mesh.name)?.bone;
 
-  return () => subObject?.bone;
+  if (bone === undefined || bone >= boneCount) {
+    return undefined;
+  }
+
+  const vertexCount = positions.length / 3;
+  const bones = new Uint16Array(vertexCount * 2);
+  const weights = new Float32Array(vertexCount * 2);
+
+  for (let vertex = 0; vertex < vertexCount; vertex++) {
+    bones[vertex * 2] = bone;
+    weights[vertex * 2] = 1;
+  }
+
+  return { positions, normals, bones, weights };
 };
 
 const CORNERS = [0, 1, 2, 3, 4, 5, 6, 7].map(
   (bits) => [bits & 1, (bits >> 1) & 1, (bits >> 2) & 1] as const,
 );
 
-const boxEdges = (box: W3dBox, bone: Matrix | undefined): Float32Array => {
+const buildBoxEdges = (box: W3dBox, bone: Matrix | undefined): Float32Array => {
   const corner = ([x, y, z]: readonly [number, number, number]) => {
     const local = [
       box.center[0] + (x ? box.extent[0] : -box.extent[0]),
@@ -247,7 +204,7 @@ const boxEdges = (box: W3dBox, bone: Matrix | undefined): Float32Array => {
 
   for (let from = 0; from < CORNERS.length; from++) {
     for (let to = from + 1; to < CORNERS.length; to++) {
-      if (edgeAligned(from, to)) {
+      if (isEdgeAligned(from, to)) {
         out.push(...corner(CORNERS[from]), ...corner(CORNERS[to]));
       }
     }
@@ -256,23 +213,18 @@ const boxEdges = (box: W3dBox, bone: Matrix | undefined): Float32Array => {
   return Float32Array.from(out);
 };
 
-const edgeAligned = (a: number, b: number) => {
+const isEdgeAligned = (a: number, b: number) => {
   const diff = a ^ b;
 
   return diff !== 0 && (diff & (diff - 1)) === 0;
 };
 
-const sceneHlodOf = (
-  name: string,
-  lods: W3dHlodArray[],
-  context: {
-    aggregates?: W3dHlodArray;
-    proxies?: W3dHlodArray;
-    meshes: W3dMesh[];
-  },
+const buildSceneHlod = (
+  { name, lods, skippedLodCount, aggregates, proxies }: W3dHlod,
+  meshes: W3dMesh[],
 ): SceneHlod => {
   const byName = new Map(
-    context.meshes.map((mesh, at) => [fullName(mesh.container, mesh.name), at]),
+    meshes.map((mesh, at) => [formatSubObjectName(mesh.container, mesh.name), at]),
   );
 
   return {
@@ -285,35 +237,158 @@ const sceneHlodOf = (
         return found === undefined ? [] : [found];
       }),
     })),
-    aggregates: context.aggregates?.subObjects.map((sub) => sub.name) ?? [],
-    proxies: context.proxies?.subObjects.map((sub) => sub.name) ?? [],
+    skippedLodCount,
+    aggregates: aggregates?.subObjects.map((sub) => sub.name) ?? [],
+    proxies: proxies?.subObjects.map((sub) => sub.name) ?? [],
   };
 };
+
+export interface SubObjectRule {
+  pattern: string;
+  hide: boolean;
+  source: string;
+}
 
 export interface VisibilityOptions {
   lod?: number;
   showHidden?: boolean;
+  subObjectRules?: readonly SubObjectRule[];
+  partOverrides?: ReadonlyMap<number, boolean>;
 }
 
-export const visibleMeshes = (
-  scene: Pick<ModelScene, "meshes" | "hlod">,
-  { lod, showHidden = false }: VisibilityOptions = {},
+export const isSubObjectNamed = (
+  mesh: Pick<SceneMesh, "container" | "name">,
+  pattern: string,
+): boolean => {
+  const full = formatSubObjectName(mesh.container, mesh.name);
+  const names = [full, full.slice(full.lastIndexOf(".") + 1)];
+  const wanted = pattern.toLowerCase();
+
+  return wanted.endsWith("*")
+    ? names.some((name) => name.startsWith(wanted.slice(0, -1)))
+    : names.includes(wanted);
+};
+
+const HIDDEN_ATTRIBUTE = "the W3D HIDDEN flag";
+
+const PICK_PROXY = "being a picking proxy";
+
+const isBoneBelow = (
+  bone: number,
+  ancestor: number,
+  parents: readonly number[],
+): boolean => {
+  let at = bone;
+
+  for (let step = 0; at > 0 && at < parents.length && step < parents.length; step++) {
+    at = parents[at];
+    if (at === ancestor) {
+      return true;
+    }
+  }
+  return false;
+};
+
+type VisibleMesh = Pick<SceneMesh, "container" | "name" | "hidden" | "pickProxy" | "bone">;
+
+export const findHidingSources = (
+  meshes: readonly VisibleMesh[],
+  rules: readonly SubObjectRule[] = [],
+  parents: readonly number[] = [],
+): (string | undefined)[] => {
+  const sources = meshes.map((mesh): string | undefined =>
+    mesh.hidden ? HIDDEN_ATTRIBUTE : mesh.pickProxy ? PICK_PROXY : undefined,
+  );
+
+  for (const rule of rules) {
+    const source = rule.hide ? rule.source : undefined;
+
+    meshes.forEach((mesh, at) => {
+      if (!isSubObjectNamed(mesh, rule.pattern)) {
+        return;
+      }
+      sources[at] = source;
+
+      const { bone = 0 } = mesh;
+
+      if (bone > 0) {
+        meshes.forEach((other, below) => {
+          if (isBoneBelow(other.bone ?? 0, bone, parents)) {
+            sources[below] = source;
+          }
+        });
+      }
+    });
+  }
+  return sources;
+};
+
+export const getMeshVisibility = (
+  scene: Pick<ModelScene, "hlod"> & {
+    meshes: readonly VisibleMesh[];
+    skeleton?: Pick<SceneSkeleton, "parents">;
+  },
+  { lod, showHidden = false, subObjectRules, partOverrides }: VisibilityOptions = {},
 ): boolean[] => {
   const levels = scene.hlod?.lods ?? [];
   const chosen = levels[lod ?? levels.length - 1];
   const listed = new Set(levels.flatMap((level) => level.meshes));
   const inLevel = new Set(chosen?.meshes);
+  const hiding = findHidingSources(
+    scene.meshes,
+    subObjectRules,
+    scene.skeleton?.parents,
+  );
 
   return scene.meshes.map(
-    (mesh, at) =>
-      (showHidden || !mesh.hidden) && (!listed.has(at) || inLevel.has(at)),
+    (_, at) =>
+      (partOverrides?.get(at) ?? (showHidden || !hiding[at])) &&
+      (!listed.has(at) || inLevel.has(at)),
   );
+};
+
+const loadHierarchy = async (
+  name: string,
+  loadFile: LoadFile,
+  tools: ToolBox,
+): Promise<W3dHierarchy | undefined> => {
+  for (const stem of [name, `${name}_skl`]) {
+    const bytes = await loadFile(`${stem}.w3d`);
+    const hierarchy = bytes && (await tools.use(parseW3dTool)(bytes)).hierarchy;
+
+    if (hierarchy?.name.toLowerCase() === stem.toLowerCase()) {
+      return hierarchy;
+    }
+  }
+
+  return undefined;
+};
+
+const toSceneSkeleton = (hierarchy: W3dHierarchy): SceneSkeleton => ({
+  name: hierarchy.name,
+  names: hierarchy.pivots.map((pivot) => pivot.name),
+  parents: hierarchy.pivots.map((pivot) => pivot.parent),
+  translations: hierarchy.pivots.flatMap((pivot) => pivot.translation),
+  rotations: hierarchy.pivots.flatMap((pivot) => pivot.rotation),
+});
+
+export const loadSkeleton = async (
+  name: string,
+  loadFile: LoadFile,
+  tools: ToolBox,
+): Promise<SceneSkeleton | undefined> => {
+  const hierarchy = await loadHierarchy(name, loadFile, tools).catch(
+    () => undefined,
+  );
+
+  return hierarchy && toSceneSkeleton(hierarchy);
 };
 
 export const buildW3dScene = async (
   bytes: Uint8Array,
   loadFile: LoadFile,
   tools: ToolBox,
+  decodePng?: DecodePng,
 ): Promise<ModelScene> => {
   const parse = tools.use(parseW3dTool);
   const file = await parse(bytes);
@@ -323,9 +398,7 @@ export const buildW3dScene = async (
   const hierarchyName = file.hlod?.hierarchyName ?? animation?.hierarchyName;
 
   if (!hierarchy && hierarchyName) {
-    const skeleton = await loadFile(`${hierarchyName}.w3d`);
-
-    hierarchy = skeleton ? (await parse(skeleton)).hierarchy : undefined;
+    hierarchy = await loadHierarchy(hierarchyName, loadFile, tools);
   }
 
   if (!file.meshes.length && !hierarchy) {
@@ -336,82 +409,51 @@ export const buildW3dScene = async (
     );
   }
 
-  const matrices = boneMatrices(hierarchy);
-  const textureNames = [
-    ...new Set(
-      file.meshes.flatMap((mesh) => (mesh.texture ? [mesh.texture] : [])),
-    ),
-  ];
-  const decoded = await Promise.all(
-    textureNames.map((name) => loadTexture(name, loadFile, tools)),
+  const matrices = computeBoneMatrices(hierarchy);
+  const { textures, addressing, missing, draws, uvs } = await loadSceneDraws(
+    file.meshes,
+    loadFile,
+    tools,
+    decodePng,
   );
-  const textures: RgbaImage[] = [];
-  const textureIndex = new Map<string, number>();
-
-  textureNames.forEach((name, index) => {
-    const image = decoded[index];
-
-    if (image) {
-      textureIndex.set(name, textures.length);
-      textures.push(image);
-    }
-  });
-
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
 
-  const meshes = file.meshes.map((mesh): SceneMesh => {
-    const boneOf = vertexBones(mesh, file);
-    const matrixOf = (vertex: number) => {
-      const bone = boneOf(vertex);
+  const meshes = file.meshes.map((mesh, at): SceneMesh => {
+    const local = bindToBones(mesh, file, matrices.length);
+    const positions = mesh.positions.slice();
+    const normals = mesh.normals?.slice();
 
-      return bone === undefined ? undefined : matrices[bone];
-    };
-    const positions = transform(mesh.positions, matrixOf, true);
-
-    for (let at = 0; at < positions.length; at += 3) {
-      for (let axis = 0; axis < 3; axis++) {
-        min[axis] = Math.min(min[axis], positions[at + axis]);
-        max[axis] = Math.max(max[axis], positions[at + axis]);
-      }
+    if (local) {
+      skinVertices(local, matrices, positions, normals);
     }
 
-    const vertexCount = mesh.positions.length / 3;
-    const bones = new Uint16Array(vertexCount);
-    let isBound = false;
-
-    for (let vertex = 0; vertex < vertexCount; vertex++) {
-      const bone = boneOf(vertex);
-
-      if (bone !== undefined && bone < matrices.length) {
-        bones[vertex] = bone;
-        isBound = true;
+    for (let vertex = 0; vertex < positions.length; vertex += 3) {
+      for (let axis = 0; axis < 3; axis++) {
+        min[axis] = Math.min(min[axis], positions[vertex + axis]);
+        max[axis] = Math.max(max[axis], positions[vertex + axis]);
       }
     }
 
     return {
       name: mesh.name,
+      container: mesh.container,
       positions,
-      normals: mesh.normals && transform(mesh.normals, matrixOf, false),
-      uvs: mesh.uvs && flipV(mesh.uvs),
+      normals,
+      uvs: uvs[at],
       indices: mesh.indices,
-      texture: mesh.texture ? textureIndex.get(mesh.texture) : undefined,
+      texture: draws[at].find((draw) => draw.pass === 0 && draw.texture !== undefined)?.texture,
       alphaTest: mesh.alphaTest,
       blend: mesh.blend,
       hidden: mesh.hidden,
-      local: isBound
-        ? { positions: mesh.positions, normals: mesh.normals, bones }
-        : undefined,
+      pickProxy: mesh.pickProxy || undefined,
+      draws: draws[at],
+      local,
+      bone: mesh.isSkin ? undefined : local?.bones[0],
     };
   });
 
-  const sceneHlod =
-    file.hlod &&
-    sceneHlodOf(file.hlod.name, file.hlod.lods, {
-      aggregates: file.hlod.aggregates,
-      proxies: file.hlod.proxies,
-      meshes: file.meshes,
-    });
+  const sceneHlod = file.hlod && buildSceneHlod(file.hlod, file.meshes);
   const boxes = file.boxes.map((box) => {
     const bone = file.hlod?.lods
       .flatMap((lod) => lod.subObjects)
@@ -419,7 +461,7 @@ export const buildW3dScene = async (
 
     return {
       name: box.name,
-      lines: boxEdges(box, bone === undefined ? undefined : matrices[bone]),
+      lines: buildBoxEdges(box, bone === undefined ? undefined : matrices[bone]),
     };
   });
 
@@ -437,16 +479,17 @@ export const buildW3dScene = async (
     boxes,
     hlod: sceneHlod,
     textures,
-    missing: textureNames.filter((name) => !textureIndex.has(name)),
+    addressing,
+    missing,
     hierarchy: hierarchy?.name,
-    skeleton: hierarchy && {
-      name: hierarchy.name,
-      names: hierarchy.pivots.map((pivot) => pivot.name),
-      parents: hierarchy.pivots.map((pivot) => pivot.parent),
-      translations: hierarchy.pivots.flatMap((pivot) => pivot.translation),
-      rotations: hierarchy.pivots.flatMap((pivot) => pivot.rotation),
-    },
+    skeleton: hierarchy && toSceneSkeleton(hierarchy),
     animation,
+    animationSkeleton:
+      animation &&
+      hierarchy &&
+      animation.hierarchyName.toLowerCase() !== hierarchy.name.toLowerCase()
+        ? await loadSkeleton(animation.hierarchyName, loadFile, tools)
+        : undefined,
     bounds: { min, max },
   };
 };

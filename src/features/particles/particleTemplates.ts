@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
-import { findParticleDefinitions } from '../../formats/particles/particleIni';
+import { findParticleDefinitions } from '../../formats/particles/particleDefinitions';
 import {
   PARTICLE_TEMPLATES,
-  templateSnippet,
+  createTemplateSnippet,
 } from '../../formats/particles/particleTemplates';
 import { registerCommand } from '../../platform/commands';
 
-const freeName = (text: string, base: string): string => {
+const pickFreeName = (text: string, base: string): string => {
   const used = new Set(
     findParticleDefinitions(text).map((each) => each.name.toLowerCase()),
   );
@@ -59,9 +59,9 @@ export const registerParticleTemplates = (): vscode.Disposable =>
           : document.lineAt(document.lineCount - 1).range.end;
       const above = at > 0 && document.lineAt(at - 1).text.trim() !== '';
       const atEnd = at >= document.lineCount;
-      const snippet = templateSnippet(
+      const snippet = createTemplateSnippet(
         choice.template,
-        freeName(text, `FX_${choice.label.replace(/\s+/g, '')}`),
+        pickFreeName(text, `FX_${choice.label.replace(/\s+/g, '')}`),
       );
 
       await editor.insertSnippet(

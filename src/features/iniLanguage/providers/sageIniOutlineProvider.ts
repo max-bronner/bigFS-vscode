@@ -3,7 +3,7 @@ import type { DocumentSymbolProvider, TextDocument } from 'vscode';
 import type { SageIniDocuments } from '../../../services/ini/sageIniDocuments';
 import type { SageBlock } from '../../../formats/ini/sageIniParser';
 
-const symbolKindOf = (block: SageBlock, isRoot: boolean): SymbolKind => {
+const getSymbolKind = (block: SageBlock, isRoot: boolean): SymbolKind => {
   if (block.moduleType) {
     return SymbolKind.Method;
   }
@@ -37,7 +37,7 @@ const toSymbol = (
   const symbol = new DocumentSymbol(
     name,
     detail,
-    symbolKindOf(block, isRoot),
+    getSymbolKind(block, isRoot),
     range,
     document.lineAt(block.startLine).range,
   );

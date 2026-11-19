@@ -1,9 +1,9 @@
 import type { AptInstruction } from '../../../formats/apt/aptBytecode';
 import type { EngineValues, PageMovie } from '../protocol';
-import { soundEventOf } from './movieLoad';
+import { getSoundEvent } from './movieLoad';
 import { AsObject } from './value';
 import type { Value } from './value';
-import type { EngineHooks, Vm } from './vm';
+import type { EngineHooks, EngineVm } from './vmState';
 
 export interface Seen {
   name: string;
@@ -69,7 +69,7 @@ export const parseTyped = (text: string): Value => {
 
 const usesByMovie = new WeakMap<PageMovie, Map<string, number>>();
 
-export const stringUses = (movie: PageMovie): Map<string, number> => {
+export const countStringUses = (movie: PageMovie): Map<string, number> => {
   const known = usesByMovie.get(movie);
 
   if (known) {
@@ -170,7 +170,7 @@ const EVENT_HANDLERS = new Set(
 
 const MAX_READS = 2000;
 
-export const pathKey = (path: string): string =>
+export const toPathKey = (path: string): string =>
   path
     .trim()
     .toLowerCase()
@@ -182,6 +182,9 @@ const externKey = (name: string) => name.trim().toLowerCase();
 export class Engine implements EngineHooks {
   public readonly overrides = new Map<string, string>();
   public readonly externOverrides = new Map<string, string>();
+  public readonly imageOverrides = new Map<string, string>();
+  public readonly repeatedCalls = new Map<string, string[]>();
+  private readonly repeatedThisRun = new Set<string>();
   public readonly externWrites = new Map<
     string,
     { name: string; value: string }
@@ -196,7 +199,7 @@ export class Engine implements EngineHooks {
   private parsed = new Map<string, Value>();
   private written = new Map<string, Value>();
   private parsedExterns = new Map<string, Value>();
-  private vm?: Vm;
+  private vm?: EngineVm;
   private uses = new Map<string, number>();
   private pending = false;
 
@@ -206,12 +209,12 @@ export class Engine implements EngineHooks {
     private readonly onSound: (event: string) => void = () => {},
   ) {}
 
-  public bind(vm: Vm): void {
+  public bind(vm: EngineVm): void {
     this.vm = vm;
   }
 
   public reset(movie: PageMovie): void {
-    this.uses = stringUses(movie);
+    this.uses = countStringUses(movie);
     this.reads.clear();
     this.externs.clear();
     this.calls.clear();
@@ -219,13 +222,22 @@ export class Engine implements EngineHooks {
     this.sounds.clear();
     this.externWrites.clear();
     this.written.clear();
+    this.repeatedThisRun.clear();
     this.changed();
   }
 
   public load(saved: EngineValues | undefined): void {
     this.overrides.clear();
     this.externOverrides.clear();
+    this.imageOverrides.clear();
+    this.repeatedCalls.clear();
     this.returns.clear();
+    Object.entries(saved?.calls ?? {}).forEach(([path, args]) =>
+      this.repeatedCalls.set(path, args),
+    );
+    Object.entries(saved?.images ?? {}).forEach(([k, v]) =>
+      this.imageOverrides.set(k.toLowerCase(), v),
+    );
     Object.entries({ ...saved?.values, ...saved?.overrides }).forEach(
       ([k, v]) =>
         k.includes('::')
@@ -245,6 +257,8 @@ export class Engine implements EngineHooks {
     return {
       overrides: Object.fromEntries(this.overrides),
       externs: Object.fromEntries(this.externOverrides),
+      images: Object.fromEntries(this.imageOverrides),
+      calls: Object.fromEntries(this.repeatedCalls),
       returns: Object.fromEntries(this.returns),
     };
   }
@@ -252,6 +266,8 @@ export class Engine implements EngineHooks {
   public clear(): void {
     this.overrides.clear();
     this.externOverrides.clear();
+    this.imageOverrides.clear();
+    this.repeatedCalls.clear();
     this.reparse();
   }
 
@@ -260,11 +276,15 @@ export class Engine implements EngineHooks {
       this.overrideExtern(name.trim().slice('extern.'.length), text);
       return;
     }
-    this.store(this.overrides, pathKey(name), text);
+    this.store(this.overrides, toPathKey(name), text);
   }
 
   public overrideExtern(name: string, text: string): void {
     this.store(this.externOverrides, externKey(name), text);
+  }
+
+  public overrideImage(key: string, text: string): void {
+    this.store(this.imageOverrides, key.toLowerCase(), text);
   }
 
   private store(table: Map<string, string>, key: string, text: string): void {
@@ -330,7 +350,7 @@ export class Engine implements EngineHooks {
       return value;
     }
 
-    const key = pathKey(path);
+    const key = toPathKey(path);
     let seen = this.reads.get(key);
 
     if (!seen && this.reads.size < MAX_READS) {
@@ -374,7 +394,7 @@ export class Engine implements EngineHooks {
       `engine: ${name}(${args.map((arg) => JSON.stringify(arg)).join(', ')})`,
     );
 
-    const sound = soundEventOf(name, args);
+    const sound = getSoundEvent(name, args);
 
     if (sound) {
       this.heard(sound);
@@ -401,10 +421,6 @@ export class Engine implements EngineHooks {
     if (this.playMovieSounds) {
       this.onSound(event);
     }
-  }
-
-  public playSound(event: string): void {
-    this.onSound(event);
   }
 
   public command(command: string, args: string): void {
@@ -446,5 +462,24 @@ export class Engine implements EngineHooks {
   public invoke(entry: FunctionEntry, args: string[]): Value {
     this.onLog(`called ${entry.path}(${args.join(', ')})`);
     return this.vm?.callFromEngine(entry.fn, entry.owner, args.map(parseTyped));
+  }
+
+  public invokeAndRepeat(entry: FunctionEntry, args: string[]): Value {
+    const key = entry.path.toLowerCase();
+
+    this.repeatedCalls.set(key, args);
+    this.repeatedThisRun.add(key);
+    return this.invoke(entry, args);
+  }
+
+  public makeRepeatedCalls(): void {
+    for (const [key, args] of this.repeatedCalls) {
+      const entry = this.functions.get(key);
+
+      if (entry && !this.repeatedThisRun.has(key)) {
+        this.repeatedThisRun.add(key);
+        this.invoke(entry, args);
+      }
+    }
   }
 }

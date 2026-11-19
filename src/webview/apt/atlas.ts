@@ -1,19 +1,22 @@
-import { fitRunTo, runBounds } from '../../formats/apt/aptGeometry';
-import type { RuRun } from '../../formats/apt/aptGeometry';
+import { fitRunTo, getRunTextureBox } from '../../formats/apt/aptGeometry';
+import type { RuRun, TextureBox } from '../../formats/apt/aptGeometry';
 import type { Character } from '../../formats/apt/aptMovie';
+import { HANDLE_RADIUS, drawBoxHandles } from '../shared/drawBoxHandles';
+import { getResizeScale } from '../shared/getResizeScale';
+import { pickBox } from '../shared/pickBox';
+import type { BoxGrab } from '../shared/pickBox';
 import { getVsCodeApi } from '../shared/vscodeApi';
-import { button, byId, heading, row } from './dom';
+import { createButton, byId, createHeading, createRow } from './dom';
 import type { FromPage, PageMovie } from './protocol';
 import { resolve } from './resolve';
-import { apply, textureOf } from './scene';
+import { apply, getImageTexture } from './scene';
 import type { Affine } from './scene';
-import { inspected, render } from './stage';
+import { getInspectedInstance, render } from './stage';
 import { movie, state } from './state';
 
 const vscode = getVsCodeApi<FromPage>();
 
 const panel = byId('atlas');
-const HANDLE = 5;
 const WIDTH = 360;
 
 interface Target {
@@ -24,7 +27,7 @@ interface Target {
 
 interface Drag {
   run: number;
-  mode: 'move' | { anchor: [number, number]; handle: [number, number] };
+  mode: BoxGrab;
   start: [number, number];
   transform: Affine;
   original: RuRun[];
@@ -37,7 +40,7 @@ let canvas: HTMLCanvasElement | undefined;
 let scale = 1;
 
 const target = (): Target | undefined => {
-  const instance = inspected();
+  const instance = getInspectedInstance();
   const picked = instance?.character && {
     movie: instance.movie,
     id: instance.id,
@@ -62,7 +65,7 @@ const regionOf = (
 ): [number, number, number, number] => {
   const found = resolve(source, image);
   const location = found?.movie.imageLocations[found.id];
-  const texture = textureOf(source, image);
+  const texture = getImageTexture(source, image);
 
   return location?.kind === 'standalone'
     ? location.rect
@@ -91,7 +94,7 @@ const draw = (shape: Target) => {
   const texture =
     image === undefined
       ? undefined
-      : textureOf(shape.movie, image);
+      : getImageTexture(shape.movie, image);
   const ctx = canvas.getContext('2d')!;
 
   if (!texture) {
@@ -156,51 +159,13 @@ const draw = (shape: Target) => {
 
       ctx.strokeStyle = 'rgba(30,140,255,1)';
       ctx.strokeRect(l, t, r - l, b - t);
-      ctx.fillStyle = 'white';
-      for (const [x, y] of corners([l, t, r, b])) {
-        ctx.fillRect(
-          x - HANDLE / scale,
-          y - HANDLE / scale,
-          (2 * HANDLE) / scale,
-          (2 * HANDLE) / scale,
-        );
-        ctx.strokeRect(
-          x - HANDLE / scale,
-          y - HANDLE / scale,
-          (2 * HANDLE) / scale,
-          (2 * HANDLE) / scale,
-        );
-      }
+      drawBoxHandles(ctx, [l, t, r, b], scale);
     }
   }
 };
 
-const mappedBox = (run: RuRun): [number, number, number, number] => {
-  const m = (run.style as Extract<RuRun['style'], { kind: 'texture' }>)
-    .transform;
-  const [l, t, r, b] = runBounds([run]) ?? [0, 0, 0, 0];
-  const points = [
-    apply(m, [l, t]),
-    apply(m, [r, t]),
-    apply(m, [r, b]),
-    apply(m, [l, b]),
-  ];
-
-  return [
-    Math.min(...points.map((p) => p[0])),
-    Math.min(...points.map((p) => p[1])),
-    Math.max(...points.map((p) => p[0])),
-    Math.max(...points.map((p) => p[1])),
-  ];
-};
-
-const corners = ([l, t, r, b]: [number, number, number, number]) =>
-  [
-    [l, t],
-    [r, t],
-    [r, b],
-    [l, b],
-  ] as [number, number][];
+const mappedBox = (run: RuRun): TextureBox =>
+  getRunTextureBox(run) ?? [0, 0, 0, 0];
 
 const pointOn = (event: MouseEvent): [number, number] => [
   event.offsetX / scale,
@@ -214,31 +179,18 @@ const pressAt = (shape: Target, point: [number, number]): Drag | undefined => {
     return undefined;
   }
 
-  const box = mappedBox(run);
-  const handles = corners(box);
-  const near = handles.findIndex(
-    ([x, y]) => Math.hypot(x - point[0], y - point[1]) <= (HANDLE + 2) / scale,
-  );
-  const base = {
-    run: shownRun,
-    start: point,
-    transform: [...run.style.transform] as Affine,
-    original: structuredClone(runsOf(shape)),
-    moved: false,
-  };
+  const mode = pickBox(mappedBox(run), point, (HANDLE_RADIUS + 2) / scale);
 
-  if (near >= 0) {
-    return {
-      ...base,
-      mode: { anchor: handles[(near + 2) % 4], handle: handles[near] },
-    };
-  }
-  return point[0] >= box[0] &&
-    point[0] <= box[2] &&
-    point[1] >= box[1] &&
-    point[1] <= box[3]
-    ? { ...base, mode: 'move' }
-    : undefined;
+  return (
+    mode && {
+      mode,
+      run: shownRun,
+      start: point,
+      transform: [...run.style.transform] as Affine,
+      original: structuredClone(runsOf(shape)),
+      moved: false,
+    }
+  );
 };
 
 const dragTo = (shape: Target, point: [number, number], uniform: boolean) => {
@@ -250,13 +202,8 @@ const dragTo = (shape: Target, point: [number, number], uniform: boolean) => {
     next = [a, b, c, d, e + point[0] - start[0], f + point[1] - start[1]];
   } else {
     const [ax, ay] = mode.anchor;
-    const [hx, hy] = mode.handle;
-    let sx = (point[0] - ax) / (hx - ax || 1);
-    let sy = (point[1] - ay) / (hy - ay || 1);
+    const [sx, sy] = getResizeScale(mode, point, uniform);
 
-    if (uniform) {
-      sx = sy = Math.max(Math.abs(sx), Math.abs(sy));
-    }
     next = [
       sx * a,
       sy * b,
@@ -308,7 +255,7 @@ export const showAtlas = (): void => {
   }
 
   const runs = runsOf(shape);
-  const parts: HTMLElement[] = [heading('Texture')];
+  const parts: HTMLElement[] = [createHeading('Texture')];
   const isOwn = shape.movie === state.movie;
 
   if (shape.character.type === 'shape') {
@@ -333,7 +280,7 @@ export const showAtlas = (): void => {
         shownRun = Number(choose.value);
         showAtlas();
       };
-      parts.push(row('Run', choose));
+      parts.push(createRow('Run', choose));
     }
 
     if (run && run.style.kind !== 'line' && isOwn) {
@@ -395,10 +342,10 @@ export const showAtlas = (): void => {
       };
 
       parts.push(
-        row('Image', pick),
-        row(
+        createRow('Image', pick),
+        createRow(
           '',
-          button('Fit to image', () => {
+          createButton('Fit to image', () => {
             if (run.style.kind === 'texture') {
               const next = structuredClone(runs);
 
@@ -410,13 +357,13 @@ export const showAtlas = (): void => {
               send(shape, next);
             }
           }),
-          button('Import image…', () => file.click()),
+          createButton('Import image…', () => file.click()),
           file,
         ),
       );
     } else if (!isOwn) {
       parts.push(
-        row(
+        createRow(
           '',
           document.createTextNode(`From ${shape.movie.name}: edit it there`),
         ),

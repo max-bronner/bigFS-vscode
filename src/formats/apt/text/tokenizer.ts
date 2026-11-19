@@ -132,7 +132,7 @@ export const tokenize = (line: string): Token[] => {
   return tokens;
 };
 
-export const integer = (
+export const readInteger = (
   token: Token,
   min: number,
   max: number,
@@ -156,11 +156,11 @@ export const integer = (
 };
 
 export const u32 = (token: Token, what: string) =>
-  integer(token, 0, 0xffffffff, what);
+  readInteger(token, 0, 0xffffffff, what);
 export const i32 = (token: Token, what: string) =>
-  integer(token, -0x80000000, 0x7fffffff, what);
+  readInteger(token, -0x80000000, 0x7fffffff, what);
 
-export const floatOf = (text: string, token: Token, what: string): number => {
+export const readFloat = (text: string, token: Token, what: string): number => {
   const value =
     text === 'nan'
       ? NaN
@@ -182,7 +182,7 @@ export const floatOf = (text: string, token: Token, what: string): number => {
   return Math.fround(value);
 };
 
-export const floats = (token: Token, count: number, what: string): number[] => {
+export const readFloats = (token: Token, count: number, what: string): number[] => {
   const parts = token.text.split(',');
 
   if (parts.length !== count) {
@@ -192,7 +192,7 @@ export const floats = (token: Token, count: number, what: string): number[] => {
       token.endColumn,
     );
   }
-  return parts.map((part) => floatOf(part, token, what));
+  return parts.map((part) => readFloat(part, token, what));
 };
 
 export class Fields {
@@ -219,13 +219,13 @@ export class Fields {
     }
   }
 
-  public optional(key: string): Token | undefined {
+  public getOptional(key: string): Token | undefined {
     this.used.add(key);
     return this.keyed.get(key);
   }
 
-  public required(key: string, line: Token[]): Token {
-    const token = this.optional(key);
+  public getRequired(key: string, line: Token[]): Token {
+    const token = this.getOptional(key);
 
     if (!token) {
       const last = line[line.length - 1];
@@ -239,8 +239,8 @@ export class Fields {
     return token;
   }
 
-  public string(key: string): string | undefined {
-    const token = this.optional(key);
+  public getString(key: string): string | undefined {
+    const token = this.getOptional(key);
 
     if (token && !token.isString) {
       throw new ParseError(

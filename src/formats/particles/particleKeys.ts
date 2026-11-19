@@ -1,4 +1,4 @@
-import type { IniDefinition } from './particleIni';
+import type { IniDefinition } from './particleDefinitions';
 
 export type KeyKind = 'Color' | 'Alpha';
 
@@ -17,7 +17,7 @@ export const MAX_KEYS = 8;
 const keyPattern = (kind: KeyKind) =>
   new RegExp(`^${kind.toLowerCase()}[1-8]$`, 'i');
 
-export const keyLine = (
+export const formatKeyLine = (
   kind: KeyKind,
   index: number,
   key: KeyValue,
@@ -36,7 +36,7 @@ export const keyLine = (
 
 const indentOf = (line: string | undefined) => /^\s*/.exec(line ?? '')![0];
 
-export const keyEdits = (
+export const computeKeyEdits = (
   text: string,
   definition: IniDefinition,
   kind: KeyKind,
@@ -52,7 +52,7 @@ export const keyEdits = (
     pattern.test(line.keyword.text),
   );
   const written = (indent: string) =>
-    keys.map((key, index) => indent + keyLine(kind, index, key));
+    keys.map((key, index) => indent + formatKeyLine(kind, index, key));
 
   if (existing.length) {
     const [first, ...rest] = existing;

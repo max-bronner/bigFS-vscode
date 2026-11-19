@@ -1,19 +1,19 @@
 export const AUTO_LANGUAGE = 'auto';
 
-export const languageOfArchive = (archivePath: string): string | undefined => {
+export const getArchiveLanguage = (archivePath: string): string | undefined => {
   const match = /(?:^|[\\/])lang[\\/]([^\\/]+)\.big$/i.exec(archivePath);
   const name = match?.[1].toLowerCase();
 
   return name && !name.endsWith('audio') ? name : undefined;
 };
 
-export const installedLanguages = (
+export const listInstalledLanguages = (
   archivePaths: Iterable<string>,
 ): string[] => {
   const found = new Set<string>();
 
   for (const path of archivePaths) {
-    const language = languageOfArchive(path);
+    const language = getArchiveLanguage(path);
 
     if (language) {
       found.add(language);

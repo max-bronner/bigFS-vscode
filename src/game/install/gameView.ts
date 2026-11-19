@@ -13,7 +13,7 @@ export interface GameNode<T> {
   shadowed?: GameFile<T>[];
 }
 
-export const archiveOrderKey = (pathInInstall: string): string =>
+export const getArchiveOrderKey = (pathInInstall: string): string =>
   pathInInstall.toLowerCase().replace(/\//g, '\\');
 
 export const buildGameTree = <T>(files: Iterable<GameFile<T>>): GameNode<T> => {
@@ -63,8 +63,8 @@ export const buildGameTree = <T>(files: Iterable<GameFile<T>>): GameNode<T> => {
 };
 
 export const compareArchivePaths = (a: string, b: string): number => {
-  const keyA = archiveOrderKey(a);
-  const keyB = archiveOrderKey(b);
+  const keyA = getArchiveOrderKey(a);
+  const keyB = getArchiveOrderKey(b);
 
   return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
 };

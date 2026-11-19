@@ -24,7 +24,7 @@ export const findGameTextLabels = (parsed: SageDocument): LabelToken[] =>
       : [],
   );
 
-export const labelsInText = (text: string): string[] =>
+export const findLabelsInText = (text: string): string[] =>
   text.split(/\r?\n/).flatMap((line) =>
     tokenize(stripComment(line))
       .slice(1)
@@ -32,13 +32,13 @@ export const labelsInText = (text: string): string[] =>
       .filter((word) => LABEL.test(word)),
   );
 
-export const missingTextMessage = (label: string): string =>
+export const formatMissingTextMessage = (label: string): string =>
   `No game text for '${label}' in any string table`;
 
-export const labelOfMissingText = (message: string): string | undefined =>
+export const parseMissingTextLabel = (message: string): string | undefined =>
   /^No game text for '(.+)' in any string table$/.exec(message)?.[1];
 
-export const placeholderText = (label: string): string =>
+export const createPlaceholderText = (label: string): string =>
   label
     .slice(label.indexOf(':') + 1)
     .replace(/_/g, ' ')

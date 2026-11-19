@@ -1,4 +1,5 @@
-import { lastContextSegment } from '../../game/audio/sageAudioFields';
+import { getLastContextSegment } from './sageAudioFields';
+import { memoizeBounded } from '../../core/memoizeBounded';
 
 export const OBJECT_NAMESPACE = 'Object';
 
@@ -7,12 +8,12 @@ const NAMESPACE_ALIASES: Record<string, string> = {
   objectreskin: OBJECT_NAMESPACE,
 };
 
-export const canonicalNamespace = (namespace: string): string =>
+export const toCanonicalNamespace = (namespace: string): string =>
   NAMESPACE_ALIASES[namespace.toLowerCase()] ?? namespace;
 
-export const canonicalNamespaces = (
+export const toCanonicalNamespaces = (
   namespaces: readonly string[],
-): string[] => [...new Set(namespaces.map(canonicalNamespace))];
+): string[] => [...new Set(namespaces.map(toCanonicalNamespace))];
 
 export const widenParticleNamespaces = (
   namespaces: readonly string[],
@@ -27,7 +28,7 @@ const PARENT_HEADERS: ReadonlySet<string> = new Set([
   'objectreskin',
 ]);
 
-export const parentNamespace = (keyword: string): string | undefined =>
+export const getParentNamespace = (keyword: string): string | undefined =>
   PARENT_HEADERS.has(keyword.toLowerCase()) ? OBJECT_NAMESPACE : undefined;
 
 export const NOT_REFERENCE_FIELDS: ReadonlySet<string> = new Set([
@@ -57,6 +58,11 @@ const REFERENCE_TOKENS: Record<string, readonly number[]> = {
   particlesysbone: [1],
 };
 
+const foldContext = memoizeBounded(
+  (contextName) => contextName.toLowerCase(),
+  4096,
+);
+
 const scoped = <T>(
   table: Record<string, T>,
   contextName: string,
@@ -65,18 +71,18 @@ const scoped = <T>(
   const name = field.toLowerCase();
 
   return (
-    table[`${contextName.toLowerCase()}/${name}`] ??
-    table[`${lastContextSegment(contextName)}/${name}`]
+    table[`${foldContext(contextName)}/${name}`] ??
+    table[`${getLastContextSegment(contextName)}/${name}`]
   );
 };
 
-export const scopedReference = (
+export const getScopedNamespaces = (
   contextName: string,
   field: string,
 ): readonly string[] | undefined =>
   scoped(SCOPED_REFERENCES, contextName, field);
 
-export const namesTokenAt = (
+export const isNameTokenAt = (
   contextName: string,
   field: string,
   index: number,
@@ -96,7 +102,7 @@ const KEYED_NAME_FIELDS: Record<string, string> = {
 
 const OPTIONAL_MARKER_FIELDS: ReadonlySet<string> = new Set(['blingupgrades']);
 
-export const nameOffsetIn = (
+export const findNameOffset = (
   field: string,
   values: readonly { text: string }[],
   index: number,

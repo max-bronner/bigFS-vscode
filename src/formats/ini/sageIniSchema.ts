@@ -1,16 +1,17 @@
+import { createReferenceNamespaceCache } from './createReferenceNamespaceCache';
 import {
-  audioReferenceKind,
+  getAudioReferenceKind,
   isAudioNamespace,
-  namespacesOfKind,
-} from '../../game/audio/sageAudioFields';
+  getKindNamespaces,
+} from './sageAudioFields';
 import {
   NOT_REFERENCE_FIELDS,
   NOT_REFERENCE_NAMESPACES,
-  canonicalNamespace,
-  canonicalNamespaces,
+  toCanonicalNamespace,
+  toCanonicalNamespaces,
   widenParticleNamespaces,
-  namesTokenAt,
-  scopedReference,
+  isNameTokenAt,
+  getScopedNamespaces,
 } from './sageReferenceFields';
 
 export type KeywordKind = 'block' | 'field';
@@ -128,7 +129,7 @@ export const createSageIniSchema = (
   const references = new Map<string, readonly string[]>(
     [...foldKeys(file.references)].flatMap(([field, namespaces]) => {
       const kept = widenParticleNamespaces(
-        canonicalNamespaces(
+        toCanonicalNamespaces(
           namespaces.filter(
             (namespace) =>
               !NOT_REFERENCE_NAMESPACES.has(namespace.toLowerCase()),
@@ -355,6 +356,35 @@ export const createSageIniSchema = (
     return data.fields.has(key) || data.accepts ? { kind: 'field' } : undefined;
   };
 
+  const resolveReferenceNamespaces = (
+    field: string,
+    context?: string,
+    tokenIndex?: number,
+  ): readonly string[] => {
+    const contextName =
+      context === undefined ? '' : (contextOf(context)?.name ?? context);
+    const kind = getAudioReferenceKind(contextName, field);
+
+    if (kind) {
+      return getKindNamespaces(kind);
+    }
+
+    if (
+      tokenIndex !== undefined &&
+      !isNameTokenAt(contextName, field, tokenIndex)
+    ) {
+      return [];
+    }
+
+    const scoped = getScopedNamespaces(contextName, field);
+
+    return scoped
+      ? toCanonicalNamespaces(scoped)
+      : (references
+          .get(field.toLowerCase())
+          ?.filter((namespace) => !isAudioNamespace(namespace)) ?? []);
+  };
+
   return {
     game,
     isStrict: game !== 'bfme1',
@@ -371,32 +401,11 @@ export const createSageIniSchema = (
 
       return entry && { type: entry.t, used: entry.u === 1 };
     },
-    getReferenceNamespaces: (field, context, tokenIndex) => {
-      const contextName =
-        context === undefined ? '' : (contextOf(context)?.name ?? context);
-      const kind = audioReferenceKind(contextName, field);
-
-      if (kind) {
-        return namespacesOfKind(kind);
-      }
-
-      if (
-        tokenIndex !== undefined &&
-        !namesTokenAt(contextName, field, tokenIndex)
-      ) {
-        return [];
-      }
-
-      const scoped = scopedReference(contextName, field);
-
-      return scoped
-        ? canonicalNamespaces(scoped)
-        : (references
-            .get(field.toLowerCase())
-            ?.filter((namespace) => !isAudioNamespace(namespace)) ?? []);
-    },
+    getReferenceNamespaces: createReferenceNamespaceCache(
+      resolveReferenceNamespaces,
+    ),
     isReferenceNamespace: (namespace) =>
-      referenceNamespaces.has(canonicalNamespace(namespace).toLowerCase()),
+      referenceNamespaces.has(toCanonicalNamespace(namespace).toLowerCase()),
     getContextKeywords: (context) => {
       if (context === ROOT_CONTEXT) {
         return Object.keys(file.fileScope).map((name) => ({

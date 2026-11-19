@@ -131,21 +131,23 @@ export const getTexturePath = (
 const formatNumber = (value: number): string =>
   Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)));
 
+export const formatRuStyle = (style: RuStyle): string => {
+  const join = (values: number[]) => values.map(formatNumber).join(':');
+
+  return style.kind === 'solid'
+    ? `s s:${join(style.color)}`
+    : style.kind === 'line'
+      ? `s l:${join([style.width, ...style.color])}`
+      : `s tc:${join([...style.color, style.character, ...style.transform])}`;
+};
+
 export const writeRu = (runs: RuRun[]): string => {
   const lines: string[] = [];
   const join = (values: number[]) => values.map(formatNumber).join(':');
 
   for (const run of runs) {
-    const { style } = run;
-
     lines.push('c');
-    lines.push(
-      style.kind === 'solid'
-        ? `s s:${join(style.color)}`
-        : style.kind === 'line'
-          ? `s l:${join([style.width, ...style.color])}`
-          : `s tc:${join([...style.color, style.character, ...style.transform])}`,
-    );
+    lines.push(formatRuStyle(run.style));
     for (let i = 0; i < run.triangles.length; i += 6) {
       lines.push(`t ${join(run.triangles.slice(i, i + 6))}`);
     }
@@ -176,7 +178,7 @@ export const writeDat = (entries: Map<number, DatLocation>): string => {
   );
 };
 
-export const runBounds = (
+export const getRunBounds = (
   runs: RuRun[],
 ): [number, number, number, number] | undefined => {
   const xs: number[] = [];
@@ -205,7 +207,7 @@ export const fitTexture = (
   return [scaleU, 0, 0, scaleV, u0 - left * scaleU, v0 - top * scaleV];
 };
 
-export const checkRuns = (runs: unknown): runs is RuRun[] =>
+export const areRunsWellFormed = (runs: unknown): runs is RuRun[] =>
   Array.isArray(runs) &&
   runs.every((run: RuRun) => {
     const style = run?.style;
@@ -239,6 +241,61 @@ export const fitRunTo = (
     color:
       run.style.kind === 'texture' ? run.style.color : [255, 255, 255, 255],
     character: image,
-    transform: fitTexture(runBounds([run]) ?? [0, 0, 1, 1], box),
+    transform: fitTexture(getRunBounds([run]) ?? [0, 0, 1, 1], box),
   },
 });
+
+export const findRuStyleLines = (text: string): number[] =>
+  text
+    .split(/\r?\n/)
+    .flatMap((line, index) => (/^\s*s\s/.test(line) ? [index] : []));
+
+export type TextureBox = [number, number, number, number];
+
+export const getRunTextureBox = (run: RuRun): TextureBox | undefined => {
+  const bounds = getRunBounds([run]);
+
+  if (run.style.kind !== 'texture' || !bounds) {
+    return undefined;
+  }
+
+  const [a, b, c, d, e, f] = run.style.transform;
+  const [left, top, right, bottom] = bounds;
+  const corners = [
+    [left, top],
+    [right, top],
+    [right, bottom],
+    [left, bottom],
+  ].map(([x, y]) => [a * x + c * y + e, b * x + d * y + f]);
+  const us = corners.map(([u]) => u);
+  const vs = corners.map(([, v]) => v);
+
+  return [Math.min(...us), Math.min(...vs), Math.max(...us), Math.max(...vs)];
+};
+
+export const setRunTextureBox = (run: RuRun, box: TextureBox): RuRun => {
+  const current = getRunTextureBox(run);
+
+  if (run.style.kind !== 'texture' || !current) {
+    return run;
+  }
+
+  const scaleU = (box[2] - box[0]) / (current[2] - current[0] || 1);
+  const scaleV = (box[3] - box[1]) / (current[3] - current[1] || 1);
+  const [a, b, c, d, e, f] = run.style.transform;
+
+  return {
+    ...run,
+    style: {
+      ...run.style,
+      transform: [
+        scaleU * a,
+        scaleV * b,
+        scaleU * c,
+        scaleV * d,
+        scaleU * (e - current[0]) + box[0],
+        scaleV * (f - current[1]) + box[1],
+      ],
+    },
+  };
+};

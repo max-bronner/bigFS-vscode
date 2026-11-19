@@ -1,4 +1,4 @@
-import type { Tool } from '../../services/toolRegistry';
+import type { Tool } from '../../core/toolRegistry';
 
 export interface AudioInfo {
   format: string;

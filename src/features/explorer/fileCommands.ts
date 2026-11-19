@@ -1,4 +1,4 @@
-﻿import { commands, window, workspace } from 'vscode';
+import { commands, window, workspace } from 'vscode';
 import { formatCount } from '../../core/messages';
 import { getChildUri, getNodeUri } from '../../services/archives/nodeAddress';
 import { askForName } from '../../platform/dialogs';
@@ -7,7 +7,10 @@ import {
   getTargetDirectory,
   importFromDisk,
 } from './fileActions';
-import type { RegisterNodeCommand } from './commandCenter';
+import { deleteArchives, renameArchive } from './archiveFileActions';
+import { refuseDirtyEditors } from './dirtyEditors';
+import { isArchiveRoot } from '../../services/archives/virtualTree';
+import type { RegisterNodeCommand } from '../../services/archives/nodeCommands';
 import type { VirtualNode } from '../../services/archives/virtualNode';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
 
@@ -60,10 +63,17 @@ const createFolder = async (target: VirtualNode): Promise<void> => {
   await workspace.fs.createDirectory(getChildUri(directory, name));
 };
 
-const renameNode = async (target: VirtualNode): Promise<void> => {
+const renameNode = async (
+  archiveModel: ArchiveModel,
+  target: VirtualNode,
+): Promise<void> => {
   const directory = target.parent;
 
   if (!directory) {
+    return renameArchive(archiveModel, target);
+  }
+
+  if (refuseDirtyEditors([target], 'rename')) {
     return;
   }
 
@@ -120,9 +130,18 @@ export const registerFileCommands = (
 ): void => {
   register('bigfs.newFile', ([target]) => createFile(target));
   register('bigfs.newFolder', ([target]) => createFolder(target));
-  register('bigfs.rename', ([target]) => renameNode(target));
+  register('bigfs.rename', ([target]) => renameNode(archiveModel, target));
   register('bigfs.addFiles', ([target]) => addFiles(archiveModel, target));
   register('bigfs.delete', async (targets) => {
-    await deleteNodes(archiveModel, targets);
+    const archiveRoots = targets.filter(isArchiveRoot);
+
+    if (archiveRoots.length) {
+      await deleteArchives(archiveModel, archiveRoots);
+    }
+
+    await deleteNodes(
+      archiveModel,
+      targets.filter((target) => !isArchiveRoot(target)),
+    );
   });
 };

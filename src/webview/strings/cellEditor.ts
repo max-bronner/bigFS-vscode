@@ -1,4 +1,4 @@
-import { editorRows, isEdited } from './cellText';
+import { countEditorRows, isEdited } from './cellText';
 
 export const editCell = (
   cell: HTMLElement,
@@ -14,7 +14,7 @@ export const editCell = (
 
   input.value = value;
   if (input instanceof HTMLTextAreaElement) {
-    input.rows = editorRows(value);
+    input.rows = countEditorRows(value);
   }
 
   const finish = (save: boolean) => {

@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { overrideReport, skippedFromPackage } from '../../node/modPackage';
+import { buildOverrideReport, isSkippedFromPackage } from '../../node/modPackage';
 
 const BASE = [
   {
@@ -17,7 +17,7 @@ const FILES = [
 suite('Mod packages', () => {
   test('in the game folder the archive name decides what overrides', () => {
     assert.deepStrictEqual(
-      overrideReport(FILES, 'zzMod.big', BASE, 'gameFolder'),
+      buildOverrideReport(FILES, 'zzMod.big', BASE, 'gameFolder'),
       {
         added: ['data/ini/mine.ini'],
         overrides: [],
@@ -28,7 +28,7 @@ suite('Mod packages', () => {
       },
     );
     assert.deepStrictEqual(
-      overrideReport(FILES, '!Mod.big', BASE, 'gameFolder').overrides,
+      buildOverrideReport(FILES, '!Mod.big', BASE, 'gameFolder').overrides,
       [
         { path: 'data/ini/weapon.ini', over: ['_patch.big', 'INI.big'] },
         { path: 'Data/INI/Object.ini', over: ['INI.big'] },
@@ -38,7 +38,7 @@ suite('Mod packages', () => {
 
   test('with -mod it wins whatever its name', () => {
     assert.strictEqual(
-      overrideReport(FILES, 'zzMod.big', BASE, 'modFolder').ignored.length,
+      buildOverrideReport(FILES, 'zzMod.big', BASE, 'modFolder').ignored.length,
       0,
     );
   });
@@ -46,7 +46,7 @@ suite('Mod packages', () => {
   test('hidden files and archives are not packed', () => {
     assert.deepStrictEqual(
       ['.git/config', 'data/.hidden', 'old.big', 'data/ini/a.ini'].map(
-        skippedFromPackage,
+        isSkippedFromPackage,
       ),
       [true, true, true, false],
     );

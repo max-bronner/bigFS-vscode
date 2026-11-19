@@ -32,7 +32,7 @@ export const CLIP_EVENTS: [string, number][] = [
   ['construct', 1 << 18],
 ];
 
-export const bitNames = (value: number, names: [string, number][]): string => {
+export const formatBitNames = (value: number, names: [string, number][]): string => {
   const known = names.filter(([, bit]) => value & bit).map(([name]) => name);
   const rest = names.reduce((left, [, bit]) => left & ~bit, value >>> 0);
 
@@ -41,7 +41,7 @@ export const bitNames = (value: number, names: [string, number][]): string => {
   );
 };
 
-export const bitSelect = (
+export const createBitSelect = (
   names: [string, number][],
   chosen: number,
 ): HTMLSelectElement => {

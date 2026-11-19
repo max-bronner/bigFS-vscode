@@ -59,7 +59,7 @@ export interface Placement {
   clipActions?: { events: number; block: number }[];
 }
 
-export const framesOf = (movie: PageMovie, character: Character): Frame[] =>
+export const getFrames = (movie: PageMovie, character: Character): Frame[] =>
   character.type === 'movie'
     ? movie.frames
     : character.type === 'sprite'
@@ -68,7 +68,7 @@ export const framesOf = (movie: PageMovie, character: Character): Frame[] =>
 
 const built = new WeakMap<Frame[], Map<number, Placement[]>>();
 
-export const displayList = (frames: Frame[], frame: number): Placement[] => {
+export const buildDisplayList = (frames: Frame[], frame: number): Placement[] => {
   let cache = built.get(frames);
   const known = cache?.get(frame);
 

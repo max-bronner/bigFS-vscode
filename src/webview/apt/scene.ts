@@ -1,12 +1,12 @@
 import type { Character, Rect } from '../../formats/apt/aptMovie';
-import type { Instance, Player } from './player';
+import type { Instance } from './instance';
 import type { PageMovie } from './protocol';
 import { resolve } from './resolve';
 import { state } from './state';
 import {
   IDENTITY_COLOR,
   concatColor,
-  displayList,
+  buildDisplayList,
   type ColorTransform,
 } from './timeline';
 
@@ -58,18 +58,19 @@ export interface Leaf {
   top?: number;
   masks?: Leaf[][];
   text?: string;
+  surfaceBox?: Rect;
 }
 
 export interface HitArea {
   leaf: Leaf;
-  button: Instance;
+  target: Instance;
 }
 
-export const placedColor = (child: Instance): ColorTransform => {
+export const getPlacedColor = (child: Instance): ColorTransform => {
   const depth = Number(child.path.split('/').pop());
   const placement =
     child.parent && !child.dynamic && Number.isInteger(depth)
-      ? displayList(child.parent.frames, child.parent.frame).find(
+      ? buildDisplayList(child.parent.frames, child.parent.frame).find(
           (each) =>
             each.depth === depth &&
             each.born === child.born &&
@@ -81,8 +82,17 @@ export const placedColor = (child: Instance): ColorTransform => {
   return { mult: [mult[0], mult[1], mult[2], child.alpha], add };
 };
 
+export interface DisplayTree {
+  readonly root: Instance;
+  textOf(instance: Instance): string | undefined;
+  takesPointer?(instance: Instance): boolean;
+}
+
+export const EMPTY_SURFACE: Rect = [0, 0, 64, 64];
+
 export const collect = (
-  player: Player,
+  player: DisplayTree,
+  isEngineSurface?: (instance: Instance) => boolean,
 ): { leaves: Leaf[]; hits: HitArea[] } => {
   const leaves: Leaf[] = [];
   const hits: HitArea[] = [];
@@ -94,10 +104,11 @@ export const collect = (
     top: number | undefined,
     out: Leaf[],
     masks: Leaf[][] = [],
+    isMask = false,
   ): void => {
     const { character } = instance;
 
-    if (instance.visible === false) {
+    if (instance.visible === false && !isMask) {
       return;
     }
     if (
@@ -126,6 +137,7 @@ export const collect = (
       multiply(matrix, [...child.matrix, ...child.translate] as Affine);
 
     const open: { until: number; leaves: Leaf[] }[] = [];
+    const firstLeaf = out.length;
 
     for (const [key, child] of instance.children) {
       const depth = Number(key);
@@ -138,14 +150,14 @@ export const collect = (
       if (child.clipDepth !== undefined && !emptyClip) {
         const area: Leaf[] = [];
 
-        visit(child, place(child), IDENTITY_COLOR, childTop, area, masks);
+        visit(child, place(child), IDENTITY_COLOR, childTop, area, masks, true);
         open.push({ until: child.clipDepth, leaves: area });
         continue;
       }
       visit(
         child,
         place(child),
-        concatColor(color, placedColor(child)),
+        concatColor(color, getPlacedColor(child)),
         childTop,
         out,
         [
@@ -155,13 +167,33 @@ export const collect = (
           .map((mask) => mask.leaves),
       ]);
     }
+    if (!isMask && isEngineSurface?.(instance)) {
+      const art = getLeafBounds(out.splice(firstLeaf));
+
+      out.push({
+        movie: instance.movie,
+        id: instance.id,
+        character,
+        matrix,
+        alpha: color.mult[3],
+        color,
+        instance,
+        top,
+        ...(masks.length ? { masks } : {}),
+        surfaceBox: art ? transformRect(invert(matrix), art) : EMPTY_SURFACE,
+      });
+    }
     if (character.type === 'button') {
       for (const hit of instance.hits) {
         const area: Leaf[] = [];
 
-        visit(hit, place(hit), color, top, area);
-        hits.push(...area.map((leaf) => ({ leaf, button: instance })));
+        visit(hit, place(hit), color, top, area, masks);
+        hits.push(...area.map((leaf) => ({ leaf, target: instance })));
       }
+    } else if (!isMask && player.takesPointer?.(instance)) {
+      hits.push(
+        ...out.slice(firstLeaf).map((leaf) => ({ leaf, target: instance })),
+      );
     }
   };
 
@@ -169,7 +201,7 @@ export const collect = (
   return { leaves, hits };
 };
 
-export const textureOf = (
+export const getImageTexture = (
   movie: PageMovie,
   id: number,
 ): HTMLCanvasElement | undefined => {
@@ -178,9 +210,12 @@ export const textureOf = (
   return found && state.textures.get(found.movie.imageTextures[found.id]);
 };
 
-export const localBounds = (leaf: Leaf): Rect => {
-  const { character } = leaf;
+export const getLocalBounds = (leaf: Leaf): Rect => {
+  const { character, surfaceBox } = leaf;
 
+  if (surfaceBox) {
+    return surfaceBox;
+  }
   if (!character) {
     return UNRESOLVED;
   }
@@ -188,7 +223,7 @@ export const localBounds = (leaf: Leaf): Rect => {
     return character.bounds;
   }
 
-  const texture = textureOf(leaf.movie, leaf.id);
+  const texture = getImageTexture(leaf.movie, leaf.id);
 
   return [0, 0, texture?.width ?? 64, texture?.height ?? 64];
 };
@@ -226,17 +261,17 @@ const intersect = (a: Rect, b: Rect): Rect | undefined => {
 };
 
 const leafBounds = (leaf: Leaf, masked: boolean): Rect | undefined => {
-  let box: Rect | undefined = transformRect(leaf.matrix, localBounds(leaf));
+  let box: Rect | undefined = transformRect(leaf.matrix, getLocalBounds(leaf));
 
   for (const mask of masked ? (leaf.masks ?? []) : []) {
-    const area = boundsOf(mask, true);
+    const area = getLeafBounds(mask, true);
 
     box = box && area && intersect(box, area);
   }
   return box;
 };
 
-export const boundsOf = (leaves: Leaf[], masked = false): Rect | undefined =>
+export const getLeafBounds = (leaves: Leaf[], masked = false): Rect | undefined =>
   union(
     leaves.flatMap((leaf) => {
       const box = leafBounds(leaf, masked);

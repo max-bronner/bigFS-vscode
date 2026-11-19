@@ -1,9 +1,9 @@
-import type { Instance } from '../player';
+import type { Instance } from '../instance';
 import {
   apply,
   invert,
   multiply,
-  placedColor,
+  getPlacedColor,
   transformRect,
   union,
 } from '../scene';
@@ -16,12 +16,11 @@ import {
   toInt32,
   toNumber,
 } from './value';
-import type { NativeFunction, Value } from './value';
-import type { Vm } from './vm';
+import type { NativeFunction, NativeHost, Value } from './value';
 
 const arg = (args: Value[], at: number): Value => args[at];
 
-const chars = (vm: Vm, self: Value) => [...vm.string(self)];
+const chars = (vm: NativeHost, self: Value) => [...vm.string(self)];
 
 const relative = (value: Value, length: number, fallback: number) => {
   if (value === undefined) {
@@ -33,7 +32,7 @@ const relative = (value: Value, length: number, fallback: number) => {
   return n < 0 ? Math.max(0, length + n) : Math.min(n, length);
 };
 
-const valuesOf = (vm: Vm, array: Value): Value[] => {
+const valuesOf = (vm: NativeHost, array: Value): Value[] => {
   if (!(array instanceof AsObject)) {
     return [];
   }
@@ -103,7 +102,7 @@ const repath = (clip: Instance, path: string) => {
   }
 };
 
-export const installNatives = (vm: Vm): void => {
+export const installNatives = (vm: NativeHost): void => {
   const { protos, global } = vm;
   const method = (on: AsObject, name: string, call: NativeFunction) =>
     on.define(name, vm.native(name, call));
@@ -491,7 +490,7 @@ export const installNatives = (vm: Vm): void => {
   });
   method(colorProto, 'getRGB', (_, self) => {
     const at = colorTarget(self);
-    const add = at && placedColor(at).add;
+    const add = at && getPlacedColor(at).add;
 
     return add && (byte(add[0]) << 16) | (byte(add[1]) << 8) | byte(add[2]);
   });
@@ -500,7 +499,7 @@ export const installNatives = (vm: Vm): void => {
     const given = args[0];
 
     if (at && given instanceof AsObject) {
-      const { mult, add } = placedColor(at);
+      const { mult, add } = getPlacedColor(at);
       const next = { mult: [...mult], add: [...add] } as typeof at.tint &
         object;
 
@@ -524,7 +523,7 @@ export const installNatives = (vm: Vm): void => {
       return undefined;
     }
 
-    const { mult, add } = placedColor(at);
+    const { mult, add } = getPlacedColor(at);
     const result = vm.object();
 
     CHANNELS.forEach(([m, a], channel) => {

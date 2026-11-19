@@ -5,12 +5,7 @@ import type { BigFileEntry } from '../../formats/big/bigFormat';
 import { delay } from '../../core/delay';
 import type { Archive } from './archive';
 import type { ArchiveSource } from './archiveSource';
-import {
-  findChild,
-  getFileNodes,
-  getRelativeEntryPath,
-  isArchiveRoot,
-} from './virtualNode';
+import { findChild, getFileNodes, getRelativeEntryPath, isArchiveRoot } from './virtualTree';
 import { getNodePath, parseNodeUri } from './nodeAddress';
 import type { ResolvedUri } from './nodeAddress';
 import type { VirtualNode } from './virtualNode';
@@ -20,6 +15,7 @@ export interface ArchiveChange {
   archivePath: string;
   rootPath: string;
   loaded?: boolean;
+  entries?: readonly string[];
 }
 
 export interface ArchiveDiscovery {
@@ -38,12 +34,13 @@ export interface ArchiveRegistry {
     archive: Archive,
     kind: ArchiveChange['type'],
     loaded?: boolean,
+    entries?: readonly string[],
   ): void;
   getArchiveRoots(): VirtualNode[];
   getArchivesOf(sourceId: string): readonly Archive[];
   getArchiveByPath(archivePath: string): Archive | undefined;
   resolveUri(uri: Uri): ResolvedUri | undefined;
-  getArchiveContext(uri: Uri): ResolvedUri;
+  requireResolvedUri(uri: Uri): ResolvedUri;
   getArchiveOf(node: VirtualNode): Archive;
   getNode(uri: Uri): VirtualNode | undefined;
   resolveNode(uri: Uri): Promise<VirtualNode | undefined>;
@@ -123,12 +120,13 @@ export const createArchiveRegistry = (
       disposed = true;
     },
 
-    fireChanged(archive, kind, loaded = false) {
+    fireChanged(archive, kind, loaded = false, entries) {
       onDidChangeArchive.fire({
         type: kind,
         archivePath: archive.archivePath,
         rootPath: archive.rootPath,
         ...(loaded && { loaded }),
+        ...(entries && { entries }),
       });
     },
 
@@ -158,7 +156,7 @@ export const createArchiveRegistry = (
       return parseNodeUri(uri, registry.archives.values());
     },
 
-    getArchiveContext(uri) {
+    requireResolvedUri(uri) {
       const resolved = registry.resolveUri(uri);
 
       if (!resolved) {

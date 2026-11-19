@@ -1,4 +1,4 @@
-import type { Tool } from '../../services/toolRegistry';
+import type { Tool } from '../../core/toolRegistry';
 import { decompressEar, isEarWrapped } from '../refpack/refpack';
 
 export interface RgbaImage {
@@ -353,7 +353,7 @@ const decodeBlockLevel = (
   return pixels;
 };
 
-const maskShape = (mask: number): { shift: number; max: number } => {
+const getMaskShape = (mask: number): { shift: number; max: number } => {
   if (!mask) {
     return { shift: 0, max: 0 };
   }
@@ -430,7 +430,7 @@ export const decodeDds = (wrapped: Uint8Array): DecodedTexture => {
     if (isCompressed) {
       pixels = decodeBlockLevel(bytes, cursor, levelWidth, levelHeight, fourCC);
     } else {
-      const shapes = masks.map(maskShape);
+      const shapes = masks.map(getMaskShape);
       const bytesPerPixel = bitCount / 8;
       const hasAlphaMask = (flags & DDPF_ALPHAPIXELS) !== 0 && masks[3] !== 0;
 

@@ -17,10 +17,10 @@ export interface NewAptFiles {
   dat: Uint8Array;
 }
 
-const latin1 = (text: string) =>
+const encodeLatin1 = (text: string) =>
   Uint8Array.from(text, (character) => character.charCodeAt(0));
 
-const emptyFrame = (image: AptImage) => image.appendWords([0, 0]);
+const appendEmptyFrame = (image: AptImage) => image.appendWords([0, 0]);
 
 export const createAptMovie = (movie: NewAptMovie): NewAptFiles => {
   const names = new Set<string>();
@@ -32,12 +32,12 @@ export const createAptMovie = (movie: NewAptMovie): NewAptFiles => {
     names.add(name);
   }
 
-  const image = new AptImage(latin1(APT_HEADER));
+  const image = new AptImage(encodeLatin1(APT_HEADER));
   const record = image.appendWords(new Array(15).fill(0));
   const characters = [record];
 
   for (let index = 0; index < movie.exports.length; index++) {
-    characters.push(image.appendWords([5, SIGNATURE, 1, emptyFrame(image), 0]));
+    characters.push(image.appendWords([5, SIGNATURE, 1, appendEmptyFrame(image), 0]));
   }
 
   const exports = movie.exports.flatMap((name, index) => [
@@ -49,7 +49,7 @@ export const createAptMovie = (movie: NewAptMovie): NewAptFiles => {
     9,
     SIGNATURE,
     1,
-    emptyFrame(image),
+    appendEmptyFrame(image),
     0,
     characters.length,
     image.appendWords(characters),
@@ -66,7 +66,7 @@ export const createAptMovie = (movie: NewAptMovie): NewAptFiles => {
   const constFile = new Uint8Array(0x20);
   const view = new DataView(constFile.buffer);
 
-  constFile.set(latin1(CONST_HEADER));
+  constFile.set(encodeLatin1(CONST_HEADER));
   view.setUint32(0x14, record, true);
   view.setUint32(0x18, 0, true);
   view.setUint32(0x1c, 0x20, true);
@@ -74,6 +74,6 @@ export const createAptMovie = (movie: NewAptMovie): NewAptFiles => {
   return {
     apt: image.bytes,
     constFile,
-    dat: latin1(DAT_HEADER + DAT_HEADER),
+    dat: encodeLatin1(DAT_HEADER + DAT_HEADER),
   };
 };

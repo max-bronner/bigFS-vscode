@@ -55,7 +55,7 @@ export class AptScripts
     this.subscriptions.forEach((subscription) => subscription.dispose());
   }
 
-  public static uriOf(
+  public static getScriptUri(
     document: AptDocument,
     block: number,
     label: string,
@@ -77,7 +77,7 @@ export class AptScripts
     block: number,
     label: string,
   ): Promise<vscode.Uri> {
-    const uri = AptScripts.uriOf(document, block, label);
+    const uri = AptScripts.getScriptUri(document, block, label);
 
     this.blocks.set(uri.toString(), [block]);
     await vscode.window.showTextDocument(
@@ -90,10 +90,10 @@ export class AptScripts
     return uri;
   }
 
-  public changed(document: AptDocument): void {
+  public notifyChanged(document: AptDocument): void {
     const events = [...this.blocks.keys()]
       .map((key) => vscode.Uri.parse(key))
-      .filter((uri) => this.target(uri).movie === document.uri.toString())
+      .filter((uri) => this.parseTarget(uri).movie === document.uri.toString())
       .map((uri) => ({ type: vscode.FileChangeType.Changed, uri }));
 
     if (events.length) {
@@ -101,7 +101,7 @@ export class AptScripts
     }
   }
 
-  private target(uri: vscode.Uri): { movie: string; blocks: number[] } {
+  private parseTarget(uri: vscode.Uri): { movie: string; blocks: number[] } {
     const query = new URLSearchParams(uri.query);
 
     return {
@@ -111,7 +111,7 @@ export class AptScripts
   }
 
   private resolve(uri: vscode.Uri): { document: AptDocument; block: number } {
-    const { movie, blocks } = this.target(uri);
+    const { movie, blocks } = this.parseTarget(uri);
     const document = this.host.document(movie);
     const block =
       document &&
@@ -134,7 +134,7 @@ export class AptScripts
     return { document, block };
   }
 
-  private script(uri: vscode.Uri) {
+  private decompileScript(uri: vscode.Uri) {
     const { document, block } = this.resolve(uri);
 
     return decompileBlock(
@@ -182,22 +182,22 @@ export class AptScripts
       type: vscode.FileType.File,
       ctime: 0,
       mtime: document.version,
-      size: encoder.encode(this.script(uri).text).length,
+      size: encoder.encode(this.decompileScript(uri).text).length,
       permissions:
-        this.script(uri).mode === 'listing'
+        this.decompileScript(uri).mode === 'listing'
           ? vscode.FilePermission.Readonly
           : undefined,
     };
   }
 
   public readFile(uri: vscode.Uri): Uint8Array {
-    return encoder.encode(this.script(uri).text);
+    return encoder.encode(this.decompileScript(uri).text);
   }
 
   public async writeFile(uri: vscode.Uri, content: Uint8Array): Promise<void> {
     const { document, block } = this.resolve(uri);
 
-    if (this.script(uri).mode === 'listing') {
+    if (this.decompileScript(uri).mode === 'listing') {
       throw vscode.FileSystemError.NoPermissions(
         'This block only shows as a listing and cannot be compiled back',
       );
@@ -213,7 +213,7 @@ export class AptScripts
     }
     const saved = await this.host.save(document, block, text);
 
-    this.blocks.set(uri.toString(), [...this.target(uri).blocks, saved]);
+    this.blocks.set(uri.toString(), [...this.parseTarget(uri).blocks, saved]);
     this.changes.fire([{ type: vscode.FileChangeType.Changed, uri }]);
   }
 

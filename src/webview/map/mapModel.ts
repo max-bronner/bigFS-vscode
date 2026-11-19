@@ -6,7 +6,7 @@ export const roundTo = (value: number): number => Math.round(value * 100) / 100;
 export const isWaypoint = (object: ObjectView): boolean =>
   object.template.toLowerCase() === '*waypoints/waypoint';
 
-export const nameOf = (object: ObjectView): string => {
+export const getObjectName = (object: ObjectView): string => {
   const entry = object.properties.find(
     (candidate) =>
       candidate.key === 'waypointName' || candidate.key === 'objectName',
@@ -16,9 +16,9 @@ export const nameOf = (object: ObjectView): string => {
 };
 
 export const isStart = (object: ObjectView): boolean =>
-  isWaypoint(object) && /^Player_\d+_Start$/i.test(nameOf(object));
+  isWaypoint(object) && /^Player_\d+_Start$/i.test(getObjectName(object));
 
-export const idOf = (object: ObjectView): number | undefined => {
+export const getWaypointId = (object: ObjectView): number | undefined => {
   const entry = object.properties.find(
     (candidate) => candidate.key === 'waypointID',
   );
@@ -34,7 +34,7 @@ export const waypointsById = (
   const found = new Map<number, ObjectView>();
 
   for (const object of objects) {
-    const id = isWaypoint(object) ? idOf(object) : undefined;
+    const id = isWaypoint(object) ? getWaypointId(object) : undefined;
 
     if (id !== undefined && !found.has(id)) {
       found.set(id, object);
@@ -43,10 +43,10 @@ export const waypointsById = (
   return found;
 };
 
-export const waypointLabel = (object: ObjectView): string =>
-  nameOf(object) || `#${idOf(object)}`;
+export const formatWaypointLabel = (object: ObjectView): string =>
+  getObjectName(object) || `#${getWaypointId(object)}`;
 
-export const ownerOf = (object: ObjectView): string => {
+export const getOwner = (object: ObjectView): string => {
   const entry = object.properties.find(
     (candidate) => candidate.key === 'originalOwner',
   );
@@ -82,7 +82,7 @@ export const parseValue = (
   return { type, value: text };
 };
 
-export const insidePolygon = (
+export const isInsidePolygon = (
   [x, y]: [number, number],
   points: readonly [number, number][],
 ): boolean => {
@@ -174,7 +174,7 @@ export const shadeRelief = (heights: HeightsView): Relief => {
   return { pixels, low, high };
 };
 
-export const turnedAngle = (angle: number, step: number): number => {
+export const turnAngle = (angle: number, step: number): number => {
   let turned = angle + step;
 
   while (turned > Math.PI) {
@@ -196,6 +196,6 @@ export const filterObjects = (
     (object) =>
       !text ||
       object.template.toLowerCase().includes(text) ||
-      nameOf(object).toLowerCase().includes(text),
+      getObjectName(object).toLowerCase().includes(text),
   );
 };

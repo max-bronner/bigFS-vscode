@@ -1,3 +1,4 @@
+import type { PlaySoundRequest, SoundReply } from '../../core/soundClip';
 import type { MapEdit } from '../../formats/map/mapEdit';
 import type {
   DictValue,
@@ -63,11 +64,11 @@ export interface MapNotice {
   message: string;
 }
 
-export type MapToPage = MapMessage | MapNotice;
+export type MapToPage = MapMessage | MapNotice | SoundReply;
 
 export type FromMapPage =
   | { kind: 'ready' }
   | { kind: 'edit'; edit: MapEdit }
-  | { kind: 'playSound'; name: string };
+  | PlaySoundRequest;
 
 export type DictOwner = Extract<MapEdit, { kind: 'dict' }>['owner'];

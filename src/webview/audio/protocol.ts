@@ -1,10 +1,5 @@
-export interface PlayMessage {
-  kind: 'play';
-  name: string;
-  mime: string;
-  data: string;
-}
+import type { PlaySoundRequest, SoundReply } from '../../core/soundClip';
 
-export type ToSoundPage = PlayMessage;
+export type ToSoundPage = SoundReply;
 
-export type FromSoundPage = { kind: 'ready' };
+export type FromSoundPage = { kind: 'ready' } | PlaySoundRequest;

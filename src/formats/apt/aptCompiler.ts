@@ -43,7 +43,7 @@ export class CompileError extends Error {}
 class ConstTable {
   public constructor(public readonly items: ConstItem[]) {}
 
-  public indexOf(value: string | number): number {
+  public getOrAddIndex(value: string | number): number {
     const found = this.items.findIndex((item) =>
       typeof value === 'string'
         ? item.kind === 'string' && item.value === value
@@ -90,7 +90,7 @@ class Lowering {
     return index >= 0 && index < 256 ? index : undefined;
   }
 
-  private string(text: string): void {
+  private pushString(text: string): void {
     const index = this.poolIndex(text);
 
     if (index === undefined) {
@@ -100,7 +100,7 @@ class Lowering {
     }
   }
 
-  private number(value: number): void {
+  private pushNumber(value: number): void {
     if (Number.isInteger(value) && !Object.is(value, -0)) {
       if (value === 0) {
         return this.emit('EA_PushZero');
@@ -126,8 +126,8 @@ class Lowering {
     this.emit('EA_PushFloat', Math.fround(value));
   }
 
-  private register(register: number): void {
-    const index = this.constants.indexOf(register);
+  private pushRegister(register: number): void {
+    const index = this.constants.getOrAddIndex(register);
     const last = this.out[this.out.length - 1];
 
     if (last && 'op' in last && last.op === 'PushData') {
@@ -137,21 +137,21 @@ class Lowering {
     }
   }
 
-  private count(args: Expr[]): void {
-    [...args].reverse().forEach((arg) => this.expr(arg));
-    this.number(args.length);
+  private pushArguments(args: Expr[]): void {
+    [...args].reverse().forEach((arg) => this.lowerExpr(arg));
+    this.pushNumber(args.length);
   }
 
-  public expr(expr: Expr): void {
+  public lowerExpr(expr: Expr): void {
     switch (expr.k) {
       case 'str':
-        return this.string(expr.v);
+        return this.pushString(expr.v);
       case 'num':
-        return this.number(expr.v);
+        return this.pushNumber(expr.v);
       case 'kw':
         return this.emit(KEYWORD_OPCODES[expr.v]);
       case 'reg':
-        return this.register(expr.n);
+        return this.pushRegister(expr.n);
       case 'var': {
         const index = this.poolIndex(expr.name);
 
@@ -160,11 +160,11 @@ class Lowering {
           : this.emit('EA_PushValueOfVar', index);
       }
       case 'eval':
-        this.expr(expr.name);
+        this.lowerExpr(expr.name);
 
         return this.emit('GetVariable');
       case 'member': {
-        this.expr(expr.obj);
+        this.lowerExpr(expr.obj);
 
         const index = this.poolIndex(expr.name);
 
@@ -173,8 +173,8 @@ class Lowering {
           : this.emit('EA_GetNamedMember', index);
       }
       case 'index':
-        this.expr(expr.obj);
-        this.expr(expr.key);
+        this.lowerExpr(expr.obj);
+        this.lowerExpr(expr.key);
 
         return this.emit('GetMember');
       case 'pop':
@@ -186,53 +186,53 @@ class Lowering {
           throw new CompileError(`Unknown operator ${expr.op}`);
         }
 
-        this.expr(expr.a);
-        this.expr(expr.b);
+        this.lowerExpr(expr.a);
+        this.lowerExpr(expr.b);
 
         return this.emit(op);
       }
       case 'not':
-        this.expr(expr.a);
+        this.lowerExpr(expr.a);
 
         return this.emit('LogicalNot');
       case 'intr':
-        return this.intrinsic(expr, true);
+        return this.lowerIntrinsic(expr, true);
       case 'call':
-        this.count(expr.args);
-        this.expr(expr.name);
+        this.pushArguments(expr.args);
+        this.lowerExpr(expr.name);
 
         return this.emit('CallFunction');
       case 'mcall':
-        this.count(expr.args);
-        this.expr(expr.obj);
-        this.expr(expr.name);
+        this.pushArguments(expr.args);
+        this.lowerExpr(expr.obj);
+        this.lowerExpr(expr.name);
 
         return this.emit('CallMethod');
       case 'new':
-        this.count(expr.args);
-        this.expr(expr.name);
+        this.pushArguments(expr.args);
+        this.lowerExpr(expr.name);
 
         return this.emit('New');
       case 'newm':
-        this.count(expr.args);
-        this.expr(expr.obj);
-        this.expr(expr.name);
+        this.pushArguments(expr.args);
+        this.lowerExpr(expr.obj);
+        this.lowerExpr(expr.name);
 
         return this.emit('NewMethod');
       case 'array':
-        this.count(expr.items);
+        this.pushArguments(expr.items);
 
         return this.emit('InitArray');
       case 'object':
         for (const [key, value] of [...expr.pairs].reverse()) {
-          this.expr(key);
-          this.expr(value);
+          this.lowerExpr(key);
+          this.lowerExpr(value);
         }
-        this.number(expr.pairs.length);
+        this.pushNumber(expr.pairs.length);
 
         return this.emit('InitObject');
       case 'setreg':
-        this.expr(expr.value);
+        this.lowerExpr(expr.value);
 
         return this.emit('SetRegister', expr.n);
       case 'func':
@@ -240,7 +240,7 @@ class Lowering {
     }
   }
 
-  private intrinsic(
+  private lowerIntrinsic(
     expr: Extract<Expr, { k: 'intr' }>,
     wantsValue: boolean,
   ): void {
@@ -262,11 +262,11 @@ class Lowering {
       throw new CompileError(`#${expr.op} leaves no value`);
     }
 
-    expr.args.forEach((arg) => this.expr(arg));
-    this.raw(expr.op, expr.operand);
+    expr.args.forEach((arg) => this.lowerExpr(arg));
+    this.emitRaw(expr.op, expr.operand);
   }
 
-  private raw(op: string, operand: Operand | undefined): void {
+  private emitRaw(op: string, operand: Operand | undefined): void {
     const opcode = OPCODE_BY_NAME.get(op);
 
     if (opcode === undefined) {
@@ -312,7 +312,7 @@ class Lowering {
   private define(def: FuncDef): void {
     const inner = new Lowering(this.constants, [...this.pool]);
 
-    inner.statements(def.body);
+    inner.lowerStatements(def.body);
     this.out.push({
       op: def.flags === undefined ? 'DefineFunction' : 'DefineFunction2',
       fn: {
@@ -328,26 +328,26 @@ class Lowering {
     const suffix = pops ? 'Pop' : '';
 
     if (call.k === 'call') {
-      this.count(call.args);
+      this.pushArguments(call.args);
 
       const index =
         call.name.k === 'str' ? this.poolIndex(call.name.v) : undefined;
 
       if (index === undefined) {
-        this.expr(call.name);
+        this.lowerExpr(call.name);
         this.emit(`EA_CallFunction${suffix}`);
       } else {
         this.emit(`EA_CallNamedFunction${suffix}`, index);
       }
     } else if (call.k === 'mcall') {
-      this.count(call.args);
-      this.expr(call.obj);
+      this.pushArguments(call.args);
+      this.lowerExpr(call.obj);
 
       const index =
         call.name.k === 'str' ? this.poolIndex(call.name.v) : undefined;
 
       if (index === undefined) {
-        this.expr(call.name);
+        this.lowerExpr(call.name);
         this.emit(`EA_CallMethod${suffix}`);
       } else {
         this.emit(`EA_CallNamedMethod${suffix}`, index);
@@ -357,11 +357,11 @@ class Lowering {
     }
   }
 
-  public statements(stmts: Stmt[]): void {
-    stmts.forEach((stmt) => this.statement(stmt));
+  public lowerStatements(stmts: Stmt[]): void {
+    stmts.forEach((stmt) => this.lowerStatement(stmt));
   }
 
-  private statement(stmt: Stmt): void {
+  private lowerStatement(stmt: Stmt): void {
     switch (stmt.k) {
       case 'expr':
         if (!stmt.isVoid && (stmt.e.k === 'call' || stmt.e.k === 'mcall')) {
@@ -369,20 +369,20 @@ class Lowering {
         }
 
         if (stmt.e.k === 'intr' && STACK_EFFECT[stmt.e.op]?.[1] === 0) {
-          return this.intrinsic(stmt.e, false);
+          return this.lowerIntrinsic(stmt.e, false);
         }
 
-        this.expr(stmt.e);
+        this.lowerExpr(stmt.e);
 
         return this.emit('Pop');
       case 'push':
-        return this.expr(stmt.e);
+        return this.lowerExpr(stmt.e);
       case 'assignCall':
-        this.expr(stmt.target);
+        this.lowerExpr(stmt.target);
 
         return this.fusedCall(stmt.call, false);
       case 'setvar':
-        this.string(stmt.name);
+        this.pushString(stmt.name);
 
         if (stmt.value.k === 'str') {
           return this.emit('EA_SetStringVar', stmt.value.v);
@@ -396,38 +396,38 @@ class Lowering {
           return this.emit('EA_ZeroVariable');
         }
 
-        this.expr(stmt.value);
+        this.lowerExpr(stmt.value);
 
         return this.emit('SetVariable');
       case 'setmember':
-        this.expr(stmt.obj);
-        this.expr(stmt.name);
+        this.lowerExpr(stmt.obj);
+        this.lowerExpr(stmt.name);
 
         if (stmt.value.k === 'str') {
           return this.emit('EA_SetStringMember', stmt.value.v);
         }
 
-        this.expr(stmt.value);
+        this.lowerExpr(stmt.value);
 
         return this.emit('SetMember');
       case 'local':
-        this.string(stmt.name);
+        this.pushString(stmt.name);
 
         if (stmt.value) {
-          this.expr(stmt.value);
+          this.lowerExpr(stmt.value);
 
           return this.emit('DefineLocal');
         }
 
         return this.emit('Var');
       case 'asm':
-        return this.raw(stmt.op, stmt.operand);
+        return this.emitRaw(stmt.op, stmt.operand);
       case 'goto':
         this.out.push({ op: 'BranchAlways', target: stmt.label });
 
         return;
       case 'if':
-        this.expr(stmt.cond);
+        this.lowerExpr(stmt.cond);
         this.out.push({
           op: stmt.unless ? 'EA_BranchIfFalse' : 'BranchIfTrue',
           target: stmt.label,
@@ -439,7 +439,7 @@ class Lowering {
 
         return;
       case 'return':
-        this.expr(stmt.e);
+        this.lowerExpr(stmt.e);
 
         return this.emit('Return');
       case 'func':
@@ -449,22 +449,22 @@ class Lowering {
 
         return this.emit(
           'ConstantPool',
-          stmt.items.map((item) => this.constants.indexOf(item)),
+          stmt.items.map((item) => this.constants.getOrAddIndex(item)),
         );
       case 'block': {
         const elseLabel = this.label();
 
-        this.expr(stmt.cond);
+        this.lowerExpr(stmt.cond);
         this.emit('LogicalNot');
         this.out.push({ op: 'BranchIfTrue', target: elseLabel });
-        this.statements(stmt.then);
+        this.lowerStatements(stmt.then);
 
         if (stmt.else) {
           const endLabel = this.label();
 
           this.out.push({ op: 'BranchAlways', target: endLabel });
           this.out.push({ label: elseLabel });
-          this.statements(stmt.else);
+          this.lowerStatements(stmt.else);
           this.out.push({ label: endLabel });
         } else {
           this.out.push({ label: elseLabel });
@@ -477,10 +477,10 @@ class Lowering {
         const end = this.label();
 
         this.out.push({ label: top });
-        this.expr(stmt.cond);
+        this.lowerExpr(stmt.cond);
         this.emit('LogicalNot');
         this.out.push({ op: 'BranchIfTrue', target: end });
-        this.statements(stmt.body);
+        this.lowerStatements(stmt.body);
         this.out.push({ op: 'BranchAlways', target: top });
         this.out.push({ label: end });
 
@@ -700,7 +700,7 @@ export const compileScript = (
 ): number => {
   const lowering = new Lowering(new ConstTable(constants), []);
 
-  lowering.statements(stmts);
+  lowering.lowerStatements(stmts);
   lowering.out.push({ op: 'End' });
 
   return new Encoder(image).encode(lowering.out);

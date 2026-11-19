@@ -9,7 +9,7 @@ export interface WebviewPage {
   styleSources?: string;
 }
 
-export const webviewPage = ({
+export const renderWebviewPage = ({
   style,
   body,
   script,

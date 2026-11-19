@@ -1,4 +1,4 @@
-﻿import {
+import {
   commands,
   window,
   workspace,
@@ -11,14 +11,9 @@ import type { CancellationToken, Progress } from 'vscode';
 import path from 'path';
 import { isContainedPath, splitPath } from '../../core/paths';
 import { resolveConflicts } from '../../platform/dialogs';
-import {
-  getFileNodes,
-  getRelativeEntryPath,
-  getTopLevelNodes,
-  isArchiveRoot,
-} from '../../services/archives/virtualNode';
+import { getFileNodes, getRelativeEntryPath, getTopLevelNodes, isArchiveRoot } from '../../services/archives/virtualTree';
 import { getNodeUri } from '../../services/archives/nodeAddress';
-import type { RegisterNodeCommand } from './commandCenter';
+import type { RegisterNodeCommand } from '../../services/archives/nodeCommands';
 import type { VirtualNode } from '../../services/archives/virtualNode';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
 
@@ -80,7 +75,7 @@ const exists = async (uri: Uri): Promise<boolean> => {
   }
 };
 
-const withoutRefusedFiles = async (
+const withoutSkippedFiles = async (
   extractedFiles: ExtractedFile[],
 ): Promise<ExtractedFile[]> => {
   const takenNames = new Set<string>();
@@ -128,7 +123,7 @@ const extractToDirectory = async (
     return undefined;
   }
 
-  const extractedFiles = await withoutRefusedFiles(
+  const extractedFiles = await withoutSkippedFiles(
     getExtractedFiles(nodes, targetDirectoryUri),
   );
 

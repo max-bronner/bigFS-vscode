@@ -1,5 +1,5 @@
-﻿import type { Event, LogOutputChannel, Uri } from 'vscode';
-import type { ConflictChoice } from '../../game/install/transferPlan';
+import type { Event, LogOutputChannel, Uri } from 'vscode';
+import type { ConflictChoice } from '../../core/transferPlan';
 import type { Archive } from './archive';
 import { createArchiveOperations } from './archiveOperations';
 import type {
@@ -15,8 +15,6 @@ import { createArchiveScanner } from './archiveScanner';
 import type { ArchiveScanner } from './archiveScanner';
 import type { ArchiveSource } from './archiveSource';
 import type { VirtualNode } from './virtualNode';
-
-export type { ArchiveChange, ImportedFile, TransferResult };
 
 export interface ArchiveModelOptions {
   readAhead?: boolean;
@@ -76,6 +74,10 @@ export class ArchiveModel {
 
   public isReadOnly(archive: Archive): boolean {
     return this.policy.isReadOnly(archive.sourceId);
+  }
+
+  public isSourceReadOnly(sourceId: string): boolean {
+    return this.policy.isReadOnly(sourceId);
   }
 
   public ensureWritable(uri: Uri): void {

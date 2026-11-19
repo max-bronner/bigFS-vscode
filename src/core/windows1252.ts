@@ -11,7 +11,22 @@ const UPPER_HALF = new Map(
 
 const CHUNK = 0x8000;
 
+const isAscii = (bytes: Uint8Array): boolean => {
+  for (let at = 0; at < bytes.length; at += 1) {
+    if (bytes[at] > 0x7f) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const asciiDecoder = new TextDecoder('utf-8');
+
 export const decodeWindows1252 = (bytes: Uint8Array): string => {
+  if (isAscii(bytes)) {
+    return asciiDecoder.decode(bytes);
+  }
+
   let text = '';
 
   for (let at = 0; at < bytes.length; at += CHUNK) {
@@ -51,7 +66,7 @@ export const encodeWindows1252 = (
     return replacement;
   });
 
-export const unencodableCharacters = (text: string): string[] => [
+export const findUnencodableCharacters = (text: string): string[] => [
   ...new Set(
     Array.from(text).filter(
       (char) => char.charCodeAt(0) >= 128 && !UPPER_HALF.has(char),

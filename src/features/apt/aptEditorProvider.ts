@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import type { ToolBox } from '../../services/toolRegistry';
+import { runLatest } from '../../core/runLatest';
+import type { ToolBox } from '../../core/toolRegistry';
 import type { EntryLocator } from '../../services/entryLocator';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
 import type { AptEdit, EditResult } from '../../formats/apt/writer/aptEdit';
@@ -137,7 +138,7 @@ export class AptEditorProvider
     return this.pagesReady.has(document);
   }
 
-  public shownImports(
+  public getShownImports(
     document: AptDocument,
   ): { unresolved: string[]; origins: Record<string, string> } | undefined {
     return this.imported.get(document);
@@ -226,7 +227,7 @@ export class AptEditorProvider
     const after = document.snapshot();
     const redraw = async () => {
       await this.redrawAll();
-      this.scriptTabs.changed(document);
+      this.scriptTabs.notifyChanged(document);
       this.textView.changed(document.uri);
     };
 
@@ -268,31 +269,57 @@ export class AptEditorProvider
 
     const sentTextures = new Set<string>();
     const sentMovies = new Map<string, string>();
-    const post = (message: ToPage) => panel.webview.postMessage(message);
+    let isDisposed = false;
+    let hasLoaded!: () => void;
+    const loaded = new Promise<void>((resolve) => (hasLoaded = resolve));
+    const post = async (message: ToPage): Promise<boolean> => {
+      await loaded;
+      return !isDisposed && (await panel.webview.postMessage(message));
+    };
+    const say = (text: string) => void post({ kind: 'progress', text });
+    let isDrawn = false;
 
-    this.redraws.set(document, async () => {
-      const message = await this.imports.movieMessage(
+    const redraw = runLatest(async () => {
+      const isFirst = !isDrawn;
+      const message = await this.imports.buildMovieMessage(
         document,
         sentTextures,
         sentMovies,
+        isFirst
+          ? { status: say, early: async (early) => void (await post(early)) }
+          : undefined,
       );
 
+      isDrawn = true;
       this.imported.set(document, {
         unresolved: message.unresolved,
         origins: message.origins,
       });
       await post(message);
-      await post({
-        kind: 'integrity',
-        problems: await checkAptDocument(
-          this.problems,
-          document,
-          message.unresolved,
-        ),
-      });
+      if (isFirst) {
+        say('Checking the movie…');
+      }
+
+      const problems = await checkAptDocument(
+        this.problems,
+        document,
+        message.unresolved,
+      );
+
+      await post({ kind: 'integrity', problems });
+      if (isFirst) {
+        say('');
+      }
     });
+
+    this.redraws.set(document, redraw);
     this.open.set(document.uri.toString(), document);
 
+    const firstDraw = redraw();
+
+    firstDraw.catch(() => undefined);
+
+    let isFirstReady = true;
     const subscription = panel.webview.onDidReceiveMessage((message) =>
       dispatchPageMessage(message, {
         document,
@@ -302,10 +329,17 @@ export class AptEditorProvider
         record: this.record,
         ready: async () => {
           this.pagesReady.add(document);
-          await this.redraws.get(document)?.();
+          hasLoaded();
+          if (isFirstReady) {
+            isFirstReady = false;
+            await firstDraw;
+          } else {
+            await redraw();
+          }
         },
         imports: this.imports,
         library: this.library,
+        tools: this.tools,
         game: this.game,
         locator: this.locator,
         scriptTabs: this.scriptTabs,
@@ -314,6 +348,8 @@ export class AptEditorProvider
     );
 
     panel.onDidDispose(() => {
+      isDisposed = true;
+      hasLoaded();
       subscription.dispose();
       this.redraws.delete(document);
       this.open.delete(document.uri.toString());

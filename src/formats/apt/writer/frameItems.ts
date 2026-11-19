@@ -1,7 +1,7 @@
 import type { AptMovie } from '../aptMovie';
 import { AptImage } from './aptImage';
 
-export const timelineFields = (
+export const getTimelineFields = (
   movie: AptMovie,
   timeline: number,
 ): { countAt: number; pointerAt: number } => {
@@ -21,7 +21,7 @@ export const addFrameItem = (
   frame: number,
   record: number[],
 ): void => {
-  const { countAt, pointerAt } = timelineFields(movie, timeline);
+  const { countAt, pointerAt } = getTimelineFields(movie, timeline);
   const frameCount = image.u32(countAt);
 
   if (frame < 0 || frame >= frameCount) {

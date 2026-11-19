@@ -3,8 +3,8 @@ import { parseW3dAnimations } from '../../formats/w3d/w3dAnimation';
 import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
 import {
   easeAnimation,
-  frameRateProblem,
-  rateAnimation,
+  describeFrameRateProblem,
+  setAnimationFrameRate,
   retimeAnimation,
   reverseAnimation,
   trimAnimation,
@@ -84,6 +84,36 @@ suite('W3D animation editing', () => {
     assert.ok(Math.abs(Math.hypot(...turned.subarray(4, 8)) - 1) < 1e-5);
   });
 
+  test('an edit reads a channel as playback does', () => {
+    const source: W3dAnimation = {
+      ...animation(),
+      frameCount: 2,
+      channels: [
+        {
+          pivot: 1,
+          kind: 'opacity',
+          type: 15,
+          values: new Float32Array([1, 0]),
+          present: new Uint8Array([1, 1]),
+          steps: new Uint8Array([1, 0]),
+        },
+        {
+          pivot: 2,
+          kind: 'x',
+          type: 0,
+          values: new Float32Array([8, 0]),
+          present: new Uint8Array([1, 0]),
+        },
+      ],
+    };
+    const [held, eased] = retimeAnimation(source, 3).channels;
+
+    assert.deepStrictEqual(Array.from(held.values), [1, 1, 0]);
+    assert.strictEqual(held.steps, undefined);
+    assert.deepStrictEqual(Array.from(eased.values), [8, 4, 0]);
+    assert.deepStrictEqual(Array.from(eased.present), [1, 1, 0]);
+  });
+
   test('written as an uncompressed animation, it reads back the same', () => {
     const [back] = parseW3dAnimations(
       writeW3dAnimation(retimeAnimation(animation(), 7)),
@@ -111,12 +141,12 @@ suite('W3D animation editing', () => {
   });
 
   test('a rate is a whole number of frames a second', () => {
-    assert.strictEqual(rateAnimation(animation(), 24).frameRate, 24);
-    assert.strictEqual(frameRateProblem(30), undefined);
+    assert.strictEqual(setAnimationFrameRate(animation(), 24).frameRate, 24);
+    assert.strictEqual(describeFrameRateProblem(30), undefined);
 
     for (const bad of [12.5, 0.4, 0, -5, 1001, NaN, Infinity]) {
       assert.throws(
-        () => rateAnimation(animation(), bad),
+        () => setAnimationFrameRate(animation(), bad),
         /whole number from 1 to 1000/,
         String(bad),
       );

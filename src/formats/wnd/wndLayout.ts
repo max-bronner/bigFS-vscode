@@ -209,7 +209,7 @@ export const parseWnd = (text: string): WndLayout => {
   return layout;
 };
 
-export const fieldOf = (
+export const findField = (
   window: { fields: WndField[] },
   key: string,
 ): WndField | undefined => {
@@ -222,7 +222,7 @@ export const fieldOf = (
   return undefined;
 };
 
-export const labelled = (value: string): [string, string[]][] => {
+export const splitLabelledItems = (value: string): [string, string[]][] => {
   const items: [string, string[]][] = [];
   const pattern = /"[^"]*"?|[^\s,:]+|:/g;
   const words = value.match(pattern) ?? [];
@@ -246,7 +246,7 @@ export const labelled = (value: string): [string, string[]][] => {
   return items;
 };
 
-const numbers = (values: string[] | undefined) =>
+const parseNumbers = (values: string[] | undefined) =>
   (values ?? []).map(Number).filter((value) => Number.isFinite(value));
 
 export type Rgba = [number, number, number, number];
@@ -259,16 +259,16 @@ export interface WndDrawItem {
 
 const unquote = (value: string) => value.trim().replace(/^"(.*)"$/, '$1');
 
-const rgba = (values: string[] | undefined): Rgba => {
-  const [r = 0, g = 0, b = 0, a = 0] = numbers(values);
+const parseRgba = (values: string[] | undefined): Rgba => {
+  const [r = 0, g = 0, b = 0, a = 0] = parseNumbers(values);
 
   return [r, g, b, a];
 };
 
-export const drawItems = (value: string): WndDrawItem[] => {
+export const readDrawItems = (value: string): WndDrawItem[] => {
   const items: WndDrawItem[] = [];
 
-  for (const [label, words] of labelled(value)) {
+  for (const [label, words] of splitLabelledItems(value)) {
     if (label === 'IMAGE') {
       const name = unquote(words[0] ?? '');
 
@@ -278,9 +278,9 @@ export const drawItems = (value: string): WndDrawItem[] => {
         border: [0, 0, 0, 0],
       });
     } else if (items.length && label === 'COLOR') {
-      items[items.length - 1].color = rgba(words);
+      items[items.length - 1].color = parseRgba(words);
     } else if (items.length && label === 'BORDERCOLOR') {
-      items[items.length - 1].border = rgba(words);
+      items[items.length - 1].border = parseRgba(words);
     }
   }
 
@@ -306,21 +306,21 @@ export const WND_STATES: readonly WndState[] = [
 
 type DrawData = ReadonlyMap<string, WndDrawItem[]>;
 
-const drawDataOf = (window: { fields: WndField[] }): DrawData => {
+const readDrawData = (window: { fields: WndField[] }): DrawData => {
   const data = new Map<string, WndDrawItem[]>();
 
   for (const field of window.fields) {
     const key = field.key.toUpperCase();
 
     if (key.endsWith('DRAWDATA')) {
-      data.set(key, drawItems(field.value));
+      data.set(key, readDrawItems(field.value));
     }
   }
 
   return data;
 };
 
-const partOf = (role: string, item: WndDrawItem | undefined) => {
+const buildParts = (role: string, item: WndDrawItem | undefined) => {
   if (!item) {
     return [];
   }
@@ -334,7 +334,7 @@ const partOf = (role: string, item: WndDrawItem | undefined) => {
     : [];
 };
 
-export const partsOf = (
+export const listWindowParts = (
   data: DrawData,
   type: string,
   state: WndState,
@@ -347,16 +347,16 @@ export const partsOf = (
 
   switch (type.toUpperCase()) {
     case 'CHECKBOX':
-      return partOf('box', slot(own, checked ? 2 : 1));
+      return buildParts('box', slot(own, checked ? 2 : 1));
     case 'HORZSLIDER':
     case 'VERTSLIDER':
       return [
-        ...partOf('bar-filled', slot('DISABLEDDRAWDATA', 0)),
-        ...partOf('bar-empty', slot('DISABLEDDRAWDATA', 1)),
+        ...buildParts('bar-filled', slot('DISABLEDDRAWDATA', 0)),
+        ...buildParts('bar-empty', slot('DISABLEDDRAWDATA', 1)),
         ...(state === 'hilite'
-          ? partOf('outline', slot('HILITEDRAWDATA', 0))
+          ? buildParts('outline', slot('HILITEDRAWDATA', 0))
           : []),
-        ...partOf('thumb', slot(`SLIDERTHUMB${pointer}DRAWDATA`, 0)),
+        ...buildParts('thumb', slot(`SLIDERTHUMB${pointer}DRAWDATA`, 0)),
       ];
     case 'SCROLLLISTBOX': {
       const body = `${pointer}DRAWDATA`;
@@ -364,26 +364,26 @@ export const partsOf = (
       const selected = slot(body, 1);
 
       return [
-        ...partOf('body', slot(body, 0)),
-        ...partOf(
+        ...buildParts('body', slot(body, 0)),
+        ...buildParts(
           'selection',
           selected && { ...selected, image: slot(body, 3)?.image },
         ),
-        ...partOf('up', slot(`LISTBOX${pointer}UPBUTTONDRAWDATA`, 0)),
-        ...partOf('down', slot(`LISTBOX${pointer}DOWNBUTTONDRAWDATA`, 0)),
-        ...partOf('track', slot('LISTBOXENABLEDSLIDERDRAWDATA', 0)),
-        ...partOf('thumb-top', slot(thumb, 0)),
-        ...partOf('thumb-middle', slot(thumb, 5)),
-        ...partOf('thumb-bottom', slot(thumb, 6)),
+        ...buildParts('up', slot(`LISTBOX${pointer}UPBUTTONDRAWDATA`, 0)),
+        ...buildParts('down', slot(`LISTBOX${pointer}DOWNBUTTONDRAWDATA`, 0)),
+        ...buildParts('track', slot('LISTBOXENABLEDSLIDERDRAWDATA', 0)),
+        ...buildParts('thumb-top', slot(thumb, 0)),
+        ...buildParts('thumb-middle', slot(thumb, 5)),
+        ...buildParts('thumb-bottom', slot(thumb, 6)),
       ];
     }
     case 'COMBOBOX':
       return [
-        ...partOf('body', slot(own, 0)),
-        ...partOf('button', slot(`COMBOBOXDROPDOWNBUTTON${word}DRAWDATA`, 0)),
+        ...buildParts('body', slot(own, 0)),
+        ...buildParts('button', slot(`COMBOBOXDROPDOWNBUTTON${word}DRAWDATA`, 0)),
       ];
     default:
-      return partOf('body', slot(own, 0));
+      return buildParts('body', slot(own, 0));
   }
 };
 
@@ -422,35 +422,35 @@ const hasFlag = (field: WndField | undefined, flag: string) =>
 const overlaps = (a: number[], b: number[]) =>
   a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
 
-const boxOf = (window: WndWindow, options: BoxOptions): WndBox => {
-  const rect = fieldOf(window, 'SCREENRECT');
-  const items = new Map(rect ? labelled(rect.value) : []);
-  const upperLeft = numbers(items.get('UPPERLEFT'));
-  const bottomRight = numbers(items.get('BOTTOMRIGHT'));
-  const resolution = numbers(items.get('CREATIONRESOLUTION'));
-  const type = fieldOf(window, 'WINDOWTYPE')?.value.trim() ?? '';
-  const data = drawDataOf(window);
+const toBox = (window: WndWindow, options: BoxOptions): WndBox => {
+  const rect = findField(window, 'SCREENRECT');
+  const items = new Map(rect ? splitLabelledItems(rect.value) : []);
+  const upperLeft = parseNumbers(items.get('UPPERLEFT'));
+  const bottomRight = parseNumbers(items.get('BOTTOMRIGHT'));
+  const resolution = parseNumbers(items.get('CREATIONRESOLUTION'));
+  const type = findField(window, 'WINDOWTYPE')?.value.trim() ?? '';
+  const data = readDrawData(window);
   const looks: WndBox['looks'] = {};
 
   for (const state of WND_STATES) {
-    looks[state] = partsOf(data, type, state);
+    looks[state] = listWindowParts(data, type, state);
 
     if (type.toUpperCase() === 'CHECKBOX') {
-      looks[`${state}+checked`] = partsOf(data, type, state, true);
+      looks[`${state}+checked`] = listWindowParts(data, type, state, true);
     }
   }
 
-  const font = fieldOf(window, 'FONT');
-  const fontItems = new Map(font ? labelled(font.value) : []);
-  const fontSize = numbers(fontItems.get('SIZE'))[0];
-  const colors = fieldOf(window, 'TEXTCOLOR');
-  const colorItems = new Map(colors ? labelled(colors.value) : []);
-  const text = fieldOf(window, 'TEXT');
+  const font = findField(window, 'FONT');
+  const fontItems = new Map(font ? splitLabelledItems(font.value) : []);
+  const fontSize = parseNumbers(fontItems.get('SIZE'))[0];
+  const colors = findField(window, 'TEXTCOLOR');
+  const colorItems = new Map(colors ? splitLabelledItems(colors.value) : []);
+  const text = findField(window, 'TEXT');
   const written = text && unquote(text.value);
   const enabled = looks.enabled ?? [];
 
   return {
-    name: unquote(fieldOf(window, 'NAME')?.value ?? ''),
+    name: unquote(findField(window, 'NAME')?.value ?? ''),
     type,
     rect:
       upperLeft.length >= 2 && bottomRight.length >= 2
@@ -461,21 +461,21 @@ const boxOf = (window: WndWindow, options: BoxOptions): WndBox => {
     text: written,
     shown:
       written === undefined ? undefined : (options.text?.(written) ?? written),
-    hidden: hasFlag(fieldOf(window, 'STATUS'), 'HIDDEN'),
+    hidden: hasFlag(findField(window, 'STATUS'), 'HIDDEN'),
     font:
       font && fontSize
         ? {
             name: unquote(fontItems.get('NAME')?.[0] ?? ''),
             size: fontSize,
-            bold: numbers(fontItems.get('BOLD'))[0] > 0,
+            bold: parseNumbers(fontItems.get('BOLD'))[0] > 0,
           }
         : undefined,
     textColors: colors && {
-      enabled: rgba(colorItems.get('ENABLED')),
-      hilite: rgba(colorItems.get('HILITE')),
-      disabled: rgba(colorItems.get('DISABLED')),
+      enabled: parseRgba(colorItems.get('ENABLED')),
+      hilite: parseRgba(colorItems.get('HILITE')),
+      disabled: parseRgba(colorItems.get('DISABLED')),
     },
-    wrapCentered: hasFlag(fieldOf(window, 'STATUS'), 'WRAP_CENTERED'),
+    wrapCentered: hasFlag(findField(window, 'STATUS'), 'WRAP_CENTERED'),
     looks,
     color: enabled.find((part) => part.color)?.color,
     image: enabled.find((part) => part.image)?.image,
@@ -523,7 +523,7 @@ export const toBoxes = (
   parent?: WndBox,
 ): WndBox[] =>
   windows.map((window) => {
-    const box = boxOf(window, options);
+    const box = toBox(window, options);
 
     settle(box, parent);
     box.children = toBoxes(window.children, options, box);

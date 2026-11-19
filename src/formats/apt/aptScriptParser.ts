@@ -217,7 +217,7 @@ export const parseScript = (source: string): Stmt[] => {
     return fail(`Expected a name but found ${token.text}`, token);
   };
 
-  const register = (text: string) => /^\$r\d+$/.test(text);
+  const isRegisterName = (text: string) => /^\$r\d+$/.test(text);
 
   const operand = (): Operand => {
     const token = peek();
@@ -309,7 +309,7 @@ export const parseScript = (source: string): Stmt[] => {
 
       if (
         peek().kind === 'name' &&
-        register(peek().text) &&
+        isRegisterName(peek().text) &&
         peek(1).kind !== 'punct'
       ) {
         paramRegister = Number(next().text.slice(2));
@@ -454,7 +454,7 @@ export const parseScript = (source: string): Stmt[] => {
       return { k: 'kw', v: text as Keyword };
     }
 
-    if (register(text)) {
+    if (isRegisterName(text)) {
       return { k: 'reg', n: Number(text.slice(2)) };
     }
 

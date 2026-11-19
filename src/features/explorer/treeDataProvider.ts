@@ -1,4 +1,4 @@
-﻿import type { Event } from 'vscode';
+import type { Event } from 'vscode';
 import { settings } from '../../platform/settings';
 import {
   TreeItem,
@@ -9,26 +9,29 @@ import {
   FileType,
 } from 'vscode';
 import { formatCount } from '../../core/messages';
-import { countFileNodes, isArchiveRoot } from '../../services/archives/virtualNode';
+import { countFileNodes, isArchiveRoot } from '../../services/archives/virtualTree';
 import { getNodePath, getNodeUri } from '../../services/archives/nodeAddress';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
 import type { VirtualNode } from '../../services/archives/virtualNode';
 import {
-  isFolderNode,
+  isFolderRow,
   isGameRow,
-  isSourceNode,
+  isSourceRow,
   isVirtualNode,
 } from '../../services/archives/explorerRow';
-import type { ExplorerNode, FolderNode, GameRow } from '../../services/archives/explorerRow';
+import type { ExplorerRow, FolderRow, GameRow } from '../../services/archives/explorerRow';
 import { GameViewModel } from '../../services/archives/gameViewModel';
 import { getGameFiles } from '../../game/install/gameView';
+import { getContextValue } from './getContextValue';
+import { getParentRow } from './getParentRow';
+import { isReadOnlySource } from '../../services/archives/sourceAccess';
 
 const nameCollator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: 'base',
 });
 
-const compareRows = (a: ExplorerNode, b: ExplorerNode): number => {
+const compareRows = (a: ExplorerRow, b: ExplorerRow): number => {
   const aIsBranch = isBranch(a);
   const bIsBranch = isBranch(b);
 
@@ -36,22 +39,20 @@ const compareRows = (a: ExplorerNode, b: ExplorerNode): number => {
     return aIsBranch ? -1 : 1;
   }
 
-  return nameCollator.compare(rowName(a), rowName(b));
+  return nameCollator.compare(getRowName(a), getRowName(b));
 };
 
-const isBranch = (element: ExplorerNode): boolean =>
+const isBranch = (element: ExplorerRow): boolean =>
   isGameRow(element)
     ? Boolean(element.node.children)
     : !isVirtualNode(element) || element.type === FileType.Directory;
 
-const rowName = (element: ExplorerNode): string =>
-  isSourceNode(element)
+const getRowName = (element: ExplorerRow): string =>
+  isSourceRow(element)
     ? element.source.label
     : isGameRow(element)
       ? element.node.name
       : element.name;
-
-const READ_ONLY_SUFFIX = 'ReadOnly';
 
 export const isGameViewShown = (): boolean =>
   settings.explorerView.get() === 'game';
@@ -65,7 +66,7 @@ const createGameItem = (
 
     item.id = `game:/${node.path}`;
     item.iconPath = ThemeIcon.Folder;
-    item.contextValue = 'bigGameFolder';
+    item.contextValue = getContextValue('gameFolder');
     item.description = `(${formatCount(getGameFiles(node).length, 'file')})`;
 
     return item;
@@ -88,14 +89,14 @@ const createGameItem = (
   ].join('\n');
   item.contextValue =
     winner.ref.kind === 'entry'
-      ? `bigFile${isReadOnly(winner.ref.node) ? READ_ONLY_SUFFIX : ''}`
-      : 'bigLooseFile';
+      ? getContextValue('file', isReadOnly(winner.ref.node))
+      : getContextValue('looseFile');
   item.command = { command: 'vscode.open', title: 'Open', arguments: [uri] };
 
   return item;
 };
 
-const sortRows = (rows: ExplorerNode[]): ExplorerNode[] =>
+const sortRows = (rows: ExplorerRow[]): ExplorerRow[] =>
   rows.sort(compareRows);
 
 export class BigTreeItem extends TreeItem {
@@ -107,14 +108,12 @@ export class BigTreeItem extends TreeItem {
   ) {
     super(node.name, collapsibleState);
 
-    const suffix = isReadOnly ? READ_ONLY_SUFFIX : '';
-
     this.id = getNodePath(node);
     this.resourceUri = getNodeUri(node);
     this.tooltip = getNodePath(node);
 
     if (node.type === FileType.File) {
-      this.contextValue = `bigFile${suffix}`;
+      this.contextValue = getContextValue('file', isReadOnly);
       this.command = {
         command: 'vscode.open',
         title: 'Open',
@@ -124,7 +123,10 @@ export class BigTreeItem extends TreeItem {
       return;
     }
 
-    this.contextValue = `${isArchiveRoot(node) ? 'bigArchive' : 'bigFolder'}${suffix}`;
+    this.contextValue = getContextValue(
+      isArchiveRoot(node) ? 'archive' : 'folder',
+      isReadOnly,
+    );
 
     if (isLoaded) {
       this.description = `(${formatCount(countFileNodes(node), 'file')})`;
@@ -132,10 +134,11 @@ export class BigTreeItem extends TreeItem {
   }
 }
 
-export class BigTreeDataProvider implements TreeDataProvider<ExplorerNode> {
-  private _onDidChangeTreeData: EventEmitter<ExplorerNode | undefined | void> =
-    new EventEmitter<ExplorerNode | undefined | void>();
-  readonly onDidChangeTreeData: Event<ExplorerNode | undefined | void> =
+export class BigTreeDataProvider implements TreeDataProvider<ExplorerRow> {
+  private _onDidChangeTreeData: EventEmitter<ExplorerRow | undefined | void> =
+    new EventEmitter<ExplorerRow | undefined | void>();
+
+  readonly onDidChangeTreeData: Event<ExplorerRow | undefined | void> =
     this._onDidChangeTreeData.event;
 
   constructor(
@@ -166,8 +169,8 @@ export class BigTreeDataProvider implements TreeDataProvider<ExplorerNode> {
     this._onDidChangeTreeData.fire();
   }
 
-  getTreeItem(element: ExplorerNode): TreeItem {
-    if (isSourceNode(element)) {
+  getTreeItem(element: ExplorerRow): TreeItem {
+    if (isSourceRow(element)) {
       const item = new TreeItem(
         element.source.label,
         TreeItemCollapsibleState.Expanded,
@@ -176,12 +179,15 @@ export class BigTreeDataProvider implements TreeDataProvider<ExplorerNode> {
       item.id = `/${element.source.id}`;
       item.iconPath = new ThemeIcon('root-folder');
       item.resourceUri = element.source.baseUri;
-      item.contextValue = 'bigSource';
+      item.contextValue = getContextValue(
+        'source',
+        isReadOnlySource(element.source),
+      );
 
       return item;
     }
 
-    if (isFolderNode(element)) {
+    if (isFolderRow(element)) {
       const item = new TreeItem(
         element.name,
         TreeItemCollapsibleState.Collapsed,
@@ -189,7 +195,10 @@ export class BigTreeDataProvider implements TreeDataProvider<ExplorerNode> {
 
       item.id = `/${element.sourceId}/${element.path}`;
       item.iconPath = ThemeIcon.Folder;
-      item.contextValue = 'bigDiskFolder';
+      item.contextValue = getContextValue(
+        'diskFolder',
+        this.archiveModel.isSourceReadOnly(element.sourceId),
+      );
 
       return item;
     }
@@ -210,7 +219,11 @@ export class BigTreeDataProvider implements TreeDataProvider<ExplorerNode> {
     );
   }
 
-  async getChildren(element?: ExplorerNode): Promise<ExplorerNode[]> {
+  getParent(element: ExplorerRow): Promise<ExplorerRow | undefined> {
+    return getParentRow(element, this.archiveModel, this.gameView);
+  }
+
+  async getChildren(element?: ExplorerRow): Promise<ExplorerRow[]> {
     if (!element && isGameViewShown()) {
       return this.listGameRows(await this.gameView.getRoot());
     }
@@ -221,7 +234,7 @@ export class BigTreeDataProvider implements TreeDataProvider<ExplorerNode> {
       const sources = this.archiveModel.getSources();
 
       return sources.length === 1
-        ? this.listIn(sources[0].id, '')
+        ? this.listFolderRows(sources[0].id, '')
         : sortRows(sources.map((source) => ({ kind: 'source', source })));
     }
 
@@ -229,12 +242,12 @@ export class BigTreeDataProvider implements TreeDataProvider<ExplorerNode> {
       return this.listGameRows(element.node);
     }
 
-    if (isSourceNode(element)) {
-      return this.listIn(element.source.id, '');
+    if (isSourceRow(element)) {
+      return this.listFolderRows(element.source.id, '');
     }
 
-    if (isFolderNode(element)) {
-      return this.listIn(element.sourceId, element.path);
+    if (isFolderRow(element)) {
+      return this.listFolderRows(element.sourceId, element.path);
     }
 
     if (element.type !== FileType.Directory) {
@@ -248,7 +261,7 @@ export class BigTreeDataProvider implements TreeDataProvider<ExplorerNode> {
     return sortRows(Array.from(element.children?.values() ?? []));
   }
 
-  private listGameRows(node: GameRow['node']): ExplorerNode[] {
+  private listGameRows(node: GameRow['node']): ExplorerRow[] {
     return sortRows(
       Array.from(node.children?.values() ?? [], (child) => ({
         kind: 'game' as const,
@@ -257,10 +270,10 @@ export class BigTreeDataProvider implements TreeDataProvider<ExplorerNode> {
     );
   }
 
-  private listIn(sourceId: string, directoryPath: string): ExplorerNode[] {
+  private listFolderRows(sourceId: string, directoryPath: string): ExplorerRow[] {
     const prefix = directoryPath ? `${directoryPath}/` : '';
-    const folders = new Map<string, FolderNode>();
-    const rows: ExplorerNode[] = [];
+    const folders = new Map<string, FolderRow>();
+    const rows: ExplorerRow[] = [];
 
     for (const archive of this.archiveModel.getArchivesOf(sourceId)) {
       if (!archive.pathInSource.startsWith(prefix)) {

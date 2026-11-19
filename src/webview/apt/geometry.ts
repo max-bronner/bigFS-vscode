@@ -3,16 +3,16 @@ import { getVsCodeApi } from '../shared/vscodeApi';
 import type { FromPage } from './protocol';
 
 import { absoluteOf } from './edit';
-import type { Instance } from './player';
+import type { Instance } from './instance';
 import { apply, invert, multiply } from './scene';
 import type { Affine } from './scene';
 import {
   addTool,
-  inspected,
-  pixelSize,
+  getInspectedInstance,
+  getPixelSize,
   play,
   render,
-  sceneLeaves,
+  getSceneLeaves,
   view,
 } from './stage';
 import { state } from './state';
@@ -40,7 +40,7 @@ let drag: Drag | undefined;
 const cloneRuns = (runs: RuRun[]): RuRun[] => structuredClone(runs);
 
 const editableShape = (): Instance | undefined => {
-  const instance = inspected();
+  const instance = getInspectedInstance();
 
   return view.wireframe &&
     instance?.character?.type === 'shape' &&
@@ -71,7 +71,7 @@ const vertexAt = (
   point: [number, number],
 ): VertexRef[] | undefined => {
   const matrix = absoluteOf(shape);
-  const reach = (VERTEX + 2) * pixelSize();
+  const reach = (VERTEX + 2) * getPixelSize();
 
   for (const [key, refs] of vertices(shape.movie.shapes[shape.id] ?? [])) {
     const [x, y] = apply(
@@ -87,7 +87,7 @@ const vertexAt = (
 };
 
 const leavesOf = (instance: Instance) =>
-  sceneLeaves().filter((leaf) => {
+  getSceneLeaves().filter((leaf) => {
     for (let at: Instance | undefined = leaf.instance; at; at = at.parent) {
       if (at === instance) {
         return true;
@@ -147,7 +147,7 @@ addTool({
     drag = undefined;
   },
   draw(ctx, pixel) {
-    const instance = inspected();
+    const instance = getInspectedInstance();
 
     if (!view.wireframe || !instance) {
       return;

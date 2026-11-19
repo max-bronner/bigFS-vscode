@@ -18,4 +18,4 @@ export const recordPackedArchive = (archivePath: string): void => {
   void store?.update(KEY, [...outputs]);
 };
 
-export const packedArchives = (): ReadonlySet<string> => outputs;
+export const getPackedArchives = (): ReadonlySet<string> => outputs;

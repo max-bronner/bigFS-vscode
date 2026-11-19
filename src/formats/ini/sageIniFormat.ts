@@ -80,7 +80,7 @@ export const editDistance = (a: string, b: string): number => {
   return previous[b.length];
 };
 
-export const closestNames = (
+export const findClosestNames = (
   name: string,
   candidates: readonly string[],
   limit = 3,
@@ -102,7 +102,7 @@ export const closestNames = (
     .map(({ candidate }) => candidate);
 };
 
-export const missingEndLine = (lines: string[], headerLine: number): number => {
+export const findMissingEndLine = (lines: string[], headerLine: number): number => {
   const indent = (line: string) => line.length - line.trimStart().length;
   const headerIndent = indent(lines[headerLine]);
   let last = headerLine;

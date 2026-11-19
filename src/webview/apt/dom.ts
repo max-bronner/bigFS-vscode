@@ -9,17 +9,17 @@ export const escapeHtml = (text: string): string =>
 
 export type InputKind = 'number' | 'text' | 'line' | 'hex';
 
-export function input(
+export function createInput(
   value: unknown,
   onCommit: (value: number) => void,
   kind?: 'number' | 'hex',
 ): HTMLInputElement;
-export function input(
+export function createInput(
   value: unknown,
   onCommit: (value: string) => void,
   kind: 'text' | 'line',
 ): HTMLInputElement | HTMLTextAreaElement;
-export function input(
+export function createInput(
   value: unknown,
   onCommit: (value: never) => void,
   kind: InputKind = 'number',
@@ -57,7 +57,7 @@ export function input(
   return element;
 }
 
-export const row = (label: string, ...controls: Node[]): HTMLDivElement => {
+export const createRow = (label: string, ...controls: Node[]): HTMLDivElement => {
   const element = document.createElement('div');
   const name = document.createElement('label');
 
@@ -67,7 +67,7 @@ export const row = (label: string, ...controls: Node[]): HTMLDivElement => {
   return element;
 };
 
-export const button = (
+export const createButton = (
   label: string,
   onClick: () => void,
 ): HTMLButtonElement => {
@@ -78,7 +78,7 @@ export const button = (
   return element;
 };
 
-export const heading = (text: string): HTMLHeadingElement => {
+export const createHeading = (text: string): HTMLHeadingElement => {
   const element = document.createElement('h3');
 
   element.textContent = text;

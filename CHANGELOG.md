@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (pre-release)
+
+First Marketplace release, published as a pre-release.
 
 - Fix: INI reference checking is keyed by block and field. `Object`, `ChildObject` and `ObjectReskin` are one namespace and a `ChildObject` header's parent is a reference; `#define` bodies are indexed so rename and find references follow a name through macros; macro chains of any depth evaluate and only a real cycle is reported; flags, `Filename`, cursor images and the auto-resolve tables are not references; `ParticleSysBone` checks its particle system only; nested `Region` and `RadiusCursorTemplate` blocks are definitions; a SCREAMING_SNAKE value is skipped case-sensitively; rename edits unsaved documents; a UTF-8 byte order mark no longer starts the first INI or STR line (reference rules ported from mint's `ini` crate). Particle fields that listed `FXParticleSystem` alone (`ParticleSysBone`, `WadingParticleSys`, `PerParticleAttachedSystem`) also resolve old-format `ParticleSystem` blocks.
 

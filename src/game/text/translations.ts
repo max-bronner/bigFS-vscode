@@ -36,7 +36,7 @@ const CSF_LANGUAGES = [
   'chinese',
 ];
 
-export const languageOf = (path: string, csfLanguage?: number): string => {
+export const detectTableLanguage = (path: string, csfLanguage?: number): string => {
   const segments = path
     .toLowerCase()
     .split(/[\\/]/)
@@ -71,7 +71,7 @@ export interface LanguageGap {
   missing: { label: string; text: string; from: string }[];
 }
 
-export const translationGaps = (tables: StringTable[]): LanguageGap[] => {
+export const findTranslationGaps = (tables: StringTable[]): LanguageGap[] => {
   const languages = new Map<string, StringTable[]>();
 
   for (const table of tables) {
@@ -117,7 +117,7 @@ export interface UndefinedLabel {
   usedIn: string;
 }
 
-export const undefinedLabels = (
+export const findUndefinedLabels = (
   used: ReadonlyMap<string, { label: string; usedIn: string }>,
   tables: readonly StringTable[],
 ): UndefinedLabel[] =>

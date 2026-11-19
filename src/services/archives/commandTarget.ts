@@ -2,9 +2,9 @@ import { Uri } from 'vscode';
 import type { TreeItem } from 'vscode';
 import { getNodeUri } from './nodeAddress';
 import { isGameRow, isVirtualNode } from './explorerRow';
-import type { ExplorerNode } from './explorerRow';
+import type { ExplorerRow } from './explorerRow';
 
-export type CommandTarget = Uri | TreeItem | ExplorerNode | undefined;
+export type CommandTarget = Uri | TreeItem | ExplorerRow | undefined;
 
 export const toUri = (target: unknown): Uri | undefined => {
   if (!target || typeof target !== 'object') {
@@ -14,7 +14,7 @@ export const toUri = (target: unknown): Uri | undefined => {
     return target;
   }
 
-  const element = target as ExplorerNode;
+  const element = target as ExplorerRow;
 
   if (isVirtualNode(element)) {
     return getNodeUri(element);

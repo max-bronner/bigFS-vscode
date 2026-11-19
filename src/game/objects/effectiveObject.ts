@@ -30,9 +30,9 @@ const MODULE_WRAPPERS = ['addmodule', 'inheritablemodule'];
 
 const lower = (text: string | undefined) => text?.toLowerCase() ?? '';
 
-const bare = (line: string) => line.replace(/\s*(;|\/\/).*$/, '').trimEnd();
+const stripLineComment = (line: string) => line.replace(/\s*(;|\/\/).*$/, '').trimEnd();
 
-const entriesOf = (
+const readOwnEntries = (
   step: LineageStep,
 ): { entries: Entry[]; removals: string[]; replacements: string[] } => {
   const entries: Entry[] = [];
@@ -63,7 +63,7 @@ const entriesOf = (
       );
     } else if (keyword === 'replacemodule') {
       const tag = /^\s*\S+\s+(\S+)/.exec(
-        bare(step.lines[block.startLine]),
+        stripLineComment(step.lines[block.startLine]),
       )?.[1];
 
       if (tag) {
@@ -102,7 +102,7 @@ const entriesOf = (
     add(statement.line, {
       kind: 'field',
       keyword: statement.keyword.text,
-      text: bare(step.lines[statement.line]).trim(),
+      text: stripLineComment(step.lines[statement.line]).trim(),
       from: step.name,
     });
   }
@@ -113,7 +113,7 @@ const entriesOf = (
   return { entries, removals, replacements };
 };
 
-const valuesOf = (fieldText: string) =>
+const splitFieldValues = (fieldText: string) =>
   fieldText
     .replace(/^[^=]*=\s*/, '')
     .split(/\s+/)
@@ -142,7 +142,7 @@ export const composeLineage = (
   let entries: Entry[] = [];
 
   lineage.forEach((step, depth) => {
-    const own = entriesOf(step);
+    const own = readOwnEntries(step);
 
     if (depth === 0) {
       entries = own.entries;
@@ -164,15 +164,15 @@ export const composeLineage = (
             each.kind === 'field' &&
             lower(each.keyword) === lower(entry.keyword),
         );
-        const values = valuesOf(entry.text);
-        const edits =
+        const values = splitFieldValues(entry.text);
+        const isBitEdit =
           values.length > 0 && values.every((value) => /^[+-]\S/.test(value));
 
         if (at < 0) {
           entries.push({ ...entry, note: 'added' });
-        } else if (edits) {
+        } else if (isBitEdit) {
           const inherited = entries[at] as FieldEntry;
-          const result = editBits(valuesOf(inherited.text), values);
+          const result = editBits(splitFieldValues(inherited.text), values);
 
           entries[at] = {
             ...entry,
@@ -184,7 +184,7 @@ export const composeLineage = (
 
           entries[at] = {
             ...entry,
-            note: `was ${valuesOf(inherited.text).join(' ')} in ${inherited.from}`,
+            note: `was ${splitFieldValues(inherited.text).join(' ')} in ${inherited.from}`,
           };
         }
         continue;

@@ -1,28 +1,23 @@
+import { answerSoundRequest } from '../../platform/webview/answerSoundRequest';
 import * as vscode from 'vscode';
 import { readWorkspaceText } from '../../services/ini/workspaceText';
 import type { EntryLocator } from '../../services/entryLocator';
-import {
-  applyValueEdits,
-  findParticleDefinitions,
-  numericFields,
-  readFxList,
-  readParticleDef,
-  valueEdits,
-} from '../../formats/particles/particleIni';
-import type {
-  FxListDef,
-  IniDefinition,
-  ParticleDef,
-} from '../../formats/particles/particleIni';
-import { keyEdits } from '../../formats/particles/particleKeys';
+import { applyValueEdits, findNumericFields, computeValueEdits } from '../../formats/particles/particleValueEdits';
+import { findParticleDefinitions } from '../../formats/particles/particleDefinitions';
+import { readFxList, readParticleDef } from '../../formats/particles/particleIni';
+import type { FxListDef } from '../../formats/particles/particleIni';
+import type { IniDefinition } from '../../formats/particles/particleDefinitions';
+import type { ParticleDef } from '../../formats/particles/particleDef';
+import { computeKeyEdits } from '../../formats/particles/particleKeys';
 import type { ModelScene } from '../../formats/w3d/w3dScene';
 import { buildW3dScene } from '../../formats/w3d/w3dScene';
-import { createToolRegistry } from '../../services/toolRegistry';
+import { decodePng } from '../../node/png';
+import { createToolRegistry } from '../../core/toolRegistry';
 import { duplicateDefinition } from '../../game/objects/duplicateDefinition';
 import type { KeyKind, KeyValue } from '../../formats/particles/particleKeys';
-import { webviewPage } from '../../platform/webview/webviewPage';
+import { renderWebviewPage } from '../../platform/webview/webviewPage';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
-import { EffectLibrary } from './effectLibrary';
+import { EffectLibrary } from '../../services/effectLibrary';
 import { createSingletonPanel } from '../../platform/webview/singletonPanel';
 import { registerCommand } from '../../platform/commands';
 import { describeError } from '../../core/errors';
@@ -80,7 +75,7 @@ const createParticlePreview = (
       localResourceRoots: [scripts],
     },
     render: ({ webview }) => {
-      webview.html = particlePageHtml(
+      webview.html = renderParticlePage(
         webview.cspSource,
         webview
           .asWebviewUri(vscode.Uri.joinPath(scripts, 'particles.js'))
@@ -156,13 +151,7 @@ const createParticlePreview = (
         }
         break;
       case 'playSound':
-        if (message.name) {
-          await vscode.commands.executeCommand(
-            'bigfs.playAudioEvent',
-            String(message.name),
-            uri.toString(),
-          );
-        }
+        await answerSoundRequest(message, uri, panel.post);
         break;
       case 'reveal': {
         const editor = await vscode.window.showTextDocument(uri, {
@@ -177,7 +166,7 @@ const createParticlePreview = (
     }
   };
 
-  const rootDefinition = async (): Promise<
+  const readRootDefinition = async (): Promise<
     { definition: IniDefinition; text: string } | undefined
   > => {
     const text = await readWorkspaceText(uri);
@@ -192,7 +181,7 @@ const createParticlePreview = (
     kind: KeyKind;
     keys: KeyValue[];
   }): Promise<void> => {
-    const root = await rootDefinition();
+    const root = await readRootDefinition();
 
     if (!root || (!values.size && !keys)) {
       return;
@@ -201,7 +190,7 @@ const createParticlePreview = (
     const edit = new vscode.WorkspaceEdit();
     const newline = /\r\n/.test(root.text) ? '\r\n' : '\n';
     const rewritten = keys
-      ? keyEdits(root.text, root.definition, keys.kind, keys.keys)
+      ? computeKeyEdits(root.text, root.definition, keys.kind, keys.keys)
       : [];
     const replaced = new Set(
       rewritten.flatMap((change) =>
@@ -216,7 +205,7 @@ const createParticlePreview = (
         change.insert.map((line) => line + newline).join(''),
       );
     }
-    for (const change of valueEdits(root.definition, values).filter(
+    for (const change of computeValueEdits(root.definition, values).filter(
       (each) => !replaced.has(each.line),
     )) {
       edit.replace(
@@ -264,6 +253,7 @@ const createParticlePreview = (
           bytes,
           (fileName) => locator!.read(fileName, uri),
           createToolRegistry(),
+          decodePng,
         ),
       };
     }
@@ -271,7 +261,7 @@ const createParticlePreview = (
   };
 
   const saveVariant = async (given?: string): Promise<void> => {
-    const root = await rootDefinition();
+    const root = await readRootDefinition();
 
     if (!root) {
       return;
@@ -294,7 +284,7 @@ const createParticlePreview = (
 
     const lines = applyValueEdits(
       root.text,
-      valueEdits(root.definition, values),
+      computeValueEdits(root.definition, values),
     ).split(/\r?\n/);
     const copy = duplicateDefinition(
       lines,
@@ -336,7 +326,7 @@ const createParticlePreview = (
       });
   };
 
-  const particleBudgets = async (): Promise<{ lod: string; max: number }[]> => {
+  const readParticleBudgets = async (): Promise<{ lod: string; max: number }[]> => {
     const budgets: { lod: string; max: number }[] = [];
 
     for (const name of index.getNames('StaticGameLOD')) {
@@ -363,7 +353,7 @@ const createParticlePreview = (
   const send = async (): Promise<void> => {
     await index.whenReady();
 
-    const root = await rootDefinition();
+    const root = await readRootDefinition();
 
     if (!root) {
       await panel.post({
@@ -375,7 +365,7 @@ const createParticlePreview = (
 
     const text = comparing
       ? root.text
-      : applyValueEdits(root.text, valueEdits(root.definition, values));
+      : applyValueEdits(root.text, computeValueEdits(root.definition, values));
     const definition = findParticleDefinitions(text).find(
       (candidate) => candidate.startLine === root.definition.startLine,
     )!;
@@ -402,10 +392,10 @@ const createParticlePreview = (
       fxLists,
       textures,
       notes,
-      fields: numericFields(root.definition),
+      fields: findNumericFields(root.definition),
       values: Object.fromEntries(values),
       comparing: comparing,
-      budgets: await particleBudgets(),
+      budgets: await readParticleBudgets(),
     };
     await panel.post(lastScene);
     restartNext = false;
@@ -457,17 +447,15 @@ const showParticlePreview = (
   return preview;
 };
 
-export const particlePageHtml = (source: string, script: string): string =>
-  webviewPage({
+export const renderParticlePage = (source: string, script: string): string =>
+  renderWebviewPage({
     allow: { img: 'data:', script: source },
     scriptFiles: [script],
     style: `
 html, body { height: 100%; margin: 0; overflow: hidden; color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vscode-font-family); }
-#layout { display: flex; height: 100%; }
-#view { flex: 1; position: relative; min-width: 0; }
+#viewer { height: 100%; }
 canvas { width: 100%; height: 100%; display: block; cursor: grab; }
 #hud { position: absolute; left: 8px; top: 6px; font: 11px var(--vscode-editor-font-family); color: #ddd; text-shadow: 0 1px 2px #000; pointer-events: none; white-space: pre; }
-#side { width: 340px; overflow-y: auto; padding: 8px 10px; box-sizing: border-box; border-left: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
 h3 { margin: 12px 0 4px; font-size: 11px; text-transform: uppercase; opacity: 0.75; }
 .row { display: flex; gap: 6px; align-items: center; margin: 3px 0; flex-wrap: wrap; }
 button, select, input { font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); }
@@ -499,37 +487,25 @@ button.on { background: var(--vscode-button-background); color: var(--vscode-but
 .muted { opacity: 0.7; }
 kbd { font-size: 10px; opacity: 0.7; }
 `,
-    body: `<div id="layout">
-<div id="view"><canvas id="canvas"></canvas><canvas id="handles"></canvas><div id="flash"></div><div id="hud"></div></div>
-<div id="side">
+    body: `<div id="viewer"></div>
+<canvas id="handles"></canvas><div id="flash"></div><div id="hud"></div>
+<div id="context">
   <div class="row"><strong id="title"></strong></div>
   <div id="object" hidden>
     <div class="row">State <select id="objectState"></select></div>
-    <div class="row">Animation <select id="objectAnimation"></select></div>
     <div id="objectElements"></div>
     <div id="objectVoices" hidden></div>
     <div id="objectNotice" class="muted"></div>
-  </div>
-  <div class="row">
-    <button id="play" title="Space">Pause</button>
-    <button id="restart" title="R">Restart</button>
-    <button id="step" title=".">Step</button>
-    <select id="speed" title="Playback speed">
-      <option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option>
-      <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
-    </select>
-    <label><input type="checkbox" id="loop" checked> Loop</label>
+    <div id="objectParts" class="muted"></div>
   </div>
   <h3>View</h3>
   <div class="row">
     <label><input type="checkbox" id="showVolume" checked> Emitter volume</label>
-    <label><input type="checkbox" id="showGrid" checked> Ground</label>
     <label><input type="checkbox" id="keys" checked> Colour keys</label>
   </div>
   <div class="row">
     Emitter <select id="motion"><option value="still">still</option><option value="circle">circling</option><option value="line">back and forth</option></select>
     <button id="pickModel" title="Show the effect on a model, started at one of its bones">On a model…</button> <select id="bone" hidden></select>
-    Sky <select id="sky"><option value="#1b1c1f">dark</option><option value="#7a8ea6">day</option><option value="#000000">black</option><option value="#c8c8c8">light</option></select>
   </div>
   <h3>Readings <span class="muted">where the game's rule is open</span></h3>
   <div class="row">Wind <select id="wind" title="W"><option value="retail">as written</option><option value="doubled">doubled</option><option value="off">off</option></select></div>
@@ -538,7 +514,7 @@ kbd { font-size: 10px; opacity: 0.7; }
     <label><input type="checkbox" id="compound" checked> Attached systems and events</label>
     <label><input type="checkbox" id="batchLimit" checked> 512 per system</label>
   </div>
-  <div class="row muted"><kbd>Space</kbd> play · <kbd>R</kbd> restart · <kbd>.</kbd> step · <kbd>W</kbd> wind · <kbd>H</kbd> hollow box · <kbd>B</kbd> as written or with changes · drag the yellow handles to size the emission volume · drag to orbit, right-drag to pan, wheel to zoom</div>
+  <div class="row muted"><kbd>Space</kbd> play · <kbd>R</kbd> restart · <kbd>.</kbd> step · <kbd>W</kbd> wind · <kbd>H</kbd> hollow box · <kbd>C</kbd> as written or with changes · drag the yellow handles to size the emission volume</div>
   <div id="notice"></div>
   <div id="notes"></div>
   <h3>Load</h3>
@@ -549,10 +525,9 @@ kbd { font-size: 10px; opacity: 0.7; }
   <h3>Values <span class="muted">preview only until applied</span></h3>
   <div class="row"><button id="apply" class="primary" disabled>Apply to INI</button><button id="reset" disabled>Reset</button></div>
   <div class="row" title="Scales every length, speed and duration together, so the effect stays the same effect: previewed until applied">Scale: size × <input id="scaleSpace" type="number" value="1" step="0.1" min="0.05"> time × <input id="scaleTime" type="number" value="1" step="0.1" min="0.05"> <button id="scale">Scale</button></div>
-  <div class="row"><button id="compare" title="B: show the block as written, then with the values here, to compare">A/B: as written</button> <button id="vary" title="Nudge every value up to the amount either way, to try variations">Vary ±</button><input id="varyAmount" type="number" value="15" step="5" min="1">% <button id="variant" title="Write the values here as a new system after this one; this one keeps its values">Save as variant…</button></div>
+  <div class="row"><button id="compare" title="C: show the block as written, then with the values here, to compare">A/B: as written</button> <button id="vary" title="Nudge every value up to the amount either way, to try variations">Vary ±</button><input id="varyAmount" type="number" value="15" step="5" min="1">% <button id="variant" title="Write the values here as a new system after this one; this one keeps its values">Save as variant…</button></div>
   <div id="fields"></div>
   </div>
-</div>
 </div>`,
   });
 

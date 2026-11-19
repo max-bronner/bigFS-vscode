@@ -1,6 +1,6 @@
 import type { Memento } from 'vscode';
 import type { EngineValues } from '../../webview/apt/protocol';
-import { movieKey } from './aptLibrary';
+import { toMovieKey } from './aptLibrary';
 
 export const ENGINE_ANSWERS = 'bigfs.apt.engineAnswers';
 
@@ -17,9 +17,9 @@ export const keepEngineAnswers = async (
   const all = { ...readEngineAnswers(state) };
 
   if (values) {
-    all[movieKey(name)] = values;
+    all[toMovieKey(name)] = values;
   } else {
-    delete all[movieKey(name)];
+    delete all[toMovieKey(name)];
   }
   await state.update(ENGINE_ANSWERS, all);
 };

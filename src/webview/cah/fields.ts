@@ -12,7 +12,7 @@ export const create = <Tag extends keyof HTMLElementTagNameMap>(
   return node;
 };
 
-export const field = (
+export const createField = (
   value: string | number | undefined,
   readOnly: boolean,
   message: (value: string) => FromCahPage,
@@ -29,7 +29,7 @@ export const field = (
   return input;
 };
 
-export const choice = (
+export const createChoiceSelect = (
   options: ChoiceView[],
   value: number,
   readOnly: boolean,
@@ -59,7 +59,7 @@ export const choice = (
   return select;
 };
 
-export const row = (label: string, node: Node): Node[] => [
+export const createFormRow = (label: string, node: Node): Node[] => [
   element('div', label, 'muted'),
   node,
 ];

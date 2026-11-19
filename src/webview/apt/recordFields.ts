@@ -11,24 +11,24 @@ import type {
   PlacementField,
   TextRecordChange,
 } from '../../formats/apt/writer/aptEdit';
-import { send } from './details';
+import { send } from './send';
 import { getVsCodeApi } from '../shared/vscodeApi';
 import type { FromPage } from './protocol';
 
 import { addMenu } from './blocks/addMenu';
 import { blockCard } from './blocks/blockCard';
 import {
-  buttonRecordSummary,
+  summarizeButtonRecord,
   bytesToFloats,
   floatsToBytes,
-  itemKind,
-  itemSummary,
-  itemTitle,
+  getItemKind,
+  summarizeItem,
+  getItemTitle,
 } from './blocks/blockModel';
 import {
   characterPicker,
   colourField,
-  field,
+  createField,
   flagToggles,
   hexField,
   listField,
@@ -38,7 +38,7 @@ import {
   tupleFields,
 } from './blocks/controls';
 import { scriptBlock } from './blocks/scriptBlock';
-import { BUTTON_CONDITIONS, CLIP_EVENTS, bitNames } from './scriptSites';
+import { BUTTON_CONDITIONS, CLIP_EVENTS, formatBitNames } from './scriptSites';
 import { movie } from './state';
 
 const vscode = getVsCodeApi<FromPage>();
@@ -136,9 +136,9 @@ const placementBody = (item: PlaceItem): Node[] => {
   };
   const clips = (item.clipActions ?? []).map((clip, index) =>
     scriptBlock({
-      label: `on ${bitNames(clip.events, CLIP_EVENTS)}`,
+      label: `on ${formatBitNames(clip.events, CLIP_EVENTS)}`,
       block: clip.block,
-      tab: `${movie().name} @${item.depth} on ${bitNames(clip.events, CLIP_EVENTS)}`,
+      tab: `${movie().name} @${item.depth} on ${formatBitNames(clip.events, CLIP_EVENTS)}`,
       remove: { kind: 'removeClipAction', offset: item.offset, index },
       when: () =>
         flagToggles(CLIP_EVENTS, clip.events, (events) =>
@@ -148,21 +148,21 @@ const placementBody = (item: PlaceItem): Node[] => {
   );
 
   return [
-    field(
+    createField(
       'Flags',
       flagToggles(PLACE_FLAG_NAMES, item.flags, flagChange, (bit) =>
         [PLACE_FLAGS.hasClipActions, PLACE_FLAGS.hasName].includes(bit),
       ),
     ),
-    field(
+    createField(
       'Depth',
       numberField(item.depth, (depth) => placement({ depth })),
     ),
-    field(
+    createField(
       'Character',
       characterPicker(item.character, (character) => placement({ character })),
     ),
-    field(
+    createField(
       'Matrix',
       tupleFields(
         [...(item.matrix ?? [1, 0, 0, 1]), ...(item.translate ?? [0, 0])],
@@ -174,7 +174,7 @@ const placementBody = (item: PlaceItem): Node[] => {
           }),
       ),
     ),
-    field(
+    createField(
       'Multiply',
       placementColour(
         'colorTransform',
@@ -182,16 +182,16 @@ const placementBody = (item: PlaceItem): Node[] => {
         placement,
       ),
     ),
-    field('Add', placementColour('colorAdd', item.colorAdd ?? 0, placement)),
-    field(
+    createField('Add', placementColour('colorAdd', item.colorAdd ?? 0, placement)),
+    createField(
       'Ratio',
       numberField(item.ratio ?? 0, (ratio) => placement({ ratio })),
     ),
-    field(
+    createField(
       'Name',
       textField(item.name ?? '', (name) => placement({ name })),
     ),
-    field(
+    createField(
       'Clip depth',
       numberField(item.clipDepth ?? 0, (clipDepth) => placement({ clipDepth })),
     ),
@@ -206,7 +206,7 @@ const placementBody = (item: PlaceItem): Node[] => {
       (events) =>
         vscode.postMessage({
           kind: 'addScript',
-          label: `${movie().name} @${item.depth} on ${bitNames(Number(events), CLIP_EVENTS)}`,
+          label: `${movie().name} @${item.depth} on ${formatBitNames(Number(events), CLIP_EVENTS)}`,
           to: { kind: 'clip', offset: item.offset, events: Number(events) },
         }),
     ),
@@ -227,9 +227,9 @@ export const frameItemBlock = (
     });
   const common = {
     key,
-    kind: itemKind(item),
-    title: itemTitle(item),
-    summary: itemSummary(item),
+    kind: getItemKind(item),
+    title: getItemTitle(item),
+    summary: summarizeItem(item),
     onRemove: remove,
     onMove: moveItemBy(site),
   };
@@ -255,19 +255,19 @@ export const frameItemBlock = (
       return blockCard({
         ...common,
         body: () => [
-          field(
+          createField(
             'Label',
             textField(item.label, (label) =>
               send({ kind: 'frameLabel', offset: item.offset, label }),
             ),
           ),
-          field(
+          createField(
             'Flags',
             numberField(item.flags, (flags) =>
               send({ kind: 'frameLabel', offset: item.offset, flags }),
             ),
           ),
-          field(
+          createField(
             'Frame',
             numberField(
               item.frame,
@@ -284,7 +284,7 @@ export const frameItemBlock = (
       return blockCard({
         ...common,
         body: () => [
-          field(
+          createField(
             'Depth',
             numberField(item.depth, (depth) =>
               send({ kind: 'removeObjectDepth', offset: item.offset, depth }),
@@ -296,7 +296,7 @@ export const frameItemBlock = (
       return blockCard({
         ...common,
         body: () => [
-          field(
+          createField(
             'Colour',
             colourField(
               [
@@ -313,7 +313,7 @@ export const frameItemBlock = (
                 }),
             ),
           ),
-          field(
+          createField(
             'ARGB',
             hexField(item.color, (color) =>
               send({ kind: 'backgroundColor', offset: item.offset, color }),
@@ -328,7 +328,7 @@ export const frameItemBlock = (
         ...common,
         open: true,
         body: () => [
-          field(
+          createField(
             'Sprite',
             characterPicker(item.sprite, (sprite) =>
               send({ kind: 'initAction', offset: item.offset, sprite }),
@@ -380,7 +380,7 @@ export const buttonRecordBlock = (
     key: `record:${id}:${record.offset}`,
     kind: 'buttonRecord',
     title: `Record ${index}`,
-    summary: buttonRecordSummary(record),
+    summary: summarizeButtonRecord(record),
     onRemove: () => send({ kind: 'removeButtonRecord', id, index }),
     onDuplicate: () =>
       send({
@@ -402,19 +402,19 @@ export const buttonRecordBlock = (
       }
     },
     body: () => [
-      field(
+      createField(
         'States',
         flagToggles(BUTTON_STATES, record.flags, (flags) => write({ flags })),
       ),
-      field(
+      createField(
         'Character',
         characterPicker(record.character, (character) => write({ character })),
       ),
-      field(
+      createField(
         'Depth',
         numberField(record.depth, (depth) => write({ depth })),
       ),
-      field(
+      createField(
         'Matrix',
         tupleFields(
           [...record.matrix, ...record.translate],
@@ -426,13 +426,13 @@ export const buttonRecordBlock = (
             }),
         ),
       ),
-      field(
+      createField(
         'Colour',
         colourField(floatsToBytes(record.color), (bytes) =>
           write({ color: bytesToFloats(bytes) }),
         ),
       ),
-      field(
+      createField(
         'Unknown',
         tupleFields(record.unknown, ['+52', '+56', '+60', '+64'], (unknown) =>
           write({ unknown }),
@@ -459,33 +459,33 @@ export const textRunBlock = (
     onDuplicate: () =>
       send({ kind: 'addTextRecord', id: character.id, font: record.font }),
     body: () => [
-      field(
+      createField(
         'Font',
         characterPicker(record.font, (font) => write({ font })),
       ),
-      field(
+      createField(
         'Colour',
         colourField(floatsToBytes(record.color), (bytes) =>
           write({ color: bytesToFloats(bytes) }),
         ),
       ),
-      field(
+      createField(
         'Pen',
         tupleFields(record.penOffset, ['x', 'y'], (penOffset) =>
           write({ penOffset }),
         ),
       ),
-      field(
+      createField(
         'Height',
         numberField(record.textHeight, (textHeight) => write({ textHeight })),
       ),
-      field(
+      createField(
         'Unknown',
         tupleFields(record.unknown, ['+20', '+24', '+28', '+32'], (unknown) =>
           write({ unknown }),
         ),
       ),
-      field(
+      createField(
         'Glyphs',
         listField(
           record.glyphs

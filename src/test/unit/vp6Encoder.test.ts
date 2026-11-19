@@ -3,7 +3,7 @@ import { Vp6Movie, parseVp6, writeVp6 } from '../../formats/vp6/container';
 import { encodeMovie } from '../../formats/vp6/encodeMovie';
 import { Vp6Encoder, pictureFromRgba } from '../../formats/vp6/encoder';
 
-const frame = (width: number, height: number, shift: number) => {
+const buildFrame = (width: number, height: number, shift: number) => {
   const rgba = new Uint8Array(width * height * 4);
 
   for (let y = 0; y < height; y++) {
@@ -48,7 +48,7 @@ suite('VP6 encoder', () => {
         rateDenominator: 1001,
         alpha: true,
         next: async () =>
-          next < 4 ? frame(width, height, next++ * 9) : undefined,
+          next < 4 ? buildFrame(width, height, next++ * 9) : undefined,
       },
       { quality: 54 },
     );
@@ -63,8 +63,8 @@ suite('VP6 encoder', () => {
     assert.strictEqual(movie.hasAlpha, true);
     assert.ok(Math.abs(movie.framesPerSecond - 29.97) < 0.01);
     for (let index = 0; index < 4; index++) {
-      const source = frame(width, height, index * 9);
-      const shown = movie.frame(index);
+      const source = buildFrame(width, height, index * 9);
+      const shown = movie.decodeFrame(index);
 
       assert.ok(psnr(source, shown, [0, 1, 2]) > 32, `frame ${index} colour`);
       assert.ok(psnr(source, shown, [3]) > 38, `frame ${index} alpha`);
@@ -78,7 +78,7 @@ suite('VP6 encoder', () => {
     const frames = [];
 
     for (let index = 0; index < count; index++) {
-      const rgba = frame(width, height, index * 9);
+      const rgba = buildFrame(width, height, index * 9);
       const colourKey = colour.encode(
         pictureFromRgba(rgba, width, height),
         index % 6 === 0,
@@ -107,13 +107,13 @@ suite('VP6 encoder', () => {
     const expected: Uint8ClampedArray[] = [];
 
     for (let index = 0; index < count; index++) {
-      expected.push(played.frame(index));
+      expected.push(played.decodeFrame(index));
     }
 
     const seeker = new Vp6Movie(bytes);
 
-    assert.deepStrictEqual(seeker.frame(count - 1), expected[count - 1]);
-    assert.deepStrictEqual(seeker.frame(7), expected[7]);
+    assert.deepStrictEqual(seeker.decodeFrame(count - 1), expected[count - 1]);
+    assert.deepStrictEqual(seeker.decodeFrame(7), expected[7]);
   });
 
   test('an empty file says so', () => {

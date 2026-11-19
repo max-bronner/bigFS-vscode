@@ -126,7 +126,7 @@ export const offsetOf = (
   return Math.min(text.length, offset + Math.max(0, column - 1));
 };
 
-export const errorSpan = (
+export const findErrorSpan = (
   text: string,
   line: number,
   column: number,

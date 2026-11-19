@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import {
   BulkQueryError,
-  bulkChangesAcross,
+  planBulkChangesAcross,
   compileBulkQuery,
 } from '../../game/ini-tools/bulkEdit';
 import type { BulkQuery, BulkSource } from '../../game/ini-tools/bulkEdit';
@@ -148,7 +148,7 @@ export const registerBulkEdit = (
         }
         return sources.get(key);
       };
-      const includesOf = async (source: BulkSource) => {
+      const readIncludes = async (source: BulkSource) => {
         for (const include of source.document.includes) {
           const target = resolveIncludeUri(
             vscode.Uri.parse(source.uri),
@@ -159,7 +159,7 @@ export const registerBulkEdit = (
             const loaded = await read(target);
 
             if (loaded) {
-              await includesOf(loaded);
+              await readIncludes(loaded);
             }
           }
         }
@@ -179,13 +179,13 @@ export const registerBulkEdit = (
 
             if (source) {
               roots.push(source);
-              await includesOf(source);
+              await readIncludes(source);
             }
           }
         },
       );
 
-      const result = bulkChangesAcross(
+      const result = planBulkChangesAcross(
         {
           sources: roots,
           include: (from, path) =>

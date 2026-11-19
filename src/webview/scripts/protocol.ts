@@ -1,8 +1,9 @@
+import type { PlaySoundRequest } from '../../core/soundClip';
 import type { ScriptTreeNode } from '../shared/scriptTreeText';
 
 export type FromScriptsPage =
   | { kind: 'ready' }
-  | { kind: 'playSound'; name: string };
+  | PlaySoundRequest;
 
 export interface ScriptsMessage {
   kind: 'scripts';

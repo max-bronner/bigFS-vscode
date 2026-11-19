@@ -8,7 +8,7 @@ import { isStart, isWaypoint } from './mapModel';
 import { sendEdit, vscode } from './messaging';
 import { state } from './state';
 
-export const TIMES = ['', 'Morning', 'Afternoon', 'Evening', 'Night'];
+export const TIME_OF_DAY_NAMES = ['', 'Morning', 'Afternoon', 'Evening', 'Night'];
 
 export const showInfo = (actions: MapActions): void => {
   const map = state.map;
@@ -64,7 +64,7 @@ export const showInfo = (actions: MapActions): void => {
     const select = element('select');
 
     for (let code = 1; code <= 4; code++) {
-      const option = element('option', TIMES[code]);
+      const option = element('option', TIME_OF_DAY_NAMES[code]);
 
       option.value = String(code);
       option.selected = code === map.timeOfDay;
@@ -100,7 +100,7 @@ export const showInfo = (actions: MapActions): void => {
 
     lights.append(element('summary', 'Lighting (terrain sun)'));
     map.lights.forEach((light, config) => {
-      lights.append(element('h3', TIMES[config + 1]));
+      lights.append(element('h3', TIME_OF_DAY_NAMES[config + 1]));
       for (const field of ['ambient', 'color', 'direction'] as const) {
         const row = element('div', undefined, 'light');
 
@@ -153,7 +153,7 @@ export const showInfo = (actions: MapActions): void => {
     info.append(
       createScriptTree(map.scripts, map.sides, {
         editable: !state.readOnly,
-        onPlaySound: (name) => vscode.postMessage({ kind: 'playSound', name }),
+        postSound: (request) => vscode.postMessage(request),
         onSetActive: (at, active) =>
           sendEdit({ kind: 'scriptActive', at, active }),
       }),

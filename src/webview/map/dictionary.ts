@@ -4,7 +4,7 @@ import type { DictEntryView, DictOwner } from './protocol';
 import { state } from './state';
 import type { DictValue } from '../../formats/map/mapFile';
 
-const valueInput = (
+const createValueInput = (
   entry: DictEntryView,
   onCommit: (value: DictValue) => void,
 ): HTMLInputElement => {
@@ -60,7 +60,7 @@ export const createDictTable = (
     const cell = element('td');
 
     cell.append(
-      valueInput(entry, (value) =>
+      createValueInput(entry, (value) =>
         sendEdit({ kind: 'dict', owner, key: entry.key, value }),
       ),
     );

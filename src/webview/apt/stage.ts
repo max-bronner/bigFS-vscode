@@ -2,13 +2,29 @@ import { engine, onEngineLog, watchMovie } from "./engineState";
 import { fetchMovie } from "./movieLoads";
 import type { Rect } from "../../formats/apt/aptMovie";
 import { byId } from "./dom";
-import { maskArea, paintLeaf } from "./paint";
+import { BACKDROP_CALL } from "../../game/apt/engineImages";
+import { findGadgetOf, isEngineSurface } from "./gadgetModel";
+import { paintBackdrop, paintImageSurface } from "./imageSurface";
+import { buildMaskArea, paintLeaf } from "./paint";
 import { Player } from "./player";
-import type { Instance } from "./player";
+import type { Instance } from "./instance";
 import { resolve } from "./resolve";
-import { boundsOf, collect, localBounds, transformRect, union } from "./scene";
+import {
+  getLeafBounds,
+  collect,
+  getLocalBounds,
+  transformRect,
+  union,
+} from "./scene";
+import { isMovieSettled } from "./isMovieSettled";
+import { growExtent } from "./stageExtent";
+import { fitZoom, getFitSpace } from "./stageFit";
+import { attachStagePointer } from "./stagePointer";
+import type { StageTool } from "./stagePointer";
+import { isDrawnAt } from "./hitTest";
 import type { Affine, HitArea, Leaf } from "./scene";
 import { movie, state } from "./state";
+import { paintView3d } from "./view3dSurface";
 
 const EXTRA_SAMPLES = 240;
 const MAX_SAMPLES = 600;
@@ -55,28 +71,16 @@ export const setInspectorView = (
   onRendered = update;
 };
 
-export interface StageTool {
-  down(point: [number, number], event: MouseEvent): boolean;
-  move(point: [number, number], event: MouseEvent): boolean;
-  up(): void;
-  draw(ctx: CanvasRenderingContext2D, pixel: number): void;
-  cursor(point: [number, number]): string | undefined;
-}
-
 const tools: StageTool[] = [];
 
 export const addTool = (next: StageTool): void => {
   tools.unshift(next);
 };
 
-let holder: StageTool | undefined;
-
 let player: Player | undefined;
 let extent: Rect | undefined;
 let scene: { leaves: Leaf[]; hits: HitArea[] } = { leaves: [], hits: [] };
 let base: Affine = [1, 0, 0, 1, 0, 0];
-let hovered: Instance | undefined;
-let pressed: Instance | undefined;
 const log: string[] = [];
 const ghosts = new Map<number, Leaf[]>();
 
@@ -135,8 +139,7 @@ export const restart = (): void => {
   player = undefined;
   ghosts.clear();
   extent = undefined;
-  hovered = undefined;
-  pressed = undefined;
+  stagePointer.reset();
   state.inspected = undefined;
 };
 
@@ -189,7 +192,7 @@ const measure = (): Rect => {
   const boxes: Rect[] = [];
 
   for (let tick = 0; tick < samples; tick++) {
-    const box = boundsOf(collect(sample).leaves, view.masks);
+    const box = getLeafBounds(collect(sample).leaves, view.masks);
 
     if (box) {
       boxes.push(box);
@@ -218,11 +221,11 @@ export const showMode = (): void => {
   ].join(" · ");
 };
 
-export const sceneLeaves = (): Leaf[] => scene.leaves;
+export const getSceneLeaves = (): Leaf[] => scene.leaves;
 
-export const stageExtent = (): Rect | undefined => extent;
+export const getStageExtent = (): Rect | undefined => extent;
 
-export const pixelSize = (): number =>
+export const getPixelSize = (): number =>
   1 / (base[0] / (window.devicePixelRatio || 1));
 
 const inspectable = (leaf: Leaf, deep: boolean): Instance => {
@@ -243,8 +246,8 @@ const inspectable = (leaf: Leaf, deep: boolean): Instance => {
   return at;
 };
 
-export const instanceBox = (instance: Instance): Rect | undefined =>
-  boundsOf(
+export const measureInstanceBox = (instance: Instance): Rect | undefined =>
+  getLeafBounds(
     scene.leaves.filter((leaf) => {
       for (let at: Instance | undefined = leaf.instance; at; at = at.parent) {
         if (at === instance) {
@@ -267,7 +270,7 @@ const outlineMasks = (ctx: CanvasRenderingContext2D) => {
   ctx.strokeStyle = "rgba(0, 220, 255, 0.95)";
   ctx.fillStyle = "rgba(0, 220, 255, 0.08)";
   for (const mask of masks) {
-    const area = maskArea(mask);
+    const area = buildMaskArea(mask);
 
     ctx.fill(area);
     ctx.stroke(area);
@@ -275,33 +278,45 @@ const outlineMasks = (ctx: CanvasRenderingContext2D) => {
   ctx.restore();
 };
 
+let drawPass = 0;
+
+const paintOnStage = (ctx: CanvasRenderingContext2D, leaf: Leaf): void => {
+  const current = currentPlayer();
+  const gadget = leaf.surfaceBox && findGadgetOf(current, leaf.instance);
+
+  if (!gadget) {
+    paintLeaf(ctx, leaf);
+  } else if (gadget.kind === "image") {
+    paintImageSurface(ctx, leaf, gadget, leaf.surfaceBox!);
+  } else if (gadget.kind === "view3d") {
+    paintView3d(ctx, gadget, leaf.surfaceBox!, {
+      player: current,
+      pass: drawPass,
+      isPlaying: view.playing,
+    });
+  }
+};
+
 export const render = (): void => {
   const current = currentPlayer();
 
-  scene = collect(current);
+  drawPass++;
+  scene = collect(current, (instance) => isEngineSurface(current, instance));
 
-  const frameBox = boundsOf(scene.leaves, view.masks);
+  const frameBox = getLeafBounds(scene.leaves, view.masks);
 
   extent ??= measure();
-  if (frameBox) {
-    extent = union([extent, frameBox])!;
-  }
+  extent = growExtent(extent, frameBox, {
+    isScreen: resolve(movie(), state.selected)?.character.type === "movie",
+    isAnimating: view.playing || view.interact,
+  });
 
   const [left, top, right, bottom] = extent;
   const width = Math.max(1, right - left);
   const height = Math.max(1, bottom - top);
   const zoom =
     zoomSelect.value === "fit"
-      ? Math.min(
-          4,
-          Math.max(
-            0.05,
-            Math.min(
-              (stage.parentElement!.clientWidth - 24) / (width + 2 * MARGIN),
-              (window.innerHeight - 230) / (height + 2 * MARGIN),
-            ),
-          ),
-        )
+      ? fitZoom(getFitSpace(stage, window.innerHeight), { width, height }, MARGIN)
       : Number(zoomSelect.value);
   const ratio = window.devicePixelRatio || 1;
   const pixelWidth = Math.ceil((width + 2 * MARGIN) * zoom * ratio);
@@ -320,6 +335,17 @@ export const render = (): void => {
   base = [scale, 0, 0, scale, (MARGIN - left) * scale, (MARGIN - top) * scale];
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, stage.width, stage.height);
+
+  const shown = resolve(movie(), state.selected);
+
+  if (shown?.character.type === "movie" && engine.calls.has(BACKDROP_CALL.toLowerCase())) {
+    const { screenWidth, screenHeight } = shown.movie.record;
+
+    ctx.save();
+    ctx.setTransform(...base);
+    paintBackdrop(ctx, [0, 0, screenWidth, screenHeight]);
+    ctx.restore();
+  }
 
   if (view.onion && !view.interact && !view.playing) {
     const root = current.root.frame;
@@ -346,7 +372,7 @@ export const render = (): void => {
       ctx.setTransform(...base);
       ctx.transform(...leaf.matrix);
       ctx.globalAlpha = leaf.alpha * HIDDEN_ALPHA;
-      paintLeaf(ctx, leaf);
+      paintOnStage(ctx, leaf);
       ctx.restore();
     }
     ctx.save();
@@ -355,11 +381,11 @@ export const render = (): void => {
       if (!mask.length) {
         continue;
       }
-      ctx.clip(maskArea(mask));
+      ctx.clip(buildMaskArea(mask));
     }
     ctx.transform(...leaf.matrix);
     ctx.globalAlpha = leaf.alpha;
-    paintLeaf(ctx, leaf);
+    paintOnStage(ctx, leaf);
     ctx.restore();
   }
   if (!view.masks) {
@@ -394,7 +420,7 @@ const overlays = (
       if (leaf.top !== undefined) {
         const boxes = byChild.get(leaf.top) ?? [];
 
-        boxes.push(transformRect(leaf.matrix, localBounds(leaf)));
+        boxes.push(transformRect(leaf.matrix, getLocalBounds(leaf)));
         byChild.set(leaf.top, boxes);
       }
     }
@@ -438,10 +464,10 @@ const overlays = (
 
   ctx.setLineDash([]);
   for (const [instance, colour, width] of [
-    [hovered, "rgba(255,0,255,0.6)", 1],
-    [inspected(), "rgba(255,0,255,1)", 2],
+    [stagePointer.getHovered(), "rgba(255,0,255,0.6)", 1],
+    [getInspectedInstance(), "rgba(255,0,255,1)", 2],
   ] as const) {
-    const rect = instance && instanceBox(instance);
+    const rect = instance && measureInstanceBox(instance);
 
     if (rect) {
       ctx.lineWidth = pixel * width;
@@ -451,7 +477,7 @@ const overlays = (
   }
 };
 
-export const inspected = (): Instance | undefined =>
+export const getInspectedInstance = (): Instance | undefined =>
   state.inspected === undefined
     ? undefined
     : currentPlayer().find(state.inspected);
@@ -476,160 +502,32 @@ export const pointAt = (event: MouseEvent): [number, number] => {
   ];
 };
 
-const covers = (leaf: Leaf, [x, y]: [number, number]): boolean => {
-  const [a, b, c, d, tx, ty] = leaf.matrix;
-  const det = a * d - b * c;
-
-  if (!det) {
-    return false;
-  }
-
-  const lx = (d * (x - tx) - c * (y - ty)) / det;
-  const ly = (a * (y - ty) - b * (x - tx)) / det;
-
-  if (leaf.character?.type === "shape") {
-    return (leaf.movie.shapes[leaf.id] ?? []).some((run) => {
-      const t = run.triangles;
-
-      for (let i = 0; i < t.length; i += 6) {
-        if (
-          inTriangle(
-            lx,
-            ly,
-            t[i],
-            t[i + 1],
-            t[i + 2],
-            t[i + 3],
-            t[i + 4],
-            t[i + 5],
-          )
-        ) {
-          return true;
-        }
-      }
-      return false;
-    });
-  }
-
-  const [l, top, r, bottom] = localBounds(leaf);
-
-  return lx >= l && lx <= r && ly >= top && ly <= bottom;
-};
-
-const inTriangle = (
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-  cx: number,
-  cy: number,
-): boolean => {
-  const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
-  const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
-  const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
-
-  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
-};
-
-const buttonAt = (point: [number, number]): Instance | undefined => {
-  for (let index = scene.hits.length - 1; index >= 0; index--) {
-    if (covers(scene.hits[index].leaf, point)) {
-      return scene.hits[index].button;
-    }
-  }
-  return undefined;
-};
-
-const instanceAt = (
+const findInstanceAt = (
   point: [number, number],
   deep = false,
 ): Instance | undefined => {
   for (let index = scene.leaves.length - 1; index >= 0; index--) {
-    if (covers(scene.leaves[index], point)) {
+    if (isDrawnAt(scene.leaves[index], point)) {
       return inspectable(scene.leaves[index], deep);
     }
   }
   return undefined;
 };
 
-stage.addEventListener("mousemove", (event) => {
-  if (!state.movie) {
-    return;
-  }
-
-  const point = pointAt(event);
-
-  if (!view.interact && holder?.move(point, event)) {
-    return;
-  }
-
-  if (view.interact) {
-    const next = buttonAt(point);
-
-    if (next !== hovered) {
-      currentPlayer().hover(hovered, next);
-      hovered = next;
-      render();
-    }
-    stage.style.cursor = next ? "pointer" : "default";
-  } else {
-    const next = instanceAt(point);
-
-    stage.style.cursor =
-      tools.map((each) => each.cursor(point)).find(Boolean) ?? "default";
-    if (next !== hovered) {
-      hovered = next;
-      stage.title = next ? next.path || "the shown character" : "";
-      render();
-    }
-  }
-});
-
-stage.addEventListener("mouseleave", () => {
-  if (view.interact && hovered) {
-    currentPlayer().hover(hovered, undefined);
-  }
-  hovered = undefined;
-  if (state.movie) {
+const stagePointer = attachStagePointer(stage, {
+  tools,
+  isInteractive: () => view.interact,
+  hasMovie: () => !!state.movie,
+  getPlayer: currentPlayer,
+  getHits: () => scene.hits,
+  pointAt,
+  findInstanceAt,
+  inspect: (instance) => {
+    state.inspected = instance?.path;
+    onInspect();
     render();
-  }
-});
-
-stage.addEventListener("mousedown", (event) => {
-  if (!state.movie) {
-    return;
-  }
-  if (view.interact) {
-    if (hovered) {
-      pressed = hovered;
-      currentPlayer().press(hovered);
-      render();
-    }
-    return;
-  }
-
-  holder = tools.find((each) => each.down(pointAt(event), event));
-  if (holder) {
-    return;
-  }
-
-  const picked = instanceAt(pointAt(event), event.detail >= 2);
-
-  state.inspected = picked?.path;
-  onInspect();
-  render();
-});
-
-window.addEventListener("mouseup", () => {
-  holder?.up();
-  holder = undefined;
-  if (view.interact && pressed) {
-    currentPlayer().release(pressed, pressed === hovered);
-    pressed = undefined;
-    render();
-  }
+  },
+  render,
 });
 
 let lastTime: number | undefined;
@@ -654,8 +552,14 @@ const loop = (time: number) => {
     for (let step = 0; step < steps; step++) {
       currentPlayer().tick();
     }
+    if (isMovieSettled(currentPlayer().root, currentPlayer().ticks)) {
+      engine.makeRepeatedCalls();
+    }
     state.frame = currentPlayer().root.frame;
     render();
+    if (stagePointer.updateAfterFrame()) {
+      render();
+    }
   }
   requestAnimationFrame(loop);
 };

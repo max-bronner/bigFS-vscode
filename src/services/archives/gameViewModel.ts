@@ -2,7 +2,7 @@ import { EventEmitter, FileType, Uri } from 'vscode';
 import type { Disposable } from 'vscode';
 import { createDebouncer } from '../../core/debounce';
 import type { ArchiveModel } from './archiveModel';
-import { getFileNodes } from './virtualNode';
+import { getFileNodes } from './virtualTree';
 import type { VirtualNode } from './virtualNode';
 import { buildGameTree, indexByName, orderInstallFiles } from '../../game/install/gameView';
 import type { GameNode, InstallFiles } from '../../game/install/gameView';
@@ -21,10 +21,10 @@ export class GameViewModel implements Disposable {
   private tree?: Promise<GameViewNode>;
   private names?: Promise<Map<string, GameViewNode>>;
   private readonly onDidChangeEmitter = new EventEmitter<void>();
-  private stale = false;
+  private isStale = false;
   private readonly announce = createDebouncer(() => {
-    if (this.stale) {
-      this.stale = false;
+    if (this.isStale) {
+      this.isStale = false;
       this.onDidChangeEmitter.fire();
     }
   }, REBUILD_DELAY);
@@ -51,7 +51,7 @@ export class GameViewModel implements Disposable {
 
   public invalidate(): void {
     this.announce.cancel();
-    this.stale = false;
+    this.isStale = false;
     this.names = undefined;
 
     if (this.tree) {
@@ -65,7 +65,7 @@ export class GameViewModel implements Disposable {
 
     if (this.tree) {
       this.tree = undefined;
-      this.stale = true;
+      this.isStale = true;
       this.announce.schedule();
     }
   }

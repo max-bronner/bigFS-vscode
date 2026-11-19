@@ -1,6 +1,9 @@
 import type { SageBlock, SageDocument, SageStatement } from '../../formats/ini/sageIniParser';
-import { audioReferenceKind } from '../audio/sageAudioFields';
+import { getAudioReferenceKind } from '../../formats/ini/sageAudioFields';
 import type { SageIniSchema } from '../../formats/ini/sageIniSchema';
+import type { SubObjectRule } from '../../formats/w3d/w3dScene';
+import { readStateScript } from './subObjectScripts';
+import type { CreatedSubObjects, ScriptedSubObjects } from './subObjectScripts';
 
 export type StateKind = 'model' | 'animation';
 
@@ -8,17 +11,33 @@ export interface SceneState {
   draw: string;
   kind: StateKind;
   label: string;
+  name?: string;
   model?: string;
+  retainsSubObjects?: boolean;
   animations: string[];
   fx: string[];
   particles: { bone: string; system: string }[];
+  subObjects: ScriptedSubObjects;
 }
+
+export interface SceneUpgrade {
+  triggers: string[];
+  shows: string[];
+  hides: string[];
+  startsActive: boolean;
+}
+
+export type BodyDamageState = 'pristine' | 'damaged' | 'reallydamaged' | 'rubble';
 
 export interface ObjectScene {
   name: string;
   states: SceneState[];
   fx: { field: string; name: string }[];
   voices: { field: string; name: string }[];
+  upgrades: SceneUpgrade[];
+  damageSubObjects: Record<BodyDamageState, SubObjectRule[]>;
+  luaEventLists: string[];
+  created: CreatedSubObjects;
 }
 
 export interface SceneFocus {
@@ -33,8 +52,16 @@ const lower = (text: string) => text.toLowerCase();
 const MODEL_FIELDS = new Set(['model']);
 const ANIMATION_FIELDS = new Set(['animation', 'animationname']);
 const DEFAULT_STATE = /^default/i;
+const IDLE_STATE = /^idleanimationstate/i;
+const DAMAGE_FIELD = /^(pristine|damaged|reallydamaged|rubble)(hide|show)subobject$/;
 
-const chainAt = (blocks: readonly SageBlock[], line: number): SageBlock[] => {
+export const findIdleState = (
+  scene: ObjectScene,
+  draw: string,
+): SceneState | undefined =>
+  scene.states.find((state) => state.draw === draw && IDLE_STATE.test(state.label));
+
+const findBlockChain = (blocks: readonly SageBlock[], line: number): SageBlock[] => {
   const chain: SageBlock[] = [];
 
   for (
@@ -52,11 +79,11 @@ const namesFx = (schema: SageIniSchema, statement: SageStatement) =>
     .getReferenceNamespaces(statement.keyword.text, statement.context)
     .includes('FXList');
 
-const headerOf = (block: SageBlock) =>
+const formatBlockHeader = (block: SageBlock) =>
   [block.keyword, block.name].filter(Boolean).join(' = ');
 
-const placeOf = (blocks: readonly SageBlock[], line: number) => {
-  const chain = chainAt(blocks, line);
+const findDrawPlace = (blocks: readonly SageBlock[], line: number) => {
+  const chain = findBlockChain(blocks, line);
   const at = chain.findIndex((block) => lower(block.keyword) === 'draw');
 
   return at < 0
@@ -69,6 +96,7 @@ export const readObjectScene = (
   schema: SageIniSchema,
   isFx: (name: string) => boolean,
   isSystem: (name: string) => boolean,
+  lines: readonly string[] = [],
 ): ObjectScene | undefined => {
   const object = parsed.blocks.find((block) =>
     /^(object|childobject|objectreskin)$/i.test(block.keyword),
@@ -84,6 +112,21 @@ export const readObjectScene = (
     states: [],
     fx: [],
     voices: [],
+    upgrades: [],
+    damageSubObjects: { pristine: [], damaged: [], reallydamaged: [], rubble: [] },
+    luaEventLists: [],
+    created: { rules: [], conditional: [], grantedUpgrades: [] },
+  };
+  const upgrades = new Map<SageBlock, SceneUpgrade>();
+  const upgradeOf = (block: SageBlock) => {
+    let upgrade = upgrades.get(block);
+
+    if (!upgrade) {
+      upgrade = { triggers: [], shows: [], hides: [], startsActive: false };
+      upgrades.set(block, upgrade);
+      scene.upgrades.push(upgrade);
+    }
+    return upgrade;
   };
   const stateOf = (draw: SageBlock, block: SageBlock) => {
     let state = states.get(block);
@@ -92,10 +135,11 @@ export const readObjectScene = (
       state = {
         draw: draw.moduleTag ?? draw.moduleType ?? 'Draw',
         kind: /animation/i.test(block.keyword) ? 'animation' : 'model',
-        label: headerOf(block),
+        label: formatBlockHeader(block),
         animations: [],
         fx: [],
         particles: [],
+        subObjects: { rules: [], conditional: [] },
       };
       states.set(block, state);
       scene.states.push(state);
@@ -115,10 +159,49 @@ export const readObjectScene = (
 
     const key = lower(statement.keyword.text);
     const values = statement.values.map((value) => value.text);
-    const { draw, state } = placeOf(parsed.blocks, statement.line);
+    const { draw, state } = findDrawPlace(parsed.blocks, statement.line);
     const owner = draw && state ? stateOf(draw, state) : undefined;
 
-    if (audioReferenceKind(statement.context, statement.keyword.text)) {
+    if (key === 'ailuaeventslist') {
+      scene.luaEventLists.push(values[0]);
+      continue;
+    }
+
+    const damageField = DAMAGE_FIELD.exec(key);
+
+    if (damageField) {
+      scene.damageSubObjects[damageField[1] as BodyDamageState].push(
+        ...values.map((pattern) => ({
+          pattern,
+          hide: damageField[2] === 'hide',
+          source: statement.keyword.text,
+        })),
+      );
+      continue;
+    }
+
+    const upgradeModule = findBlockChain(parsed.blocks, statement.line).find(
+      (block) => lower(block.moduleType ?? '') === 'subobjectsupgrade',
+    );
+
+    if (upgradeModule && key === 'showsubobjects') {
+      upgradeOf(upgradeModule).shows.push(...values);
+      continue;
+    }
+    if (upgradeModule && key === 'hidesubobjects') {
+      upgradeOf(upgradeModule).hides.push(...values);
+      continue;
+    }
+    if (upgradeModule && key === 'triggeredby') {
+      upgradeOf(upgradeModule).triggers.push(...values);
+      continue;
+    }
+    if (upgradeModule && key === 'startsactive') {
+      upgradeOf(upgradeModule).startsActive = /^yes$/i.test(values[0]);
+      continue;
+    }
+
+    if (getAudioReferenceKind(statement.context, statement.keyword.text)) {
       for (const name of values.filter((value) => !/^none$/i.test(value))) {
         if (
           !scene.voices.some(
@@ -134,6 +217,10 @@ export const readObjectScene = (
 
     if (owner && MODEL_FIELDS.has(key)) {
       owner.model = values[0];
+    } else if (owner && key === 'statename') {
+      owner.name = values[0];
+    } else if (owner && key === 'retainsubobjects') {
+      owner.retainsSubObjects = /^yes$/i.test(values[0]);
     } else if (owner && ANIMATION_FIELDS.has(key) && values[0] !== 'NONE') {
       owner.animations.push(values[0]);
     } else if (owner && key === 'particlesysbone' && values.length > 1) {
@@ -148,6 +235,23 @@ export const readObjectScene = (
           scene.fx.push({ field: statement.keyword.text, name });
         }
       }
+    }
+  }
+
+  for (const { startLine, endLine } of lines.length ? parsed.scripts : []) {
+    const { draw, state } = findDrawPlace(parsed.blocks, startLine);
+
+    if (draw && state && startLine > object.startLine && endLine < object.endLine) {
+      const owner = stateOf(draw, state);
+      const idle = findIdleState(scene, owner.draw);
+      const { rules, conditional } = readStateScript(
+        lines.slice(startLine + 1, endLine).join('\n'),
+        `${owner.label} script`,
+        idle ? (owner === idle ? null : (idle.name ?? null)) : undefined,
+      );
+
+      owner.subObjects.rules.push(...rules);
+      owner.subObjects.conditional.push(...conditional);
     }
   }
 
@@ -175,12 +279,12 @@ export const readObjectScene = (
   return scene;
 };
 
-export const focusAt = (
+export const findSceneFocus = (
   parsed: SageDocument,
   line: number,
   scene: ObjectScene,
 ): SceneFocus => {
-  const { draw, state } = placeOf(parsed.blocks, line);
+  const { draw, state } = findDrawPlace(parsed.blocks, line);
   const focus: SceneFocus = {};
 
   if (draw && state) {
@@ -188,7 +292,7 @@ export const focusAt = (
     const at = scene.states.findIndex(
       (each) =>
         lower(each.draw) === lower(tag) &&
-        lower(each.label) === lower(headerOf(state)),
+        lower(each.label) === lower(formatBlockHeader(state)),
     );
 
     focus.state = at < 0 ? undefined : at;

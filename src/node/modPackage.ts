@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { archiveOrderKey } from '../game/install/gameView';
+import { getArchiveOrderKey } from '../game/install/gameView';
 
 export type Delivery = 'gameFolder' | 'modFolder';
 
@@ -16,23 +16,23 @@ export interface OverrideReport {
   ignored: { path: string; keptBy: string }[];
 }
 
-export const skippedFromPackage = (relativePath: string): boolean =>
+export const isSkippedFromPackage = (relativePath: string): boolean =>
   relativePath.split('/').some((segment) => segment.startsWith('.')) ||
   /\.big$/i.test(relativePath);
 
-export const overrideReport = (
+export const buildOverrideReport = (
   files: string[],
   archiveName: string,
   base: BaseArchive[],
   delivery: Delivery,
 ): OverrideReport => {
   const report: OverrideReport = { added: [], overrides: [], ignored: [] };
-  const mine = archiveOrderKey(archiveName);
+  const mine = getArchiveOrderKey(archiveName);
   const ordered = [...base].sort(
     (a, b) =>
       (a.layer ?? 0) - (b.layer ?? 0) ||
       Number(!!b.loose) - Number(!!a.loose) ||
-      (archiveOrderKey(a.path) < archiveOrderKey(b.path) ? -1 : 1),
+      (getArchiveOrderKey(a.path) < getArchiveOrderKey(b.path) ? -1 : 1),
   );
 
   for (const file of files) {
@@ -49,7 +49,7 @@ export const overrideReport = (
     if (
       delivery === 'gameFolder' &&
       (first.layer ?? 0) === 0 &&
-      (first.loose || archiveOrderKey(first.path) < mine)
+      (first.loose || getArchiveOrderKey(first.path) < mine)
     ) {
       report.ignored.push({ path: file, keptBy: first.path });
     } else {
@@ -62,7 +62,7 @@ export const overrideReport = (
   return report;
 };
 
-export const defaultPackageFolder = (
+export const getDefaultPackageFolder = (
   modFolder: string,
   bases: readonly string[],
   home: string,
@@ -84,7 +84,7 @@ export const isInsideOrSame = (candidate: string, folder: string): boolean => {
   );
 };
 
-export const reportMarkdown = (
+export const renderOverrideReport = (
   report: OverrideReport,
   archiveName: string,
   delivery: Delivery,

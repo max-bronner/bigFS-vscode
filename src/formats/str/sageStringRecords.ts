@@ -30,10 +30,10 @@ export const quoteStringText = (text: string): string =>
     .replace(/\r?\n/g, '\\n')
     .replace(/\t/g, '\\t')}"`;
 
-export const strRecord = (label: string, text: string, eol: string): string =>
+export const formatStrRecord = (label: string, text: string, eol: string): string =>
   `${label}${eol}${quoteStringText(text)}${eol}END${eol}`;
 
-const closingQuote = (raw: string): number => {
+const findClosingQuote = (raw: string): number => {
   for (let at = 0; at < raw.length; at++) {
     if (raw[at] === '\\') {
       at += 1;
@@ -114,7 +114,7 @@ export const parseStringRecords = (source: string): StringRecord[] => {
       if (record.text === undefined && trimmed.startsWith('"')) {
         const open = current.start + current.text.indexOf('"');
         let raw = trimmed.slice(1);
-        let close = closingQuote(raw);
+        let close = findClosingQuote(raw);
         let closeLine = current;
         let closeOffset = close < 0 ? -1 : open + 1 + close;
 
@@ -126,7 +126,7 @@ export const parseStringRecords = (source: string): StringRecord[] => {
           const part = closeLine.text.trim();
 
           raw += ` ${part}`;
-          close = closingQuote(raw);
+          close = findClosingQuote(raw);
 
           if (close >= 0) {
             const lead =

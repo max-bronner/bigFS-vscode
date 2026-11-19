@@ -1,6 +1,8 @@
 import { ConfigurationTarget, window, workspace } from 'vscode';
-import type { ExtensionContext } from 'vscode';
+import type { ExtensionContext, Uri } from 'vscode';
+import { revealEntry } from './revealEntry';
 import type { Services } from '../../services/createServices';
+import type { ExplorerRow } from '../../services/archives/explorerRow';
 import { SCHEME } from '../../constants';
 import { registerCommand } from '../../platform/commands';
 import { setContextKey } from '../../platform/contextKeys';
@@ -8,15 +10,15 @@ import { onDidChangeSetting, settings } from '../../platform/settings';
 import { BigFileSystemProvider } from './fileSystemProvider';
 import { BigTreeDataProvider, isGameViewShown } from './treeDataProvider';
 import { BigDragAndDropController } from './dragAndDropController';
-import { createNodeCommandRegister } from './commandCenter';
+import { createNodeCommandRegistrar } from '../../services/archives/nodeCommands';
 import { registerFileCommands } from './fileCommands';
 import { registerExtractCommands } from './extractCommands';
 import { registerClipboardCommands } from './clipboardCommands';
-import { registerModCommands } from '../mods/modCommands';
+import { createArchive } from './archiveFileActions';
 
 export const registerExplorer = (
   context: ExtensionContext,
-  { archives, gameView }: Services,
+  { archives, gameView, explorerSelection }: Services,
 ): void => {
   const markScanned = async () => {
     await setContextKey('hasArchives', archives.getArchiveRoots().length > 0);
@@ -56,14 +58,23 @@ export const registerExplorer = (
   });
 
   context.subscriptions.push(treeView);
+  explorerSelection.attach(treeView);
 
-  const registerNodeCommand = createNodeCommandRegister(context, treeView);
+  const registerNodeCommand = createNodeCommandRegistrar(
+    context,
+    explorerSelection,
+  );
 
   registerFileCommands(registerNodeCommand, archives);
   registerExtractCommands(registerNodeCommand, archives);
   registerClipboardCommands(registerNodeCommand, archives);
   context.subscriptions.push(
-    ...registerModCommands(registerNodeCommand, archives),
+    registerCommand('bigfs.revealEntry', (uri: Uri) =>
+      revealEntry(uri, treeView, archives, gameView),
+    ),
+    registerCommand('bigfs.newArchive', (row?: ExplorerRow) =>
+      row ? createArchive(archives, row) : undefined,
+    ),
     registerCommand('bigfs.refreshArchives', async () => {
       await setContextKey('scanned', false);
 

@@ -7,6 +7,7 @@ export type GadgetKind =
   | 'scrollbar'
   | 'progressbar'
   | 'image'
+  | 'view3d'
   | 'unknown';
 
 export interface SurfaceVars {
@@ -37,6 +38,8 @@ const NAMES: [GadgetKind, RegExp][] = [
   ['textentry', /^(text|edit)entry$|^editbox$/],
   ['scrollbar', /^(horz|vert)?scrollbar$/],
   ['progressbar', /^progress(bar)?$/],
+  ['view3d', /^view3d$/],
+  ['image', /^renderimage(disabled)?$|^renderfactionicon$/],
 ];
 
 const kindOfName = (name: string | undefined): GadgetKind | undefined => {
@@ -99,18 +102,23 @@ export const BINDINGS: Record<GadgetKind, Binding[]> = {
     { name: '_max', fallback: 100 },
   ],
   image: [],
+  view3d: [
+    { name: '_RenderObj', fallback: '' },
+    { name: '_AnimMode', fallback: 'MANUAL' },
+    { name: '_Frame', fallback: 0 },
+  ],
   unknown: [],
 };
 
-export const numberOf = (value: unknown, fallback: number): number => {
+export const toNumberOr = (value: unknown, fallback: number): number => {
   const n = typeof value === 'string' && !value.trim() ? NaN : Number(value);
 
   return Number.isFinite(n) ? n : fallback;
 };
 
-export const rangeOf = (min: unknown, max: unknown): [number, number] => {
-  const low = numberOf(min, 0);
-  const high = numberOf(max, 100);
+export const getRange = (min: unknown, max: unknown): [number, number] => {
+  const low = toNumberOr(min, 0);
+  const high = toNumberOr(max, 100);
 
   return high < low ? [high, low] : [low, high];
 };
@@ -127,10 +135,10 @@ export const valueAt = (
     ? Math.round(range[0] + clamp(x / width, [0, 1]) * (range[1] - range[0]))
     : range[0];
 
-export const fraction = (value: number, range: [number, number]): number =>
+export const getFillFraction = (value: number, range: [number, number]): number =>
   range[1] > range[0] ? clamp((value - range[0]) / (range[1] - range[0]), [0, 1]) : 0;
 
-export const itemsOf = (items: unknown): string[] =>
+export const splitItems = (items: unknown): string[] =>
   typeof items === 'string' && items.length ? items.split('|') : [];
 
 export const DEFAULT_SIZE: Record<GadgetKind, [number, number]> = {
@@ -142,5 +150,6 @@ export const DEFAULT_SIZE: Record<GadgetKind, [number, number]> = {
   scrollbar: [16, 90],
   progressbar: [120, 12],
   image: [64, 64],
+  view3d: [100, 100],
   unknown: [96, 24],
 };

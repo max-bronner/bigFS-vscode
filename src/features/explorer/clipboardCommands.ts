@@ -1,12 +1,12 @@
-﻿import { env } from 'vscode';
+import { env } from 'vscode';
 import { setContextKey } from '../../platform/contextKeys';
 import {
   copyNodes,
   getTargetDirectory,
   transferNodes,
 } from './fileActions';
-import { getTopLevelNodes } from '../../services/archives/virtualNode';
-import type { RegisterNodeCommand } from './commandCenter';
+import { getTopLevelNodes } from '../../services/archives/virtualTree';
+import type { RegisterNodeCommand } from '../../services/archives/nodeCommands';
 import type { VirtualNode } from '../../services/archives/virtualNode';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
 
@@ -23,11 +23,11 @@ export const registerClipboardCommands = (
 ): void => {
   let clipboard: ClipboardContent | undefined;
 
-  const getEntryPath = (node: VirtualNode): string =>
+  const getStoredEntryPath = (node: VirtualNode): string =>
     node.entryPath.replace(/\//g, '\\');
 
-  const getAbsolutePath = (node: VirtualNode): string =>
-    `${node.archive.archivePath}\\${getEntryPath(node)}`;
+  const getArchiveQualifiedPath = (node: VirtualNode): string =>
+    `${node.archive.archivePath}\\${getStoredEntryPath(node)}`;
 
   const setClipboard = async (
     content: ClipboardContent | undefined,
@@ -90,10 +90,10 @@ export const registerClipboardCommands = (
   register('bigfs.duplicate', (targets) => duplicate(targets));
 
   register('bigfs.copyPath', async (targets) => {
-    await env.clipboard.writeText(targets.map(getAbsolutePath).join('\n'));
+    await env.clipboard.writeText(targets.map(getArchiveQualifiedPath).join('\n'));
   });
 
   register('bigfs.copyRelativePath', async (targets) => {
-    await env.clipboard.writeText(targets.map(getEntryPath).join('\n'));
+    await env.clipboard.writeText(targets.map(getStoredEntryPath).join('\n'));
   });
 };

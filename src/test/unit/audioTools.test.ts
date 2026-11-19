@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { toPlayableAudio } from '../../formats/audio/audioTools';
 
-const wave = (
+const buildWave = (
   tag: number,
   channels: number,
   sampleRate: number,
@@ -36,7 +36,7 @@ const wave = (
 
 suite('Audio decoding', () => {
   test('PCM plays as it is, with its duration', () => {
-    const bytes = wave(1, 1, 8000, 2, 16, new Array(1600).fill(0));
+    const bytes = buildWave(1, 1, 8000, 2, 16, new Array(1600).fill(0));
     const { wav, info } = toPlayableAudio(bytes);
 
     assert.strictEqual(wav, bytes);
@@ -45,7 +45,7 @@ suite('Audio decoding', () => {
   });
 
   test('IMA ADPCM decodes to 16-bit PCM, starting from the block header', () => {
-    const bytes = wave(17, 1, 22050, 8, 4, [100, 0, 0, 0, 0x04, 0, 0, 0]);
+    const bytes = buildWave(17, 1, 22050, 8, 4, [100, 0, 0, 0, 0x04, 0, 0, 0]);
     const { wav, info } = toPlayableAudio(bytes);
     const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
     const samples = Array.from({ length: 9 }, (_, index) =>
@@ -58,7 +58,7 @@ suite('Audio decoding', () => {
   });
 
   test('a data chunk claiming more than the file holds plays what is there', () => {
-    const bytes = wave(1, 1, 8000, 2, 16, new Array(80).fill(0));
+    const bytes = buildWave(1, 1, 8000, 2, 16, new Array(80).fill(0));
 
     new DataView(bytes.buffer).setUint32(40, 1_000_000, true);
 
@@ -67,7 +67,7 @@ suite('Audio decoding', () => {
 
   test('a codec it does not decode is refused by number', () => {
     assert.throws(
-      () => toPlayableAudio(wave(85, 2, 44100, 4, 16, [0, 0, 0, 0])),
+      () => toPlayableAudio(buildWave(85, 2, 44100, 4, 16, [0, 0, 0, 0])),
       /codec 85 is not supported/,
     );
   });

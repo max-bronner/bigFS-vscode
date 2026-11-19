@@ -9,7 +9,7 @@ export interface BigFileEntry {
   pendingFile?: string;
 }
 
-export interface ParsedArchive {
+export interface ArchiveIndex {
   magic: string;
   trailer: Uint8Array;
   entries: BigFileEntry[];
@@ -35,13 +35,15 @@ const MAGICS = new Set(['BIGF', 'BIG4']);
 
 export class NotAnArchiveError extends Error {}
 
-const alignBytes = (offset: number): number => {
+export const MAX_ARCHIVE_SIZE = 0xffffffff;
+
+const alignToFourBytes = (offset: number): number => {
   return (offset + 3) & ~3;
 };
 
 const NAME_ENCODING = 'latin1';
 
-const toTreeName = (name: string): string => name.replace(/\\/g, '/');
+const toEntryPath = (name: string): string => name.replace(/\\/g, '/');
 
 const getStoredName = (entry: BigFileEntry): string => {
   if (entry.storedName !== undefined) {
@@ -104,7 +106,7 @@ export const parseIndexTable = (
     }
 
     const storedName = table.toString(NAME_ENCODING, nameStart, nameEnd);
-    const name = toTreeName(storedName);
+    const name = toEntryPath(storedName);
 
     if (!isContainedPath(name)) {
       throw new Error(
@@ -141,11 +143,17 @@ export const computeArchiveLayout = (
   entriesArray.forEach((entry) => {
     const size = entry.pendingData?.length ?? entry.size;
     placedEntries.push({ entry, offset: dataOffset, size });
-    dataOffset = alignBytes(dataOffset + size);
+    dataOffset = alignToFourBytes(dataOffset + size);
   });
 
   const last = placedEntries[placedEntries.length - 1];
   const totalSize = last ? last.offset + last.size : firstDataOffset;
+
+  if (totalSize > MAX_ARCHIVE_SIZE) {
+    throw new Error(
+      `The archive would be ${totalSize} bytes, past the ${MAX_ARCHIVE_SIZE} a BIG index can address`,
+    );
+  }
 
   return {
     placedEntries,

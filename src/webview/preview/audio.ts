@@ -1,4 +1,4 @@
-import type { AudioMessage, CompressedAudioMessage } from './protocol';
+import type { AudioMessage } from './protocol';
 
 const addFact = (list: HTMLElement, term: string, value: string) => {
   const dt = document.createElement('dt');
@@ -21,24 +21,6 @@ export const showAudio = (main: HTMLElement, { wav, info }: AudioMessage) => {
   audio.controls = true;
   audio.src = URL.createObjectURL(
     new Blob([wav as BlobPart], { type: 'audio/wav' }),
-  );
-  main.replaceChildren(list, audio);
-};
-
-export const showCompressedAudio = (
-  main: HTMLElement,
-  { bytes, mime, format }: CompressedAudioMessage,
-) => {
-  const list = document.createElement('dl');
-  const audio = document.createElement('audio');
-
-  addFact(list, 'Codec', format);
-  audio.controls = true;
-  audio.src = URL.createObjectURL(
-    new Blob([bytes as BlobPart], { type: mime }),
-  );
-  audio.addEventListener('loadedmetadata', () =>
-    addFact(list, 'Duration', `${audio.duration.toFixed(2)} s`),
   );
   main.replaceChildren(list, audio);
 };

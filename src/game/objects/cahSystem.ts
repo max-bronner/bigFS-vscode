@@ -40,7 +40,7 @@ const readBlock = (block: SageBlock, document: SageDocument): IniBlock => {
   };
 };
 
-export const blockAtLine = (
+export const readBlockAtLine = (
   document: SageDocument,
   line: number,
 ): IniBlock | undefined => {
@@ -63,7 +63,7 @@ export const blockAtLine = (
   return block && readBlock(block, document);
 };
 
-export const topBlocks = (
+export const readTopBlocks = (
   document: SageDocument,
   keyword: string,
 ): IniBlock[] =>
@@ -71,7 +71,7 @@ export const topBlocks = (
     .filter((block) => block.keyword.toLowerCase() === keyword.toLowerCase())
     .map((block) => readBlock(block, document));
 
-const first = (block: IniBlock, key: string): string | undefined => {
+const readFirstValue = (block: IniBlock, key: string): string | undefined => {
   const value = block.fields.get(key.toLowerCase())?.[0]?.[0];
 
   return value && value.toLowerCase() !== "none" ? value : undefined;
@@ -131,6 +131,7 @@ export interface HeroAttribute {
 export interface HeroSubclass {
   upgrade?: string;
   nameTag?: string;
+  iconImage?: string;
   points?: number;
   colors: (number | undefined)[];
   blingUpgrades: string[];
@@ -140,6 +141,7 @@ export interface HeroSubclass {
 export interface HeroClass {
   upgrade?: string;
   nameTag?: string;
+  iconImage?: string;
   subclasses: HeroSubclass[];
 }
 
@@ -149,11 +151,12 @@ export interface HeroSystem {
   blings: HeroBling[];
 }
 
-const subclassOf = (block: IniBlock): HeroSubclass => ({
-  upgrade: first(block, "UpgradeName"),
-  nameTag: first(block, "NameTag"),
-  points: Number.isInteger(Number(first(block, "SpendableAttributePoints")))
-    ? Number(first(block, "SpendableAttributePoints"))
+const readSubclass = (block: IniBlock): HeroSubclass => ({
+  upgrade: readFirstValue(block, "UpgradeName"),
+  nameTag: readFirstValue(block, "NameTag"),
+  iconImage: readFirstValue(block, "IconImage"),
+  points: Number.isInteger(Number(readFirstValue(block, "SpendableAttributePoints")))
+    ? Number(readFirstValue(block, "SpendableAttributePoints"))
     : undefined,
   colors: [
     "DefaultPrimaryColor",
@@ -170,10 +173,10 @@ const subclassOf = (block: IniBlock): HeroSubclass => ({
   attributes: block.children
     .filter((child) => child.keyword.toLowerCase() === "attribute")
     .map((attribute) => ({
-      group: first(attribute, "GroupName"),
-      minUpgrade: first(attribute, "MinValueUpgrade"),
-      maxUpgrade: first(attribute, "MaxValueUpgrade"),
-      defaultUpgrade: first(attribute, "DefaultValueUpgrade"),
+      group: readFirstValue(attribute, "GroupName"),
+      minUpgrade: readFirstValue(attribute, "MinValueUpgrade"),
+      maxUpgrade: readFirstValue(attribute, "MaxValueUpgrade"),
+      defaultUpgrade: readFirstValue(attribute, "DefaultValueUpgrade"),
     })),
 });
 
@@ -185,29 +188,30 @@ export const readHeroSystem = (systems: IniBlock[]): HeroSystem => {
       switch (child.keyword.toLowerCase()) {
         case "createaherobling":
           system.blings.push({
-            upgrade: first(child, "BlingUpgradeName"),
-            nameTag: first(child, "NameTag"),
-            group: first(child, "GroupName"),
+            upgrade: readFirstValue(child, "BlingUpgradeName"),
+            nameTag: readFirstValue(child, "NameTag"),
+            group: readFirstValue(child, "GroupName"),
           });
           break;
         case "createaheroblingbinder":
           system.binders.push({
-            group: first(child, "GroupName"),
-            labelTag: first(child, "LabelTag"),
-            slot: Number.isInteger(Number(first(child, "UISlot")))
-              ? Number(first(child, "UISlot"))
+            group: readFirstValue(child, "GroupName"),
+            labelTag: readFirstValue(child, "LabelTag"),
+            slot: Number.isInteger(Number(readFirstValue(child, "UISlot")))
+              ? Number(readFirstValue(child, "UISlot"))
               : undefined,
             isAttribute:
-              first(child, "BlingType")?.toUpperCase() === "ATTRIBUTE",
+              readFirstValue(child, "BlingType")?.toUpperCase() === "ATTRIBUTE",
           });
           break;
         case "createaheroclass":
           system.classes.push({
-            upgrade: first(child, "UpgradeName"),
-            nameTag: first(child, "NameTag"),
+            upgrade: readFirstValue(child, "UpgradeName"),
+            nameTag: readFirstValue(child, "NameTag"),
+            iconImage: readFirstValue(child, "IconImage"),
             subclasses: child.children
               .filter((sub) => sub.keyword.toLowerCase() === "subclass")
-              .map(subclassOf),
+              .map(readSubclass),
           });
           break;
       }
@@ -216,20 +220,20 @@ export const readHeroSystem = (systems: IniBlock[]): HeroSystem => {
   return system;
 };
 
-const same = (a: string | undefined, b: string | undefined): boolean =>
+const isSameName = (a: string | undefined, b: string | undefined): boolean =>
   a !== undefined && b !== undefined && a.toLowerCase() === b.toLowerCase();
 
-export const blingOptions = (
+export const listBlingOptions = (
   system: HeroSystem,
   subclass: HeroSubclass | undefined,
   group: string,
   groupOrder: (upgrade: string) => number | undefined,
 ): string[] => {
-  const inGroup = system.blings.filter((bling) => same(bling.group, group));
+  const inGroup = system.blings.filter((bling) => isSameName(bling.group, group));
   const named = new Set(
     (subclass?.blingUpgrades ?? []).map((name) => name.toLowerCase()),
   );
-  const isAttribute = subclass?.attributes.some((a) => same(a.group, group));
+  const isAttribute = subclass?.attributes.some((a) => isSameName(a.group, group));
   const chosen = inGroup.filter(
     (bling) =>
       isAttribute ||
@@ -253,7 +257,7 @@ export const blingOptions = (
     .map((option) => option.upgrade);
 };
 
-export const spentPoints = (
+export const countSpentPoints = (
   system: HeroSystem,
   subclass: HeroSubclass | undefined,
   blings: { group: string; index: number }[],
@@ -262,16 +266,16 @@ export const spentPoints = (
   let spent = 0;
 
   for (const attribute of subclass?.attributes ?? []) {
-    const bling = blings.find((entry) => same(entry.group, attribute.group));
+    const bling = blings.find((entry) => isSameName(entry.group, attribute.group));
 
     if (!bling || !attribute.group) {
       continue;
     }
 
-    const options = blingOptions(system, subclass, attribute.group, groupOrder);
+    const options = listBlingOptions(system, subclass, attribute.group, groupOrder);
     const min = Math.max(
       0,
-      options.findIndex((option) => same(option, attribute.minUpgrade)),
+      options.findIndex((option) => isSameName(option, attribute.minUpgrade)),
     );
 
     spent += Math.max(0, bling.index - min);

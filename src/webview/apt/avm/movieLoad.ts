@@ -1,4 +1,4 @@
-export const movieNameOf = (url: string): string | undefined => {
+export const getMovieName = (url: string): string | undefined => {
   const file = url.trim().split(/[\\/]/).pop() ?? '';
   const dot = file.lastIndexOf('.');
   const stem = dot < 0 ? file : file.slice(0, dot);
@@ -14,7 +14,7 @@ export const isWindowTarget = (target: string): boolean => {
   return !lower || WINDOWS.has(lower);
 };
 
-export const levelOf = (target: string): number | undefined => {
+export const parseLevel = (target: string): number | undefined => {
   const match = /^_level(\d+)$/i.exec(target.trim());
 
   return match ? Number(match[1]) : undefined;
@@ -28,7 +28,7 @@ const lastName = (command: string): string => {
 
 const PLAY_SOUND = 'playsound';
 
-export const soundEventOf = (
+export const getSoundEvent = (
   call: string,
   args: readonly string[],
 ): string | undefined => {

@@ -1,5 +1,5 @@
-import { declarationOf, parentOf } from './sageIniNames';
-import { referencedNames } from '../../game/audio/sageAudioValues';
+import { getDeclaration, getParent } from './sageIniNames';
+import { findReferencedNames } from './sageAudioValues';
 import type { SageIniSchema } from './sageIniSchema';
 import type { SageDocument, SageStatement, SageToken } from './sageIniParser';
 
@@ -38,8 +38,8 @@ export const resolveSageSymbol = (
   }
 
   if (statement.block) {
-    const declaration = declarationOf(statement, schema);
-    const parent = parentOf(statement);
+    const declaration = getDeclaration(statement, schema);
+    const parent = getParent(statement);
 
     if (parent && token === parent.token) {
       return {
@@ -71,7 +71,7 @@ export const resolveSageSymbol = (
     return undefined;
   }
 
-  const inside = referencedNames(statement, schema).find(
+  const inside = findReferencedNames(statement, schema).find(
     (candidate) => character >= candidate.start && character <= candidate.end,
   );
 

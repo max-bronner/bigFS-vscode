@@ -12,8 +12,8 @@ import {
 import type { FrameSource } from '../../formats/vp6/encodeMovie';
 import { registerCommand } from '../../platform/commands';
 import { settings } from '../../platform/settings';
-import { webviewPage } from '../../platform/webview/webviewPage';
-import { ffmpegSource, probe, run } from '../../node/ffmpeg';
+import { renderWebviewPage } from '../../platform/webview/webviewPage';
+import { createFfmpegFrameSource, probe, runProcess } from '../../node/ffmpeg';
 import { decodeDds, decodeTga } from '../../formats/texture/textureTools';
 import { toUri } from '../../services/archives/commandTarget';
 import type { FromVideoPage, ToVideoPage } from '../../webview/video/protocol';
@@ -41,7 +41,7 @@ const findFfmpeg = async (): Promise<string | undefined> => {
 
   for (const candidate of [configured, 'ffmpeg'].filter(Boolean) as string[]) {
     try {
-      if ((await run(candidate, ['-version'])).code === 0) {
+      if ((await runProcess(candidate, ['-version'])).code === 0) {
         return candidate;
       }
     } catch {
@@ -88,14 +88,14 @@ class BrowserFrames {
     this.panel.onDidDispose(() =>
       failed(new Error('The reading panel was closed')),
     );
-    this.panel.webview.html = browserPage(
+    this.panel.webview.html = renderBrowserPage(
       this.panel.webview.asWebviewUri(file),
       this.panel.webview,
       scripts,
     );
   }
 
-  public frame(
+  public readFrame(
     index: number,
     time: number,
     width: number,
@@ -120,12 +120,12 @@ class BrowserFrames {
   }
 }
 
-const browserPage = (
+const renderBrowserPage = (
   video: vscode.Uri,
   webview: vscode.Webview,
   scripts: vscode.Uri,
 ): string => {
-  return webviewPage({
+  return renderWebviewPage({
     allow: { media: webview.cspSource, script: webview.cspSource },
     scriptFiles: [
       webview.asWebviewUri(vscode.Uri.joinPath(scripts, 'video.js')).toString(),
@@ -207,7 +207,7 @@ const askSize = async (
   return text ? (text.split('x').map(Number) as [number, number]) : undefined;
 };
 
-const rateOf = (fps: number): [number, number] => {
+const toRateFraction = (fps: number): [number, number] => {
   const whole = Math.round(fps * 1.001);
 
   return !Number.isInteger(fps) && Math.abs((whole * 1000) / 1001 - fps) < 0.01
@@ -215,7 +215,7 @@ const rateOf = (fps: number): [number, number] => {
     : [Math.round(fps * 1000), 1000];
 };
 
-const keyInterval = (fps: number): number => {
+const getKeyInterval = (fps: number): number => {
   const seconds = settings.vp6KeyFrameSeconds.get();
 
   return seconds > 0 ? Math.max(1, Math.round(seconds * fps)) : 1;
@@ -316,7 +316,7 @@ const convert = async (
       if (ffmpeg) {
         ({ width, height, fps } = await probe(ffmpeg, file.fsPath));
         makeSource = (w, h, rate) => {
-          const source = ffmpegSource(ffmpeg, file.fsPath, w, h, rate);
+          const source = createFfmpegFrameSource(ffmpeg, file.fsPath, w, h, rate);
 
           stop = source.stop;
           return source.next;
@@ -339,7 +339,7 @@ const convert = async (
 
           return async () =>
             index < count
-              ? browser.frame(index, index++ / rate + 0.5 / rate, w, h)
+              ? browser.readFrame(index, index++ / rate + 0.5 / rate, w, h)
               : undefined;
         };
       }
@@ -403,7 +403,7 @@ const convert = async (
     }
 
     let pending: Uint8Array | undefined = firstFrame;
-    const [rateNumerator, rateDenominator] = rateOf(rate);
+    const [rateNumerator, rateDenominator] = toRateFraction(rate);
     const bytes = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -427,7 +427,7 @@ const convert = async (
           },
           {
             quality: quality.q,
-            keyInterval: keyInterval(rate),
+            keyInterval: getKeyInterval(rate),
             cancelled: () => token.isCancellationRequested,
             progress: (frames) =>
               progress.report({
@@ -444,7 +444,7 @@ const convert = async (
     const movie = new Vp6Movie(bytes);
 
     for (const index of [0, movie.frameCount >> 1, movie.frameCount - 1]) {
-      movie.frame(index);
+      movie.decodeFrame(index);
     }
 
     await vscode.workspace.fs.writeFile(output, bytes);

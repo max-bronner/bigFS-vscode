@@ -25,7 +25,7 @@ export const detectInstallKind = (fileNames: Iterable<string>): InstallKind => {
   return INSTALL_MARKERS.find(({ file }) => names.has(file))?.kind ?? 'mod';
 };
 
-export const layerRank = ({ kind, base }: LayerTraits): number => {
+export const getLayerRank = ({ kind, base }: LayerTraits): number => {
   if (kind === 'rotwk') {
     return 1;
   }
@@ -40,7 +40,7 @@ export const orderLayers = <T extends LayerTraits>(layers: readonly T[]): T[] =>
     .map((layer, position) => ({ layer, position }))
     .sort(
       (a, b) =>
-        layerRank(a.layer) - layerRank(b.layer) || a.position - b.position,
+        getLayerRank(a.layer) - getLayerRank(b.layer) || a.position - b.position,
     )
     .map(({ layer }) => layer);
 

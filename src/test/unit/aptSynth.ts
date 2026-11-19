@@ -13,7 +13,7 @@ export class Image {
     return this.bytes.length;
   }
 
-  public u8(...values: number[]): number {
+  public writeU8(...values: number[]): number {
     const at = this.end;
 
     values.forEach((value) => this.bytes.push(value & 255));
@@ -21,7 +21,7 @@ export class Image {
     return at;
   }
 
-  public u32(...values: number[]): number {
+  public writeU32(...values: number[]): number {
     const at = this.end;
 
     for (const value of values) {
@@ -33,7 +33,7 @@ export class Image {
     return at;
   }
 
-  public f32(...values: number[]): number {
+  public writeF32(...values: number[]): number {
     const at = this.end;
 
     for (const value of values) {
@@ -43,7 +43,7 @@ export class Image {
     return at;
   }
 
-  public string(text: string): number {
+  public writeString(text: string): number {
     const at = this.end;
 
     this.bytes.push(...Array.from(text, (char) => char.charCodeAt(0)), 0);
@@ -70,16 +70,16 @@ export const buildConst = (
 ): Uint8Array => {
   const file = new Image();
 
-  file.u8(...Array.from('Apt constant file\x1a\0\0', (c) => c.charCodeAt(0)));
-  file.u32(movieOffset, items.length, 0x20);
+  file.writeU8(...Array.from('Apt constant file\x1a\0\0', (c) => c.charCodeAt(0)));
+  file.writeU32(movieOffset, items.length, 0x20);
 
   const slots = items.map((item) =>
-    typeof item === 'string' ? file.u32(1, 0) : file.u32(4, item),
+    typeof item === 'string' ? file.writeU32(1, 0) : file.writeU32(4, item),
   );
 
   items.forEach((item, index) => {
     if (typeof item === 'string') {
-      file.patch(slots[index] + 4, file.string(item));
+      file.patch(slots[index] + 4, file.writeString(item));
     }
   });
 

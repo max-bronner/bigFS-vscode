@@ -1,4 +1,4 @@
-import type { NumericField } from './particleIni';
+import type { NumericField } from './particleValueEdits';
 
 type Rule = { space: number; time: number; damping?: true };
 
@@ -19,6 +19,7 @@ const RULES: Record<string, Rule> = {
   vollinestart: { space: 1, time: 0 },
   vollineend: { space: 1, time: 0 },
   sizerate: { space: 1, time: -1 },
+  radiusrate: { space: 1, time: -1 },
   startsizerate: { space: 1, time: -1 },
   x: { space: 1, time: -1 },
   y: { space: 1, time: -1 },

@@ -4,12 +4,10 @@ import { parseStringRecords, quoteStringText } from '../../formats/str/sageStrin
 import {
   decodeIniText,
   encodeWindows1252,
-  unencodableCharacters,
+  findUnencodableCharacters,
 } from '../../core/windows1252';
 import { toUri } from '../../services/archives/commandTarget';
 import type { CommandTarget } from '../../services/archives/commandTarget';
-import type { ArchiveModel } from '../../services/archives/archiveModel';
-import { registerTranslationCheck } from '../translations/translationCheck';
 import { registerCommand } from '../../platform/commands';
 
 export const STR_LANGUAGE = 'sage-str';
@@ -101,7 +99,7 @@ export const csfToStr = (
     })
     .join(eol);
 
-  return { text, dropped, unencodable: unencodableCharacters(text) };
+  return { text, dropped, unencodable: findUnencodableCharacters(text) };
 };
 
 export const strToCsf = (source: string): Uint8Array =>
@@ -117,7 +115,6 @@ export const strToCsf = (source: string): Uint8Array =>
 
 export const registerSageStrLanguage = (
   context: vscode.ExtensionContext,
-  archiveModel: ArchiveModel,
 ): void => {
   const diagnostics = vscode.languages.createDiagnosticCollection(STR_LANGUAGE);
   const refresh = (document: vscode.TextDocument) => {
@@ -256,6 +253,5 @@ export const registerSageStrLanguage = (
         }),
     }),
     registerCommand('bigfs.convertStringTable', convert),
-    registerTranslationCheck(archiveModel),
   );
 };

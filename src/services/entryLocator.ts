@@ -8,7 +8,7 @@ import type { VirtualNode } from './archives/virtualNode';
 const LOOSE_ASSETS =
   '**/*.{w3d,W3D,dds,DDS,tga,TGA,jpg,JPG,png,PNG,wav,WAV,mp3,MP3}';
 
-const baseName = (fileName: string): string =>
+const getBaseName = (fileName: string): string =>
   fileName.slice(
     Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\')) + 1,
   );
@@ -60,7 +60,7 @@ export class EntryLocator implements Disposable {
     this.subscriptions.forEach((subscription) => subscription.dispose());
   }
 
-  public fileNames(): Promise<Set<string>> {
+  public getFileNames(): Promise<Set<string>> {
     this.allNames ??= (async () => {
       const uris = await workspace.findFiles(
         LOOSE_ASSETS,
@@ -126,7 +126,7 @@ export class EntryLocator implements Disposable {
     fileName: string,
     nearUri: Uri,
   ): Promise<{ uri: Uri } | { node: VirtualNode } | undefined> {
-    const name = baseName(fileName);
+    const name = getBaseName(fileName);
     const root = await this.gameView.getRoot();
     const held =
       (/[\\/]/.test(fileName) ? findByPath(root, fileName) : undefined) ??

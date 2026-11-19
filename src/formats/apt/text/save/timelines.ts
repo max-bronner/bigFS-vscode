@@ -6,8 +6,8 @@ import type {
   ItemText,
   MovieText,
 } from '../textModel';
-import { alignLists, checkAppended, printItem } from './alignLists';
-import { sameFloat, sameFloats } from './sameFloats';
+import { alignLists, checkAppended, getAlignmentKey } from './alignLists';
+import { isSameFloat, areSameFloats } from './sameFloats';
 import type { SaveSession } from './saveSession';
 import { TextSaveError } from './textSaveError';
 
@@ -19,11 +19,11 @@ export const saveTimelines = (session: SaveSession, after: MovieText): void => {
   }
 };
 
-const timelineFrames = (
+const readTimelineFrames = (
   session: SaveSession,
   timeline: number,
 ): FrameText[] => {
-  const character = session.current().characters[timeline];
+  const character = session.readCurrentText().characters[timeline];
 
   return character.type === 'sprite' || character.type === 'movie'
     ? character.frames
@@ -36,7 +36,7 @@ const saveTimeline = (
   after: FrameText[],
   line: number,
 ): void => {
-  let before = timelineFrames(session, timeline);
+  let before = readTimelineFrames(session, timeline);
 
   if (!after.length) {
     throw new TextSaveError('A timeline keeps at least one frame', line);
@@ -44,7 +44,7 @@ const saveTimeline = (
   for (let count = before.length; count < after.length; count++) {
     session.apply({ kind: 'addFrame', timeline });
   }
-  before = timelineFrames(session, timeline);
+  before = readTimelineFrames(session, timeline);
 
   const orders: (number[] | undefined)[] = [];
   let isReordered = after.length < before.length;
@@ -74,7 +74,7 @@ const saveFrame = (
   before: ItemText[],
   after: FrameText,
 ): number[] | undefined => {
-  const pairs = alignLists(before, after.items, printItem, (item) => item.type);
+  const pairs = alignLists(before, after.items, getAlignmentKey, (item) => item.type);
   const order: number[] = [];
 
   for (const [i, j] of pairs) {
@@ -120,7 +120,7 @@ const addItem = (
 ): number => {
   const line = next.line ?? 0;
   const offsetOfLast = () => {
-    const items = timelineFrames(session, timeline)[frame].items;
+    const items = readTimelineFrames(session, timeline)[frame].items;
 
     return items[items.length - 1].offset!;
   };
@@ -170,7 +170,7 @@ const addItem = (
 
       return saveItem(
         session,
-        timelineFrames(session, timeline)[frame].items.at(-1)!,
+        readTimelineFrames(session, timeline)[frame].items.at(-1)!,
         next,
       );
     }
@@ -211,7 +211,7 @@ const saveItem = (
   switch (next.type) {
     case 'action':
       if (was.type === 'action') {
-        session.script(was.script, next.script);
+        session.noteScript(was.script, next.script);
       }
       break;
     case 'label':
@@ -242,7 +242,7 @@ const saveItem = (
         if (was.sprite !== next.sprite) {
           session.apply({ kind: 'initAction', offset, sprite: next.sprite });
         }
-        session.script(was.script, next.script);
+        session.noteScript(was.script, next.script);
       }
       break;
     case 'unknown':
@@ -289,8 +289,8 @@ const savePlacement = (
     Boolean(was.placement) !== Boolean(next.placement) ||
     (was.placement &&
       next.placement &&
-      (!sameFloats(was.placement.matrix, next.placement.matrix) ||
-        !sameFloats(was.placement.translate, next.placement.translate)))
+      (!areSameFloats(was.placement.matrix, next.placement.matrix) ||
+        !areSameFloats(was.placement.translate, next.placement.translate)))
   ) {
     if (next.placement) {
       change.matrix = next.placement.matrix;
@@ -310,7 +310,7 @@ const savePlacement = (
       change.colorAdd = next.colorAdd ?? 0;
     }
   }
-  if (!sameFloat(was.ratio, next.ratio)) {
+  if (!isSameFloat(was.ratio, next.ratio)) {
     if (next.ratio === undefined) {
       clear.push('ratio');
     } else {
@@ -394,7 +394,7 @@ const saveClipActions = (
           events: next.events,
         });
       }
-      session.script(was.script, next.script);
+      session.noteScript(was.script, next.script);
     }
     index++;
   }

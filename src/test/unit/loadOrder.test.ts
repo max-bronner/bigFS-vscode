@@ -13,7 +13,7 @@ import {
 } from '../../game/install/installLayers';
 import { scanInstall, scanInstalls } from '../../node/installScan';
 import { compareWithBase, indexBaseGame } from '../../node/modDiff';
-import { defaultPackageFolder, overrideReport } from '../../node/modPackage';
+import { getDefaultPackageFolder, buildOverrideReport } from '../../node/modPackage';
 
 const writeArchive = async (
   file: string,
@@ -240,15 +240,15 @@ suite('Load order', () => {
     const base = path.join(path.sep, 'games', 'bfme');
 
     assert.strictEqual(
-      defaultPackageFolder(path.join(path.sep, 'work', 'mod'), [base], home),
+      getDefaultPackageFolder(path.join(path.sep, 'work', 'mod'), [base], home),
       path.join(path.sep, 'work'),
     );
     assert.strictEqual(
-      defaultPackageFolder(path.join(base, 'mod'), [base], home),
+      getDefaultPackageFolder(path.join(base, 'mod'), [base], home),
       home,
     );
     assert.strictEqual(
-      defaultPackageFolder(
+      getDefaultPackageFolder(
         path.join(base, 'sub', 'mod'),
         [path.join(path.sep, 'x'), base],
         home,
@@ -273,7 +273,7 @@ suite('Load order', () => {
       },
     ];
     const files = ['data/a.ini', 'data/b.ini', 'data/c.ini'];
-    const inGameFolder = overrideReport(files, '!Mod.big', base, 'gameFolder');
+    const inGameFolder = buildOverrideReport(files, '!Mod.big', base, 'gameFolder');
 
     assert.deepStrictEqual(inGameFolder.ignored, [
       { path: 'data/a.ini', keptBy: 'rotwk (loose files)' },
@@ -283,11 +283,11 @@ suite('Load order', () => {
       { path: 'data/c.ini', over: ['INI.big'] },
     ]);
     assert.strictEqual(
-      overrideReport(files, 'zz.big', base, 'gameFolder').ignored.length,
+      buildOverrideReport(files, 'zz.big', base, 'gameFolder').ignored.length,
       2,
     );
     assert.strictEqual(
-      overrideReport(files, 'zz.big', base, 'modFolder').ignored.length,
+      buildOverrideReport(files, 'zz.big', base, 'modFolder').ignored.length,
       0,
     );
   });

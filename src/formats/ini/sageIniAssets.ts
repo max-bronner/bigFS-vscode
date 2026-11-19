@@ -24,7 +24,7 @@ const lower = (name: string) => name.toLowerCase();
 const topBlockAt = (blocks: SageBlock[], line: number): SageBlock | undefined =>
   blocks.find((block) => block.startLine <= line && line <= block.endLine);
 
-export const textureCandidates = (name: string): string[] => {
+export const getTextureCandidates = (name: string): string[] => {
   const stem = lower(stemOf(baseOf(name)));
 
   return TEXTURE_EXTENSIONS.map((extension) => `${stem}.${extension}`);
@@ -78,11 +78,11 @@ export const findAssetReferences = (parsed: SageDocument): AssetReference[] => {
           first,
           /\.w3d$/i.test(first.text)
             ? [lower(baseOf(first.text))]
-            : textureCandidates(first.text),
+            : getTextureCandidates(first.text),
         );
         break;
       case 'texture':
-        add('texture', first, textureCandidates(first.text));
+        add('texture', first, getTextureCandidates(first.text));
         break;
       case 'sounds':
       case 'soundsmorning':
@@ -139,7 +139,7 @@ const KIND_LABELS: Record<AssetKind, string> = {
   sound: 'Sound',
 };
 
-export const missingAssetMessage = (
+export const formatMissingAssetMessage = (
   reference: AssetReference,
   suggestions: string[],
 ): string =>
@@ -152,7 +152,7 @@ export const missingAssetMessage = (
     ? `; did you mean ${suggestions.map((name) => `'${name}'`).join(', ')}?`
     : '');
 
-export const suggestedAssetNames = (message: string): string[] => {
+export const parseSuggestedAssetNames = (message: string): string[] => {
   const tail = /did you mean (.*)\?$/.exec(message)?.[1] ?? '';
 
   return [...tail.matchAll(/'([^']*)'/g)].map((match) => match[1]);

@@ -1,5 +1,5 @@
 import type { SageToken } from '../ini/sageIniParser';
-import type { Range, Vec3 } from './particleIni';
+import type { Range, Vec3 } from './particleDef';
 
 export type FxApproximation =
   | {
@@ -159,7 +159,7 @@ export interface FxEffectState {
 
 const FLASH_PEAK = 0.45;
 
-export const effectsAt = (
+export const getEffectStateAt = (
   effects: readonly FxEffect[],
   frame: number,
   hz: number,
@@ -202,7 +202,7 @@ export const effectsAt = (
   return state;
 };
 
-export const effectLength = (effect: FxEffect): number => {
+export const getEffectLength = (effect: FxEffect): number => {
   const approximation = effect.approximation;
 
   return approximation?.type === 'shake'

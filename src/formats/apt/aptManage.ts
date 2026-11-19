@@ -1,7 +1,7 @@
 import type { RuRun } from './aptGeometry';
 import type { AptMovie, Frame } from './aptMovie';
 
-export const referencesTo = (
+export const findReferencesTo = (
   movie: AptMovie,
   spriteFrames: Record<number, Frame[]>,
   shapes: Record<number, RuRun[]>,

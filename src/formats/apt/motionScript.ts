@@ -1,5 +1,7 @@
 import { EASINGS, compileExpression } from '../../core/expression';
-import type { DetectedTween, Pose, TimelineOperation } from './aptTimeline';
+import type { DetectedTween } from './aptTweenDetection';
+import type { Pose } from './aptPose';
+import type { TimelineOperation } from './aptTimelineEdits';
 
 const PROPERTIES: (keyof Pose)[] = [
   'x',
@@ -20,7 +22,7 @@ export class MotionScriptError extends Error {
   }
 }
 
-const property = (name: string, line: number): keyof Pose => {
+const parseProperty = (name: string, line: number): keyof Pose => {
   const found = PROPERTIES.find(
     (each) => each.toLowerCase() === name.toLowerCase(),
   );
@@ -34,7 +36,7 @@ const property = (name: string, line: number): keyof Pose => {
   return found;
 };
 
-const number = (text: string, line: number): number => {
+const parseNumber = (text: string, line: number): number => {
   const value = Number(text);
 
   if (!Number.isFinite(value)) {
@@ -92,9 +94,9 @@ export const parseMotionScript = (source: string): TimelineOperation[] => {
       const formula = /^(\w+)\s*=\s*(.+)$/.exec(action);
 
       if (tween) {
-        const key = property(tween[1], line);
-        const start = number(tween[2], line);
-        const end = number(tween[3], line);
+        const key = parseProperty(tween[1], line);
+        const start = parseNumber(tween[2], line);
+        const end = parseNumber(tween[3], line);
         const easing = tween[4] ?? 'linear';
 
         if (!EASINGS[easing]) {
@@ -112,7 +114,7 @@ export const parseMotionScript = (source: string): TimelineOperation[] => {
           easing,
         });
       } else if (formula) {
-        const key = property(formula[1], line);
+        const key = parseProperty(formula[1], line);
 
         try {
           compileExpression(formula[2]);
@@ -146,14 +148,14 @@ export const parseMotionScript = (source: string): TimelineOperation[] => {
         operations.push({
           op: 'insert',
           at: to + 1,
-          count: number(words[1], line),
+          count: parseNumber(words[1], line),
         });
       } else if (verb === 'retime' && words.length === 2) {
         operations.push({
           op: 'retime',
           from,
           to,
-          length: number(words[1], line),
+          length: parseNumber(words[1], line),
         });
       } else if (
         (verb === 'delete' || verb === 'duplicate' || verb === 'reverse') &&

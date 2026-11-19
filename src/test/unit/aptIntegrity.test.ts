@@ -7,7 +7,7 @@ import { parseConst } from '../../formats/apt/aptMovie';
 import { applyAptEdit } from '../../formats/apt/writer/applyAptEdit';
 import { AptImage } from '../../formats/apt/writer/aptImage';
 
-const soundMovie = () => {
+const buildIntactMovie = () => {
   const created = createAptMovie({
     width: 100,
     height: 100,
@@ -70,13 +70,13 @@ const messages = async (image: AptImage, files: Map<string, Uint8Array>) =>
 
 suite('APT integrity', () => {
   test('a movie that holds together has nothing to report', async () => {
-    const { image, files } = soundMovie();
+    const { image, files } = buildIntactMovie();
 
     assert.deepStrictEqual(await messages(image, files), []);
   });
 
   test('missing and left over files are found, each once', async () => {
-    const { image, files, texture, shape } = soundMovie();
+    const { image, files, texture, shape } = buildIntactMovie();
 
     files.delete(`art/textures/apt_menu_${texture}.tga`);
     files.delete(`Menu_geometry/${shape}.ru`);
@@ -92,7 +92,7 @@ suite('APT integrity', () => {
   });
 
   test('an image without a .dat line, and a style sampling a non-image, are errors', async () => {
-    const { image, at, files, texture, shape } = soundMovie();
+    const { image, at, files, texture, shape } = buildIntactMovie();
 
     files.set(
       'Menu.dat',
@@ -126,7 +126,7 @@ suite('APT integrity', () => {
   });
 
   test('without its .const the movie is reported as unloadable, and nothing else', async () => {
-    const { image, files } = soundMovie();
+    const { image, files } = buildIntactMovie();
 
     files.delete('Menu.const');
     assert.deepStrictEqual(await messages(image, files), [

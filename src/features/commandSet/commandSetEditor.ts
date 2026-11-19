@@ -1,19 +1,19 @@
 import * as vscode from 'vscode';
-import { webviewPage } from '../../platform/webview/webviewPage';
+import { renderWebviewPage } from '../../platform/webview/webviewPage';
 import { createSingletonPanel } from '../../platform/webview/singletonPanel';
 import type { EntryLocator } from '../../services/entryLocator';
 import {
-  commandSetSlots,
+  readCommandSetSlots,
   createLineReader,
   resolveSlots,
-} from './commandSetPreview';
-import { createMappedImagePreview } from '../preview/mappedImagePreview';
-import { hotkeyClashes } from '../../game/ini-tools/hotkeys';
+} from '../../services/ini/commandSetPreview';
+import { createMappedImagePreview } from '../../services/mappedImagePreview';
+import { findHotkeyClashes } from '../../game/ini-tools/hotkeys';
 import {
-  commandSetHeader,
+  readCommandSetName,
   moveSlot,
-  sameSlots,
-  slotEdits,
+  hasSameSlots,
+  buildSlotEdits,
 } from '../../game/objects/commandSetEdit';
 import type {
   CommandSetMessage,
@@ -50,7 +50,7 @@ const createCommandSetEditor = (
       retainContextWhenHidden: true,
     },
     render: ({ webview }) => {
-      webview.html = webviewPage({
+      webview.html = renderWebviewPage({
         allow: { img: 'data:', script: webview.cspSource },
         scriptFiles: [
           webview
@@ -87,7 +87,7 @@ body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vsco
     onDispose: onClose,
   });
 
-  const block = async () => {
+  const readBlock = async () => {
     const lines = (await readWorkspaceText(uri)).split(/\r?\n/);
     const block = parseSageIni(lines, await documents.getSchema()).blocks.find(
       (each) =>
@@ -101,18 +101,18 @@ body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vsco
   const refresh = async (): Promise<CommandSetMessage | undefined> => {
     await index.whenReady();
 
-    const found = await block();
+    const found = await readBlock();
 
     if (!found) {
       return undefined;
     }
 
     const linesOf = createLineReader();
-    const own = commandSetSlots(
+    const own = readCommandSetSlots(
       found.lines.slice(found.block.startLine + 1, found.block.endLine),
     );
     const resolved = await resolveSlots(index, own, linesOf);
-    const clashes = hotkeyClashes(resolved);
+    const clashes = findHotkeyClashes(resolved);
 
     slots = new Map(own.map(({ slot, button }) => [slot, button]));
 
@@ -150,20 +150,20 @@ body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vsco
     before: ReadonlyMap<number, string>,
     newSlots: Map<number, string>,
   ): Promise<void> => {
-    const found = await block();
+    const found = await readBlock();
 
     if (!found) {
       return;
     }
 
     const current = new Map(
-      commandSetSlots(
+      readCommandSetSlots(
         found.lines.slice(found.block.startLine + 1, found.block.endLine),
       ).map(({ slot, button }) => [slot, button]),
     );
 
-    if (!sameSlots(current, before)) {
-      await stale();
+    if (!hasSameSlots(current, before)) {
+      await refreshStale();
       return;
     }
 
@@ -176,14 +176,14 @@ body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vsco
       line++
     ) {
       if (document.lineAt(line).text !== found.lines[line]) {
-        await stale();
+        await refreshStale();
         return;
       }
     }
 
     const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
 
-    for (const change of slotEdits(
+    for (const change of buildSlotEdits(
       found.lines,
       found.block.startLine,
       found.block.endLine,
@@ -199,7 +199,7 @@ body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vsco
     await refresh();
   };
 
-  const stale = async (): Promise<void> => {
+  const refreshStale = async (): Promise<void> => {
     void vscode.window.showErrorMessage(
       'The file changed since the editor was drawn; it has been refreshed',
     );
@@ -260,7 +260,7 @@ const createCommandSetLensProvider = (): vscode.CodeLensProvider => ({
     const lenses: vscode.CodeLens[] = [];
 
     for (let line = 0; line < document.lineCount; line++) {
-      const name = commandSetHeader(document.lineAt(line).text);
+      const name = readCommandSetName(document.lineAt(line).text);
 
       if (name) {
         lenses.push(

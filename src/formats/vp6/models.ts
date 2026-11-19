@@ -1,4 +1,4 @@
-import { BoolDecoder, Huff, tree } from './coders';
+import { BoolDecoder, HuffmanCode, readBranch } from './coders';
 import * as T from './tables';
 
 export interface MvModel {
@@ -56,9 +56,9 @@ export class Models {
     new Array(14).fill(0),
   ];
   public huff = {
-    dc: [] as Huff[],
-    ac: [] as Huff[][][],
-    zeroRun: [] as Huff[],
+    dc: [] as HuffmanCode[],
+    ac: [] as HuffmanCode[][][],
+    zeroRun: [] as HuffmanCode[],
   };
 
   public reset(interlaced: boolean): void {
@@ -124,30 +124,30 @@ export class Models {
 
           const sign = bc.readBool();
           const diff =
-            tree(
+            readBranch(
               bc,
               171,
               () =>
-                tree(
+                readBranch(
                   bc,
                   83,
                   () => 2,
                   () => 1,
                 ),
               () =>
-                tree(
+                readBranch(
                   bc,
                   199,
                   () =>
-                    tree(
+                    readBranch(
                       bc,
                       140,
                       () =>
-                        tree(
+                        readBranch(
                           bc,
                           125,
                           () =>
-                            tree(
+                            readBranch(
                               bc,
                               104,
                               () => 6,
@@ -313,15 +313,15 @@ export class Models {
 
   public buildHuffman(): void {
     this.huff.dc = this.coeff.map((model) =>
-      Huff.fromTokenProbs(model.dcValueProbs),
+      HuffmanCode.fromTokenProbs(model.dcValueProbs),
     );
     this.huff.ac = this.coeff.map((model) =>
       model.acValProbs.map((mode) =>
-        mode.map((probs) => Huff.fromTokenProbs(probs)),
+        mode.map((probs) => HuffmanCode.fromTokenProbs(probs)),
       ),
     );
     this.huff.zeroRun = this.zeroRunProbs.map((probs) =>
-      Huff.fromZeroRunProbs(probs),
+      HuffmanCode.fromZeroRunProbs(probs),
     );
   }
 }

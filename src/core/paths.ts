@@ -1,5 +1,3 @@
-﻿
-
 const lastExtension = (name: string): string => {
   const dotIndex = name.lastIndexOf('.');
   return dotIndex <= 0 || name === '..' ? '' : name.slice(dotIndex);

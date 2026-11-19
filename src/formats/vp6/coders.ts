@@ -140,7 +140,7 @@ export class BoolDecoder {
   }
 }
 
-export const tree = <T>(
+export const readBranch = <T>(
   bc: BoolDecoder,
   prob: number,
   a: () => T,
@@ -161,11 +161,11 @@ const weight = (a: number, b: number) =>
 
 const not = (value: number) => ~value & 255;
 
-export class Huff {
+export class HuffmanCode {
   private readonly codes = new Uint16Array(MAX_ELEMS);
   private readonly bits = new Uint8Array(MAX_ELEMS);
 
-  public static fromTokenProbs(p: readonly number[]): Huff {
+  public static fromTokenProbs(p: readonly number[]): HuffmanCode {
     const w = new Array<number>(12).fill(0);
 
     w[11] = weight(p[0], p[1]);
@@ -197,10 +197,10 @@ export class Huff {
     w[9] = weight(c4root, p[10]);
     w[10] = weight(c4root, not(p[10]));
 
-    return Huff.build(w);
+    return HuffmanCode.build(w);
   }
 
-  public static fromZeroRunProbs(p: readonly number[]): Huff {
+  public static fromZeroRunProbs(p: readonly number[]): HuffmanCode {
     const w = new Array<number>(9).fill(0);
     let root = weight(p[0], p[1]);
 
@@ -220,10 +220,10 @@ export class Huff {
     w[6] = weight(root2, p[7]);
     w[7] = weight(root2, not(p[7]));
 
-    return Huff.build(w);
+    return HuffmanCode.build(w);
   }
 
-  private static build(weights: number[]): Huff {
+  private static build(weights: number[]): HuffmanCode {
     const nodes: Node[] = [];
 
     for (let sym = weights.length - 1; sym >= 0; sym--) {
@@ -260,7 +260,7 @@ export class Huff {
 
     }
 
-    const huff = new Huff();
+    const huff = new HuffmanCode();
     const stack: [number, number, number][] = [[nodes.length - 1, 0, 0]];
 
     while (stack.length) {

@@ -1,6 +1,6 @@
 import { workspace, window, EventEmitter, FileType, Uri } from 'vscode';
 import type { Disposable, Event, LogOutputChannel } from 'vscode';
-import { BIG_PATTERN } from '../../constants';
+import { ARCHIVE_GLOB } from '../../constants';
 import { NotAnArchiveError } from '../../formats/big/bigFormat';
 import { delay } from '../../core/delay';
 import { Archive } from './archive';
@@ -76,7 +76,7 @@ export const createArchiveScanner = (
     }
   };
 
-  const reported = (uri: Uri): Promise<void> => {
+  const reloadReportedArchive = (uri: Uri): Promise<void> => {
     retried.delete(uri.fsPath);
     return reloadArchive(uri);
   };
@@ -94,10 +94,10 @@ export const createArchiveScanner = (
   };
 
   const watchArchives = (): Disposable => {
-    const watcher = workspace.createFileSystemWatcher(BIG_PATTERN);
+    const watcher = workspace.createFileSystemWatcher(ARCHIVE_GLOB);
 
-    watcher.onDidChange((uri) => reported(uri));
-    watcher.onDidCreate((uri) => reported(uri));
+    watcher.onDidChange((uri) => reloadReportedArchive(uri));
+    watcher.onDidCreate((uri) => reloadReportedArchive(uri));
     watcher.onDidDelete((uri) => forgetArchive(uri));
 
     return watcher;
@@ -124,7 +124,7 @@ export const createArchiveScanner = (
     registry.sources = sources;
 
     const archiveUris = [
-      ...(await workspace.findFiles(BIG_PATTERN)),
+      ...(await workspace.findFiles(ARCHIVE_GLOB)),
       ...(
         await Promise.all(
           sources

@@ -4,7 +4,7 @@ import { isFragmentPath, parseSageIni } from '../../formats/ini/sageIniParser';
 import type { SageDocument } from '../../formats/ini/sageIniParser';
 import type { SageIniDocuments } from './sageIniDocuments';
 
-export const openDocument = (
+export const findOpenDocument = (
   uri: vscode.Uri,
 ): vscode.TextDocument | undefined => {
   const key = uri.toString();
@@ -15,7 +15,7 @@ export const openDocument = (
 };
 
 export const readWorkspaceText = async (uri: vscode.Uri): Promise<string> =>
-  openDocument(uri)?.getText() ??
+  findOpenDocument(uri)?.getText() ??
   decodeIniText(await vscode.workspace.fs.readFile(uri));
 
 export interface ParseCache {
@@ -34,7 +34,7 @@ export const createParseCache = (documents: SageIniDocuments): ParseCache => {
 
       if (!parse) {
         parse = (async () => {
-          const open = openDocument(uri);
+          const open = findOpenDocument(uri);
 
           if (open) {
             return documents.parse(open);

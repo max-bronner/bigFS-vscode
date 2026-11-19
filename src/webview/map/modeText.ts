@@ -9,7 +9,7 @@ export const describeMode = (mode: MapMode | undefined): string =>
       ? `Click the map to place ${mode.template} · Esc cancels`
       : 'Click the map to add points · Enter finishes · Backspace removes the last · Esc cancels';
 
-export const nextAreaName = (taken: ReadonlySet<string>): string => {
+export const pickAreaName = (taken: ReadonlySet<string>): string => {
   let number = taken.size + 1;
 
   while (taken.has(`Area ${number}`)) {

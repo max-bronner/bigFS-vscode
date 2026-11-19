@@ -6,7 +6,7 @@ import { stripComment, tokenize } from '../../../formats/ini/sageIniParser';
 import type { SageBlock, SageDocument } from '../../../formats/ini/sageIniParser';
 import type { SageIniIndex } from '../../../services/ini/sageIniIndex';
 
-const wordRangeAt = (
+const getWordRangeAt = (
   document: TextDocument,
   position: Position,
 ): Range | undefined => {
@@ -15,7 +15,7 @@ const wordRangeAt = (
   return range;
 };
 
-const contextAt = (
+const findContextAt = (
   { blocks, fileContext }: SageDocument,
   line: number,
 ): { context: string; slot?: string } => {
@@ -71,13 +71,13 @@ export const createSageIniCompletionProvider = (
     const line = document.lineAt(position.line).text;
     const before = stripComment(line).slice(0, position.character);
     const tokens = tokenize(before);
-    const range = wordRangeAt(document, position);
+    const range = getWordRangeAt(document, position);
 
     const onKeyword =
       tokens.length === 0 ||
       (tokens.length === 1 && position.character <= tokens[0].end);
 
-    const { context } = contextAt(parsed, position.line);
+    const { context } = findContextAt(parsed, position.line);
 
     if (onKeyword) {
       const keywords = schema.getContextKeywords(context);
@@ -129,7 +129,7 @@ export const createSageIniCompletionProvider = (
           toItem(value, CompletionItemKind.EnumMember, keyword, range),
         ),
       ...index
-        .getMacroNames()
+        .getMacros()
         .map(({ name, value }) =>
           toItem(name, CompletionItemKind.Constant, `= ${value}`, range),
         ),

@@ -19,7 +19,7 @@ export const enum MbType {
   GoldenNear,
 }
 
-export const referenceOf = (type: MbType): Ref =>
+export const getReference = (type: MbType): Ref =>
   type === MbType.Intra
     ? Ref.Intra
     : type <= MbType.InterFourMv
@@ -27,7 +27,7 @@ export const referenceOf = (type: MbType): Ref =>
       : Ref.Golden;
 
 export const ZERO_MV: Mv = { x: 0, y: 0 };
-export const sameMv = (a: Mv, b: Mv) => a.x === b.x && a.y === b.y;
+export const isSameMv = (a: Mv, b: Mv) => a.x === b.x && a.y === b.y;
 const i16 = (value: number) => (value << 16) >> 16;
 
 const CANDIDATE_OFFSETS = [
@@ -52,7 +52,7 @@ export interface MvCandidates {
   pred: Mv;
 }
 
-export const mvCandidates = (
+export const findMvCandidates = (
   neighbour: (index: number) => { type: MbType; mv: Mv } | undefined,
   mbX: number,
   mbY: number,
@@ -76,7 +76,7 @@ export const mvCandidates = (
 
     const info = neighbour(cy * mbWidth + cx);
 
-    if (!info || referenceOf(info.type) !== want || sameMv(info.mv, ZERO_MV)) {
+    if (!info || getReference(info.type) !== want || isSameMv(info.mv, ZERO_MV)) {
       continue;
     }
     if (count === 0) {
@@ -85,7 +85,7 @@ export const mvCandidates = (
       if (index < 2) {
         pred = info.mv;
       }
-    } else if (!sameMv(info.mv, nearest)) {
+    } else if (!isSameMv(info.mv, nearest)) {
       near = info.mv;
       count = 2;
       break;
@@ -102,8 +102,8 @@ export class DcPredictor {
   private leftU = 0;
   private leftV = 0;
   private leftRef: Ref | undefined;
-  private yIdx = 1;
-  private cIdx = 1;
+  private lumaIndex = 1;
+  private chromaIndex = 1;
   private lastDc: number[][] = [];
 
   public constructor(mbWidth = 0) {
@@ -122,7 +122,7 @@ export class DcPredictor {
   }
 
   public reset(): void {
-    this.newRow();
+    this.startRow();
     this.refsY.fill(undefined);
     this.refsC.fill(undefined);
     this.lastDc = [
@@ -132,24 +132,24 @@ export class DcPredictor {
     ];
   }
 
-  public newRow(): void {
-    this.yIdx = 1;
-    this.cIdx = 1;
+  public startRow(): void {
+    this.lumaIndex = 1;
+    this.chromaIndex = 1;
     this.leftY = [0, 0];
     this.leftU = 0;
     this.leftV = 0;
     this.leftRef = undefined;
   }
 
-  public nextMb(): void {
-    this.yIdx += 2;
-    this.cIdx += 1;
+  public advanceMacroblock(): void {
+    this.lumaIndex += 2;
+    this.chromaIndex += 1;
   }
 
   public predict(blockNo: number, reference: Ref): number {
     const luma = blockNo < 4;
     const plane = luma ? 0 : blockNo - 3;
-    const index = luma ? this.yIdx + (blockNo & 1) : this.cIdx;
+    const index = luma ? this.lumaIndex + (blockNo & 1) : this.chromaIndex;
     const refs = luma ? this.refsY : this.refsC;
     let sum = 0;
     let count = 0;
@@ -180,7 +180,7 @@ export class DcPredictor {
   public update(blockNo: number, reference: Ref, dc: number): void {
     const luma = blockNo < 4;
     const plane = luma ? 0 : blockNo - 3;
-    const index = luma ? this.yIdx + (blockNo & 1) : this.cIdx;
+    const index = luma ? this.lumaIndex + (blockNo & 1) : this.chromaIndex;
 
     if (blockNo !== 4) {
       (luma ? this.refsY : this.refsC)[index] = reference;

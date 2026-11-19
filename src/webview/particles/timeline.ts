@@ -1,10 +1,9 @@
-import type {
-  FxListDef,
-  NumericField,
-} from '../../formats/particles/particleIni';
+import type { FxListDef } from '../../formats/particles/particleIni';
+import type { NumericField } from '../../formats/particles/particleValueEdits';
 import type { FxEffect } from '../../formats/particles/fxEffects';
-import { effectLength } from '../../formats/particles/fxEffects';
+import { getEffectLength } from '../../formats/particles/fxEffects';
 import { STEP_HZ } from '../../formats/particles/particleSimulation';
+import { pageSoundPlayer } from '../shared/pageSoundPlayer';
 import { $, library, post, state, world } from './page';
 
 const container = $('timeline');
@@ -27,7 +26,7 @@ const rootList = () =>
 
 const delayFrames = (ms: number) => Math.ceil((ms * STEP_HZ) / 1000);
 
-const duration = (system: string): number | undefined => {
+const getDurationFrames = (system: string): number | undefined => {
   const def = library.systems.get(system.toLowerCase());
 
   if (!def) {
@@ -61,9 +60,9 @@ export const applyMuting = (): void => {
   }
 };
 
-const span = (list: FxListDef): number => {
+const getPlannedFrames = (list: FxListDef): number => {
   const ends = list.nuggets.map((nugget) => {
-    const end = duration(nugget.system);
+    const end = getDurationFrames(nugget.system);
 
     return delayFrames(nugget.initialDelay.high) + (end ?? 0);
   });
@@ -72,17 +71,22 @@ const span = (list: FxListDef): number => {
     ...list.effects.map(
       (effect) =>
         delayFrames(effect.initialDelay.low) +
-        (effectLength(effect) / 1000) * STEP_HZ,
+        (getEffectLength(effect) / 1000) * STEP_HZ,
     ),
   ];
 
   return Math.max(
     STEP_HZ * 2,
-    world.frame + STEP_HZ / 2,
     ...finite,
     ...(finite.length < ends.length ? [STEP_HZ * 4] : []),
   );
 };
+
+const getSpanFrames = (list: FxListDef): number =>
+  Math.max(getPlannedFrames(list), world.frame + STEP_HZ / 2);
+
+export const getTimelineSeconds = (): number | undefined =>
+  original && getPlannedFrames(original) / STEP_HZ;
 
 export const listEffects = (): readonly FxEffect[] => original?.effects ?? [];
 
@@ -105,7 +109,7 @@ export const drawTimeline = (): void => {
   }
 
   const ctx = canvas.getContext('2d')!;
-  const frames = span(list);
+  const frames = getSpanFrames(list);
   const x = (frame: number) =>
     LABEL + (Math.min(frame, frames) / frames) * (width - LABEL - PAD);
 
@@ -137,7 +141,7 @@ export const drawTimeline = (): void => {
     const off = solo !== undefined ? index !== solo : muted.has(index);
     const start = delayFrames(nugget.initialDelay.low);
     const late = delayFrames(nugget.initialDelay.high);
-    const length = duration(nugget.system);
+    const length = getDurationFrames(nugget.system);
     const live = alive.get(nugget.system.toLowerCase()) ?? 0;
 
     ctx.fillStyle = off ? 'rgba(255,255,255,0.35)' : '#ddd';
@@ -187,7 +191,7 @@ export const drawTimeline = (): void => {
     const top = PAD + (list.nuggets.length + list.sounds.length + index) * ROW;
     const approximated = !!effect.approximation;
     const at = x(delayFrames(effect.initialDelay.low));
-    const length = (effectLength(effect) / 1000) * STEP_HZ;
+    const length = (getEffectLength(effect) / 1000) * STEP_HZ;
 
     ctx.fillStyle = approximated ? '#ddd' : 'rgba(255,255,255,0.35)';
     ctx.fillText(
@@ -242,6 +246,10 @@ let soundFrame = 0;
 
 const PLAY_ZONE = 18;
 
+export const skipDueSounds = (): void => {
+  soundFrame = world.frame;
+};
+
 const playDueSounds = (list: FxListDef): void => {
   if (!soundsBox?.checked) {
     soundFrame = world.frame;
@@ -254,7 +262,7 @@ const playDueSounds = (list: FxListDef): void => {
     const due = delayFrames(sound.initialDelay.low);
 
     if (due > soundFrame && due <= world.frame) {
-      post({ kind: 'playSound', name: sound.name });
+      pageSoundPlayer.request(sound.name, post);
     }
   }
   soundFrame = world.frame;
@@ -302,6 +310,11 @@ export const renderTimeline = (restart: () => void): void => {
 
   sounds.type = 'checkbox';
   sounds.checked = false;
+  sounds.onchange = () => {
+    if (sounds.checked) {
+      pageSoundPlayer.unlock();
+    }
+  };
   soundsLabel.title =
     'Play each Sound nugget at its delay while the effect runs; off by default';
   soundsLabel.append(sounds, ' Play sounds');
@@ -314,7 +327,7 @@ export const renderTimeline = (restart: () => void): void => {
 
     if (sound !== undefined) {
       if (event.clientX - box.left < LABEL) {
-        post({ kind: 'playSound', name: original!.sounds[sound].name });
+        pageSoundPlayer.press(original!.sounds[sound].name, event, post);
       }
       return;
     }
@@ -357,7 +370,7 @@ export const renderTimeline = (restart: () => void): void => {
     const width = view.clientWidth - LABEL - PAD;
     const ms =
       ((event.clientX - drag.startX) / width) *
-      (span(original) / STEP_HZ) *
+      (getSpanFrames(original) / STEP_HZ) *
       1000;
 
     for (const [id, value] of drag.delays) {

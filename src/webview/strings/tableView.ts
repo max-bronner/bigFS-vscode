@@ -10,7 +10,7 @@ export interface TableState {
   page: number;
 }
 
-const cell = (text: string, className?: string): HTMLTableCellElement => {
+const createCell = (text: string, className?: string): HTMLTableCellElement => {
   const element = document.createElement('td');
 
   element.textContent = text;
@@ -42,7 +42,7 @@ export const renderTable = (
       if (hasProblems) {
         tr.className = 'problem';
       }
-      const label = cell(row.label, 'label');
+      const label = createCell(row.label, 'label');
 
       if (hasProblems) {
         label.title = row.problems!.join('; ');
@@ -56,7 +56,7 @@ export const renderTable = (
             post({ kind: 'setLabel', id: row.id, label: row.label, value }),
           redraw,
         );
-      const textCell = cell(
+      const textCell = createCell(
         row.text,
         `text${row.hasText === false ? ' missing' : ''}`,
       );
@@ -75,7 +75,7 @@ export const renderTable = (
         );
       tr.append(label, textCell);
       if (state.hasSpeech) {
-        const speech = cell(row.speech ?? '', 'speech');
+        const speech = createCell(row.speech ?? '', 'speech');
 
         speech.ondblclick = () =>
           editCell(

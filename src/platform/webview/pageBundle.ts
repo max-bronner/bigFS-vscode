@@ -1,10 +1,10 @@
 import { Uri } from 'vscode';
 import type { Webview } from 'vscode';
 
-export const pageBundleFolder = (extensionUri: Uri): Uri =>
+export const getPageBundleFolder = (extensionUri: Uri): Uri =>
   Uri.joinPath(extensionUri, 'dist', 'webview');
 
-export const pageBundle = (
+export const getPageBundleOptions = (
   extensionUri: Uri,
   webview: Webview,
   name: string,
@@ -12,7 +12,7 @@ export const pageBundle = (
   allow: { script: webview.cspSource },
   scriptFiles: [
     webview
-      .asWebviewUri(Uri.joinPath(pageBundleFolder(extensionUri), `${name}.js`))
+      .asWebviewUri(Uri.joinPath(getPageBundleFolder(extensionUri), `${name}.js`))
       .toString(),
   ],
 });

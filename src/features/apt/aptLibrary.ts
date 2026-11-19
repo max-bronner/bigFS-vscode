@@ -1,15 +1,15 @@
 import * as vscode from 'vscode';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
-import { archiveOrderKey } from '../../game/install/gameView';
+import { getArchiveOrderKey } from '../../game/install/gameView';
 import { getNodeUri } from '../../services/archives/nodeAddress';
-import { findChild } from '../../services/archives/virtualNode';
+import { findChild } from '../../services/archives/virtualTree';
 
 export interface MovieLocation {
   uri: vscode.Uri;
   origin: string;
 }
 
-export const movieKey = (name: string): string =>
+export const toMovieKey = (name: string): string =>
   name.toLowerCase().replace(/\.apt$/, '');
 
 export class AptLibrary implements vscode.Disposable {
@@ -30,7 +30,11 @@ export class AptLibrary implements vscode.Disposable {
 
     this.subscriptions = [
       this.onDidChangeEmitter,
-      archiveModel.onDidChangeArchive(forget),
+      archiveModel.onDidChangeArchive(({ loaded }) => {
+        if (!loaded) {
+          forget();
+        }
+      }),
       archiveModel.onDidScan(forget),
       watcher,
       watcher.onDidCreate(forget),
@@ -49,7 +53,7 @@ export class AptLibrary implements vscode.Disposable {
   }
 
   public locate(name: string): Promise<MovieLocation | undefined> {
-    const key = movieKey(name);
+    const key = toMovieKey(name);
     let location = this.locations.get(key);
 
     if (!location) {
@@ -71,7 +75,7 @@ export class AptLibrary implements vscode.Disposable {
 
       const archives = [...this.archiveModel.getArchivesOf(source.id)].sort(
         (a, b) =>
-          archiveOrderKey(a.pathInSource) < archiveOrderKey(b.pathInSource)
+          getArchiveOrderKey(a.pathInSource) < getArchiveOrderKey(b.pathInSource)
             ? -1
             : 1,
       );

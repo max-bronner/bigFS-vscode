@@ -135,8 +135,6 @@ const CONTAINERS = new Set([
 
 const PREFIXED = new Set(['ScriptGroup', 'Script']);
 
-const latin1 = { decode: decodeWindows1252 };
-
 const createMapReader = (
   bytes: Uint8Array,
   start = 0,
@@ -149,7 +147,7 @@ const createMapReader = (
   });
 
 const readString = (reader: ByteReader): string =>
-  latin1.decode(reader.bytes(reader.u16()));
+  decodeWindows1252(reader.bytes(reader.u16()));
 
 const readWide = (reader: ByteReader): string => {
   const raw = reader.bytes(reader.u16() * 2);
@@ -346,7 +344,7 @@ export const parseMapBody = (
   body: Uint8Array,
   compression: MapFile['compression'],
 ): MapFile => {
-  if (latin1.decode(body.subarray(0, 4)) !== 'CkMp') {
+  if (decodeWindows1252(body.subarray(0, 4)) !== 'CkMp') {
     throw new Error('Not a map: the body does not start with CkMp');
   }
 
@@ -356,7 +354,7 @@ export const parseMapBody = (
   for (let count = reader.u32(); count > 0; count--) {
     const length = reader.u8();
 
-    const name = latin1.decode(reader.bytes(length));
+    const name = decodeWindows1252(reader.bytes(length));
 
     names.set(reader.u32(), name);
   }
@@ -702,8 +700,8 @@ export const parseMap = (bytes: Uint8Array): MapFile =>
 export const writeMap = (map: MapFile): Uint8Array =>
   map.compression === 'ear' ? compressEar(map.body) : map.body;
 
-export const allChunks = (chunks: MapChunk[]): MapChunk[] =>
-  chunks.flatMap((chunk) => [chunk, ...allChunks(chunk.children ?? [])]);
+export const listAllChunks = (chunks: MapChunk[]): MapChunk[] =>
+  chunks.flatMap((chunk) => [chunk, ...listAllChunks(chunk.children ?? [])]);
 
 export const spliceMap = (
   map: MapFile,
@@ -723,7 +721,7 @@ export const spliceMap = (
 
   const holder = inside ?? { start, end };
 
-  for (const chunk of allChunks(map.chunks)) {
+  for (const chunk of listAllChunks(map.chunks)) {
     if (chunk.start <= holder.start && holder.end <= chunk.end) {
       const lengthAt = chunk.header + 6;
 

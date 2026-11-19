@@ -6,8 +6,8 @@ import type {
   MovieText,
   TextRunText,
 } from '../textModel';
-import { alignLists, checkAppended, printItem } from './alignLists';
-import { sameFloat, sameFloats } from './sameFloats';
+import { alignLists, checkAppended, getAlignmentKey } from './alignLists';
+import { isSameFloat, areSameFloats } from './sameFloats';
 import type { SaveSession } from './saveSession';
 import { TextSaveError } from './textSaveError';
 
@@ -15,7 +15,7 @@ export const saveCharacters = (
   session: SaveSession,
   after: MovieText,
 ): void => {
-  const current = session.current();
+  const current = session.readCurrentText();
 
   if (after.characters.length < current.characters.length) {
     throw new TextSaveError(
@@ -52,7 +52,7 @@ export const saveCharacters = (
           next.line,
         );
       }
-      was = session.current().characters[next.id];
+      was = session.readCurrentText().characters[next.id];
     }
 
     if (next.type === 'placeholder' && was.type !== 'placeholder') {
@@ -91,9 +91,9 @@ const saveCharacter = (
   ) => {
     const differs =
       typeof before === 'number' && typeof after === 'number'
-        ? !sameFloat(before, after)
+        ? !isSameFloat(before, after)
         : Array.isArray(before) && Array.isArray(after)
-          ? !sameFloats(before as number[], after as number[])
+          ? !areSameFloats(before as number[], after as number[])
           : before !== after;
 
     if (differs) {
@@ -251,7 +251,7 @@ const saveRuns = (
   before: TextRunText[],
   after: TextRunText[],
 ): void => {
-  const pairs = alignLists(before, after, (run) => printItem(run as never));
+  const pairs = alignLists(before, after, (run) => getAlignmentKey(run as never));
 
   checkAppended(pairs, after, 'run');
   pairs
@@ -271,21 +271,21 @@ const saveRuns = (
     const was =
       i === undefined
         ? (session.apply({ kind: 'addTextRecord', id, font: next.font }),
-          session.current().characters[id] as Extract<
+          session.readCurrentText().characters[id] as Extract<
             CharacterText,
             { type: 'text' }
           >).runs[index]
         : before[i];
     const change = {
       ...(was.font !== next.font ? { font: next.font } : {}),
-      ...(!sameFloats(was.color, next.color) ? { color: next.color } : {}),
-      ...(!sameFloats(was.unknown, next.unknown)
+      ...(!areSameFloats(was.color, next.color) ? { color: next.color } : {}),
+      ...(!areSameFloats(was.unknown, next.unknown)
         ? { unknown: next.unknown }
         : {}),
-      ...(!sameFloats(was.penOffset, next.penOffset)
+      ...(!areSameFloats(was.penOffset, next.penOffset)
         ? { penOffset: next.penOffset }
         : {}),
-      ...(!sameFloat(was.textHeight, next.textHeight)
+      ...(!isSameFloat(was.textHeight, next.textHeight)
         ? { textHeight: next.textHeight }
         : {}),
       ...(JSON.stringify(was.glyphs) !== JSON.stringify(next.glyphs)
@@ -307,7 +307,7 @@ const saveButtonRecords = (
   after: ButtonRecordText[],
 ): void => {
   const pairs = alignLists(before, after, (record) =>
-    printItem(record as never),
+    getAlignmentKey(record as never),
   );
 
   checkAppended(pairs, after, 'button record');
@@ -340,7 +340,7 @@ const saveButtonRecords = (
         translate: next.placement.translate,
       });
       was = (
-        session.current().characters[id] as Extract<
+        session.readCurrentText().characters[id] as Extract<
           CharacterText,
           { type: 'button' }
         >
@@ -355,14 +355,14 @@ const saveButtonRecords = (
         ? { character: next.character }
         : {}),
       ...(was.depth !== next.depth ? { depth: next.depth } : {}),
-      ...(!sameFloats(was.placement.matrix, next.placement.matrix)
+      ...(!areSameFloats(was.placement.matrix, next.placement.matrix)
         ? { matrix: next.placement.matrix }
         : {}),
-      ...(!sameFloats(was.placement.translate, next.placement.translate)
+      ...(!areSameFloats(was.placement.translate, next.placement.translate)
         ? { translate: next.placement.translate }
         : {}),
-      ...(!sameFloats(was.color, next.color) ? { color: next.color } : {}),
-      ...(!sameFloats(was.unknown, next.unknown)
+      ...(!areSameFloats(was.color, next.color) ? { color: next.color } : {}),
+      ...(!areSameFloats(was.unknown, next.unknown)
         ? { unknown: next.unknown }
         : {}),
     };
@@ -420,7 +420,7 @@ const saveButtonActions = (
           condition: next.condition,
         });
       }
-      session.script(was.script, next.script);
+      session.noteScript(was.script, next.script);
     }
     index++;
   }

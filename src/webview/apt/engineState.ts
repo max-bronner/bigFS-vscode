@@ -1,15 +1,20 @@
+import type { PlaySoundRequest } from '../../core/soundClip';
 import { Engine } from './avm/engine';
+import { pageSoundPlayer } from '../shared/pageSoundPlayer';
 import { getVsCodeApi } from '../shared/vscodeApi';
 import type { EngineValues, FromPage, PageMovie } from './protocol';
 
 const vscode = getVsCodeApi<FromPage>();
+
+export const postSoundRequest = (request: PlaySoundRequest): void =>
+  vscode.postMessage(request);
 
 const listeners = { change: () => {}, log: (_line: string) => {} };
 
 export const engine = new Engine(
   () => listeners.change(),
   (line) => listeners.log(line),
-  (event) => vscode.postMessage({ kind: 'playSound', name: event }),
+  (event) => pageSoundPlayer.request(event, postSoundRequest),
 );
 
 export const onEngineChange = (change: () => void): void => {

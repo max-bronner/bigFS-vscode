@@ -4,7 +4,7 @@ import type { Placement } from './textModel';
 const F32 = new Float32Array(1);
 const F32_WORD = new Uint32Array(F32.buffer);
 
-export const f32Bits = (value: number): number => {
+export const toF32Bits = (value: number): number => {
   F32[0] = value;
   return F32_WORD[0];
 };
@@ -32,10 +32,10 @@ export const formatF32 = (value: number): string => {
   return String(exact);
 };
 
-export const hex = (value: number, digits = 8) =>
+export const formatHex = (value: number, digits = 8) =>
   `0x${(value >>> 0).toString(16).padStart(digits, '0')}`;
 
-export const byteHex = (value: number) =>
+export const formatByteHex = (value: number) =>
   (value & 255).toString(16).padStart(2, '0');
 
 const turn = (degrees: number): [number, number] => {
@@ -72,14 +72,14 @@ export const composeMatrix = (
   ];
 };
 
-const sameMatrix = (a: Matrix2, b: Matrix2) =>
-  a.every((value, index) => f32Bits(value) === f32Bits(b[index]));
+const isSameMatrix = (a: Matrix2, b: Matrix2) =>
+  a.every((value, index) => toF32Bits(value) === toF32Bits(b[index]));
 
 const transformWords = (matrix: Matrix2): string[] => {
   const [a, b, c, d] = matrix;
 
   if (Object.is(b, 0) && Object.is(c, 0)) {
-    return f32Bits(a) === f32Bits(1) && f32Bits(d) === f32Bits(1)
+    return toF32Bits(a) === toF32Bits(1) && toF32Bits(d) === toF32Bits(1)
       ? []
       : ['scale', `${formatF32(a)},${formatF32(d)}`];
   }
@@ -107,14 +107,14 @@ const transformWords = (matrix: Matrix2): string[] => {
           const degreesText = Object.is(rotation, -0) ? '-0' : String(rotation);
 
           if (
-            sameMatrix(
+            isSameMatrix(
               composeMatrix(read(x), read(y), Number(degreesText)),
               matrix,
             )
           ) {
             return [
-              ...(f32Bits(read(x)) === f32Bits(1) &&
-              f32Bits(read(y)) === f32Bits(1)
+              ...(toF32Bits(read(x)) === toF32Bits(1) &&
+              toF32Bits(read(y)) === toF32Bits(1)
                 ? []
                 : ['scale', `${x},${y}`]),
               'rot',
@@ -129,7 +129,7 @@ const transformWords = (matrix: Matrix2): string[] => {
   return ['matrix', matrix.map(formatF32).join(',')];
 };
 
-export const placementWords = ({ matrix, translate }: Placement): string[] => [
+export const formatPlacementWords = ({ matrix, translate }: Placement): string[] => [
   'at',
   translate.map(formatF32).join(','),
   ...transformWords(matrix),

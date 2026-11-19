@@ -3,18 +3,19 @@ import { stripComment, tokenize } from '../../formats/ini/sageIniParser';
 import type { SageBlock, SageDocument } from '../../formats/ini/sageIniParser';
 import { resolveSageSymbol } from '../../formats/ini/sageIniSymbol';
 import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
-import type { SageDefinition, SageIniIndex } from '../../services/ini/sageIniIndex';
+import type { SageIniIndex } from '../../services/ini/sageIniIndex';
+import type { SageDefinition } from '../../services/ini/sageIniTables';
 import { createParseCache, readWorkspaceText } from '../../services/ini/workspaceText';
 
 const TEMPLATE_KEYWORDS = ['Object', 'ChildObject', 'ObjectReskin'];
 const INHERITING = ['ChildObject', 'ObjectReskin'];
 
-const topBlockAt = (parsed: SageDocument, line: number) =>
+const findTopBlockAt = (parsed: SageDocument, line: number) =>
   parsed.blocks.find(
     (block) => block.startLine <= line && line <= block.endLine,
   );
 
-const itemOfBlock = <
+const toBlockItem = <
   T extends vscode.CallHierarchyItem | vscode.TypeHierarchyItem,
 >(
   make: new (
@@ -47,7 +48,7 @@ const itemOfBlock = <
   );
 };
 
-const itemOfDefinition = <
+const toDefinitionItem = <
   T extends vscode.CallHierarchyItem | vscode.TypeHierarchyItem,
 >(
   make: new (
@@ -74,7 +75,7 @@ const itemOfDefinition = <
     ),
   );
 
-const keyOf = (item: { uri: vscode.Uri; range: vscode.Range }) =>
+const toItemKey = (item: { uri: vscode.Uri; range: vscode.Range }) =>
   `${item.uri.toString()}#${item.range.start.line}`;
 
 const prepare = async <
@@ -110,14 +111,14 @@ const prepare = async <
       const [definition] = index.findDefinitions(namespace, symbol.name);
 
       if (definition) {
-        return itemOfDefinition(make, definition);
+        return toDefinitionItem(make, definition);
       }
     }
   }
 
-  const block = topBlockAt(parsed, position.line);
+  const block = findTopBlockAt(parsed, position.line);
 
-  return block && itemOfBlock(make, parsed, block, document.uri);
+  return block && toBlockItem(make, parsed, block, document.uri);
 };
 
 export const createCallHierarchyProvider = (
@@ -132,7 +133,7 @@ export const createCallHierarchyProvider = (
     const read = (uri: vscode.Uri) => parses.get(uri);
     const parsed = await read(item.uri);
     const schema = await documents.getSchema();
-    const block = parsed && topBlockAt(parsed, item.range.start.line);
+    const block = parsed && findTopBlockAt(parsed, item.range.start.line);
 
     if (!parsed || !block) {
       return [];
@@ -169,20 +170,20 @@ export const createCallHierarchyProvider = (
           continue;
         }
 
-        const target = itemOfDefinition(vscode.CallHierarchyItem, definition);
+        const target = toDefinitionItem(vscode.CallHierarchyItem, definition);
         const range = new vscode.Range(
           statement.line,
           token.start,
           statement.line,
           token.end,
         );
-        const call = calls.get(keyOf(target));
+        const call = calls.get(toItemKey(target));
 
         if (call) {
           call.fromRanges.push(range);
         } else {
           calls.set(
-            keyOf(target),
+            toItemKey(target),
             new vscode.CallHierarchyOutgoingCall(target, [range]),
           );
         }
@@ -200,11 +201,11 @@ export const createCallHierarchyProvider = (
 
     for (const place of index.findReferences(item.detail ?? '', item.name)) {
       const parsed = await read(place.uri);
-      const block = parsed && topBlockAt(parsed, place.line);
+      const block = parsed && findTopBlockAt(parsed, place.line);
       const from =
         parsed &&
         block &&
-        itemOfBlock(vscode.CallHierarchyItem, parsed, block, place.uri);
+        toBlockItem(vscode.CallHierarchyItem, parsed, block, place.uri);
 
       if (!from) {
         continue;
@@ -216,13 +217,13 @@ export const createCallHierarchyProvider = (
         place.line,
         place.end,
       );
-      const call = calls.get(keyOf(from));
+      const call = calls.get(toItemKey(from));
 
       if (call) {
         call.fromRanges.push(range);
       } else {
         calls.set(
-          keyOf(from),
+          toItemKey(from),
           new vscode.CallHierarchyIncomingCall(from, [range]),
         );
       }
@@ -231,7 +232,7 @@ export const createCallHierarchyProvider = (
   },
 });
 
-const parentOf = (headerLine: string): string | undefined => {
+const readParentName = (headerLine: string): string | undefined => {
   const [keyword, , parent] = tokenize(stripComment(headerLine));
 
   return keyword &&
@@ -244,7 +245,7 @@ export const createTypeHierarchyProvider = (
   documents: SageIniDocuments,
   index: SageIniIndex,
 ): vscode.TypeHierarchyProvider => {
-  const lineReader = () => {
+  const createLineReader = () => {
     const texts = new Map<string, Promise<string[]>>();
 
     return (uri: vscode.Uri, line: number): Promise<string> => {
@@ -280,8 +281,8 @@ export const createTypeHierarchyProvider = (
     },
 
     async provideTypeHierarchySupertypes(item) {
-      const header = await lineReader()(item.uri, item.range.start.line);
-      const parent = parentOf(header);
+      const header = await createLineReader()(item.uri, item.range.start.line);
+      const parent = readParentName(header);
 
       if (!parent) {
         return [];
@@ -291,7 +292,7 @@ export const createTypeHierarchyProvider = (
         const [definition] = index.findDefinitions(keyword, parent);
 
         if (definition) {
-          return [itemOfDefinition(vscode.TypeHierarchyItem, definition)];
+          return [toDefinitionItem(vscode.TypeHierarchyItem, definition)];
         }
       }
       return [];
@@ -300,7 +301,7 @@ export const createTypeHierarchyProvider = (
     async provideTypeHierarchySubtypes(item) {
       await index.whenReady();
 
-      const read = lineReader();
+      const read = createLineReader();
       const children: vscode.TypeHierarchyItem[] = [];
 
       for (const name of index.getNames('Object')) {
@@ -313,11 +314,11 @@ export const createTypeHierarchyProvider = (
             continue;
           }
 
-          const parent = parentOf(await read(definition.uri, definition.line));
+          const parent = readParentName(await read(definition.uri, definition.line));
 
           if (parent?.toLowerCase() === item.name.toLowerCase()) {
             children.push(
-              itemOfDefinition(vscode.TypeHierarchyItem, definition),
+              toDefinitionItem(vscode.TypeHierarchyItem, definition),
             );
           }
         }

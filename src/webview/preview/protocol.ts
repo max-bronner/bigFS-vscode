@@ -1,5 +1,10 @@
+import type {
+  AnimationStep,
+  CursorFrame,
+} from '../../formats/cursor/cursorFrame';
 import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
-import type { ModelScene } from '../../formats/w3d/w3dScene';
+import type { ForeignClip } from '../../formats/w3d/w3dModelFinder';
+import type { ModelScene, SceneSkeleton } from '../../formats/w3d/w3dScene';
 
 export interface ModelMessage extends ModelScene {
   shownOn?: string;
@@ -19,6 +24,25 @@ export interface TextureMessage {
   levels: { width: number; height: number; pixels: Uint8Array }[];
 }
 
+export interface TextureRegion {
+  id: string;
+  label: string;
+  group: string;
+  rect: [number, number, number, number];
+  rotated: boolean;
+  editable: boolean;
+  note?: string;
+  source?: { uri: string; line: number };
+}
+
+export interface RegionsMessage {
+  kind: 'regions';
+  regions: TextureRegion[];
+  append?: boolean;
+  selected?: string;
+  loading?: boolean;
+}
+
 export interface AudioMessage {
   kind: 'audio';
   wav: Uint8Array;
@@ -31,13 +55,6 @@ export interface AudioMessage {
   };
 }
 
-export interface CompressedAudioMessage {
-  kind: 'compressedAudio';
-  bytes: Uint8Array;
-  mime: string;
-  format: string;
-}
-
 export interface VideoMessage {
   kind: 'video';
   width: number;
@@ -47,22 +64,40 @@ export interface VideoMessage {
   hasAlpha: boolean;
 }
 
+export interface CursorMessage {
+  kind: 'cursor';
+  frames: CursorFrame[];
+  steps?: AnimationStep[];
+}
+
 export type ToPreviewPage =
   | TextureMessage
+  | RegionsMessage
   | AudioMessage
-  | CompressedAudioMessage
   | VideoMessage
+  | CursorMessage
   | ({ kind: 'model' } & ModelMessage)
   | { kind: 'error'; message: string }
-  | { kind: 'animations'; names: string[] }
+  | { kind: 'animations'; own: string[]; foreign: ForeignClip[] }
   | { kind: 'uses'; uses: FileUse[] }
-  | { kind: 'animation'; file: string; animation: W3dAnimation }
+  | {
+      kind: 'animation';
+      file: string;
+      animation: W3dAnimation;
+      skeleton?: SceneSkeleton;
+    }
   | { kind: 'animationError'; message: string }
   | { kind: 'videoFrame'; index: number; pixels: Uint8Array }
   | { kind: 'videoError'; message: string };
 
 export type FromPreviewPage =
   | { kind: 'ready' }
+  | { kind: 'popOut' }
+  | {
+      kind: 'editRegion';
+      id: string;
+      rect: [number, number, number, number];
+    }
   | { kind: 'reveal'; uri: string; line: number }
   | { kind: 'animation'; file: string }
   | { kind: 'videoFrame'; index: number };

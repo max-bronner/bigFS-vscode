@@ -1,96 +1,9 @@
-import { stripComment, tokenize } from '../ini/sageIniParser';
 import { readFxEffect } from './fxEffects';
+import { parseIniNumber } from './particleDefinitions';
+import type { IniDefinition, IniLine } from './particleDefinitions';
 import type { FxEffect } from './fxEffects';
+import type { ParticleDef, Range, Vec3, Velocity, Volume, Wind } from './particleDef';
 import type { SageToken } from '../ini/sageIniParser';
-
-export type Vec3 = [number, number, number];
-
-export interface Range {
-  low: number;
-  high: number;
-}
-
-export type Volume =
-  | { type: 'point' }
-  | { type: 'line'; start: Vec3; end: Vec3 }
-  | { type: 'box'; halfSize: Vec3; hollow: boolean }
-  | { type: 'sphere'; radius: number; hollow: boolean }
-  | {
-      type: 'cylinder';
-      radius: number;
-      length: number;
-      offset: Vec3;
-      hollow: boolean;
-    }
-  | { type: 'unread'; module: string };
-
-export type Velocity =
-  | { type: 'ortho'; x: Range; y: Range; z: Range }
-  | { type: 'spherical'; speed: Range }
-  | { type: 'hemispherical'; speed: Range }
-  | { type: 'cylindrical'; radial: Range; normal: Range }
-  | { type: 'outward'; speed: Range; otherSpeed: Range };
-
-export interface ColorKey {
-  rgb: Vec3;
-  frame: number;
-}
-
-export interface AlphaKey {
-  value: Range;
-  frame: number;
-}
-
-export interface Wind {
-  motion: 'none' | 'pingpong' | 'circular';
-  strength: number;
-  fullStrengthDist: number;
-  zeroStrengthDist: number;
-  angleChange: Range;
-  start: Range;
-  end: Range;
-}
-
-export interface ParticleDef {
-  name: string;
-  form: 'block' | 'flat';
-  particleName?: string;
-  shader: string;
-  type: string;
-  drawModule?: string;
-  priority?: string;
-  lifetime: Range;
-  systemLifetime: number;
-  initialDelay: Range;
-  burstCount: Range;
-  burstDelay: Range;
-  size: Range;
-  startSizeRate: Range;
-  oneShot: boolean;
-  groundAligned: boolean;
-  upTowardsEmitter: boolean;
-  volume: Volume;
-  velocity: Velocity;
-  gravity: number;
-  drift: Vec3;
-  velocityDamping: Range;
-  attachToBone: boolean;
-  sizeRate: Range;
-  sizeRateDamping: Range;
-  angleZ: Range;
-  angularRateZ: Range;
-  angularDamping: Range;
-  colors: ColorKey[];
-  alphas: AlphaKey[];
-  hasAlphaBlock: boolean;
-  colorScale: Range;
-  flipbook?: { totalFrames: number; framesPerRow: number; speed: number };
-  slaveSystem?: string;
-  slavePosOffset: Vec3;
-  perParticleSystem?: string;
-  event?: { fx?: string; heightOffset: number; killAfterEvent: boolean };
-  wind?: Wind;
-}
 
 export interface FxNugget {
   system: string;
@@ -115,135 +28,10 @@ export interface FxListDef {
   effects: FxEffect[];
 }
 
-export interface IniLine {
-  line: number;
-  keyword: SageToken;
-  values: SageToken[];
-  module: string;
-  moduleType: string;
-  moduleIndex: number;
-}
-
-export interface IniModule {
-  slot: string;
-  type: string;
-  line: number;
-}
-
-export interface IniDefinition {
-  keyword: string;
-  name: string;
-  startLine: number;
-  endLine: number;
-  lines: IniLine[];
-  modules: IniModule[];
-}
-
-const SLOTS = new Set(
-  [
-    'System',
-    'EmissionVelocity',
-    'EmissionVolume',
-    'Color',
-    'Update',
-    'Draw',
-    'Physics',
-    'Alpha',
-    'Wind',
-    'Event',
-    'Emitter',
-  ].map((slot) => slot.toLowerCase()),
-);
-
-export const DEFINITION_KEYWORDS = [
-  'FXParticleSystem',
-  'ParticleSystem',
-  'FXList',
-] as const;
-
-const isEnd = (word: string) => /^end$/i.test(word);
-
-export const findParticleDefinitions = (text: string): IniDefinition[] => {
-  const lines = text.split(/\r?\n/);
-  const found: IniDefinition[] = [];
-  let open: IniDefinition | undefined;
-  let module: { slot: string; type: string } | undefined;
-
-  lines.forEach((raw, line) => {
-    const tokens = tokenize(stripComment(raw));
-    const [keyword, ...values] = tokens;
-
-    if (!keyword) {
-      return;
-    }
-
-    if (!open) {
-      const kind = DEFINITION_KEYWORDS.find(
-        (candidate) => candidate.toLowerCase() === keyword.text.toLowerCase(),
-      );
-
-      if (kind && values[0]) {
-        open = {
-          keyword: kind,
-          name: values[0].text,
-          startLine: line,
-          endLine: line,
-          lines: [],
-          modules: [],
-        };
-      }
-      return;
-    }
-
-    if (isEnd(keyword.text)) {
-      if (module) {
-        module = undefined;
-      } else {
-        open.endLine = line;
-        found.push(open);
-        open = undefined;
-      }
-      return;
-    }
-
-    const hasEquals = /=/.test(stripComment(raw));
-    const opensModule =
-      !module &&
-      (open.keyword === 'FXParticleSystem'
-        ? SLOTS.has(keyword.text.toLowerCase())
-        : open.keyword === 'FXList' && !hasEquals);
-
-    if (opensModule) {
-      module = { slot: keyword.text, type: values[0]?.text ?? keyword.text };
-      open.modules.push({ ...module, line });
-      return;
-    }
-
-    open.lines.push({
-      line,
-      keyword,
-      values,
-      module: module?.slot ?? '',
-      moduleType: module?.type ?? '',
-      moduleIndex: module ? open.modules.length - 1 : -1,
-    });
-  });
-
-  return found;
-};
-
-export const parseIniNumber = (text: string): number => {
-  const match = /^(?:[A-Za-z]:)?(-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)%?$/i.exec(
-    text,
-  );
-
-  return match ? Number(match[1]) : NaN;
-};
-
 const RANGE_ZERO: Range = { low: 0, high: 0 };
 const RANGE_ONE: Range = { low: 1, high: 1 };
 
-const rangeOf = (values: SageToken[]): Range | undefined => {
+const readRange = (values: SageToken[]): Range | undefined => {
   const numbers = values.map((value) => parseIniNumber(value.text));
 
   if (numbers.length === 1 && !isNaN(numbers[0])) {
@@ -341,6 +129,7 @@ const flatVolume = (fields: Map<string, SageToken[]>): Volume => {
       return {
         type: 'cylinder',
         radius: numberOf(get('VolCylinderRadius'), 0),
+        radiusRate: 0,
         length: numberOf(get('VolCylinderLength'), 0),
         offset: [0, 0, 0],
         hollow,
@@ -352,7 +141,7 @@ const flatVolume = (fields: Map<string, SageToken[]>): Volume => {
 
 const flatVelocity = (fields: Map<string, SageToken[]>): Velocity => {
   const range = (key: string) =>
-    rangeOf(fields.get(key.toLowerCase()) ?? []) ?? { ...RANGE_ZERO };
+    readRange(fields.get(key.toLowerCase()) ?? []) ?? { ...RANGE_ZERO };
 
   switch ((fields.get('velocitytype')?.[0]?.text ?? 'ORTHO').toUpperCase()) {
     case 'SPHERICAL':
@@ -406,6 +195,7 @@ const moduleVolume = (
       return {
         type: 'cylinder',
         radius: numberOf(get('Radius'), 0),
+        radiusRate: numberOf(get('RadiusRate'), 0),
         length: numberOf(get('Length'), 0),
         offset: coordOf(get('Offset')),
         hollow,
@@ -420,7 +210,7 @@ const moduleVelocity = (
   fields: Map<string, SageToken[]>,
 ): Velocity => {
   const range = (key: string) =>
-    rangeOf(fields.get(key.toLowerCase()) ?? []) ?? { ...RANGE_ZERO };
+    readRange(fields.get(key.toLowerCase()) ?? []) ?? { ...RANGE_ZERO };
 
   switch (type.toLowerCase()) {
     case 'sphericalemissionvelocity':
@@ -469,7 +259,7 @@ const readWind = (fields: Map<string, SageToken[]>): Wind => {
   };
 };
 
-const fieldMap = (lines: IniLine[]) =>
+const createFieldMap = (lines: IniLine[]) =>
   new Map(
     lines.map((entry) => [entry.keyword.text.toLowerCase(), entry.values]),
   );
@@ -477,7 +267,7 @@ const fieldMap = (lines: IniLine[]) =>
 const applyCommonFields = (def: ParticleDef, lines: IniLine[]): void => {
   for (const { keyword, values } of lines) {
     const key = keyword.text.toLowerCase();
-    const range = rangeOf(values);
+    const range = readRange(values);
     const keySlot = /^(color|alpha)([1-8])$/.exec(key);
 
     if (keySlot) {
@@ -575,7 +365,7 @@ export const readParticleDef = (definition: IniDefinition): ParticleDef => {
   applyCommonFields(def, definition.lines);
 
   if (flat) {
-    const fields = fieldMap(definition.lines);
+    const fields = createFieldMap(definition.lines);
 
     def.volume = flatVolume(fields);
     def.velocity = flatVelocity(fields);
@@ -604,22 +394,22 @@ export const readParticleDef = (definition: IniDefinition): ParticleDef => {
   const event = modules.get('event');
 
   if (emitter) {
-    const fields = fieldMap(emitter.lines);
+    const fields = createFieldMap(emitter.lines);
 
     def.volume = flatVolume(fields);
     def.velocity = flatVelocity(fields);
   }
   if (volume) {
-    def.volume = moduleVolume(volume.type, fieldMap(volume.lines));
+    def.volume = moduleVolume(volume.type, createFieldMap(volume.lines));
   }
   if (velocity) {
-    def.velocity = moduleVelocity(velocity.type, fieldMap(velocity.lines));
+    def.velocity = moduleVelocity(velocity.type, createFieldMap(velocity.lines));
   }
   def.hasAlphaBlock = modules.has('alpha');
   if (draw) {
     def.drawModule = draw.type;
 
-    const fields = fieldMap(draw.lines);
+    const fields = createFieldMap(draw.lines);
     const totalFrames = numberOf(fields.get('totalframes') ?? [], 0);
     const framesPerRow = numberOf(fields.get('framesperrow') ?? [], 0);
 
@@ -632,10 +422,10 @@ export const readParticleDef = (definition: IniDefinition): ParticleDef => {
     }
   }
   if (wind) {
-    def.wind = readWind(fieldMap(wind.lines));
+    def.wind = readWind(createFieldMap(wind.lines));
   }
   if (event && /terraincollision/i.test(event.type)) {
-    const fields = fieldMap(event.lines);
+    const fields = createFieldMap(event.lines);
 
     def.event = {
       fx: fields.get('eventfx')?.[0]?.text,
@@ -652,7 +442,7 @@ export const readFxList = (definition: IniDefinition): FxListDef => {
       return [];
     }
 
-    const fields = fieldMap(
+    const fields = createFieldMap(
       definition.lines.filter((line) => line.moduleIndex === index),
     );
     const system = fields.get('name')?.[0]?.text;
@@ -666,9 +456,9 @@ export const readFxList = (definition: IniDefinition): FxListDef => {
         module: index,
         count: Math.max(1, Math.round(numberOf(fields.get('count') ?? [], 1))),
         offset: coordOf(fields.get('offset') ?? []),
-        radius: rangeOf(fields.get('radius') ?? []) ?? { ...RANGE_ZERO },
-        height: rangeOf(fields.get('height') ?? []) ?? { ...RANGE_ZERO },
-        initialDelay: rangeOf(fields.get('initialdelay') ?? []) ?? {
+        radius: readRange(fields.get('radius') ?? []) ?? { ...RANGE_ZERO },
+        height: readRange(fields.get('height') ?? []) ?? { ...RANGE_ZERO },
+        initialDelay: readRange(fields.get('initialdelay') ?? []) ?? {
           ...RANGE_ZERO,
         },
       },
@@ -680,7 +470,7 @@ export const readFxList = (definition: IniDefinition): FxListDef => {
       return [];
     }
 
-    const fields = fieldMap(
+    const fields = createFieldMap(
       definition.lines.filter((line) => line.moduleIndex === index),
     );
     const name = fields.get('name')?.[0]?.text;
@@ -690,7 +480,7 @@ export const readFxList = (definition: IniDefinition): FxListDef => {
           {
             name,
             module: index,
-            initialDelay: rangeOf(fields.get('initialdelay') ?? []) ?? {
+            initialDelay: readRange(fields.get('initialdelay') ?? []) ?? {
               ...RANGE_ZERO,
             },
           },
@@ -703,7 +493,7 @@ export const readFxList = (definition: IniDefinition): FxListDef => {
       return [];
     }
 
-    const fields = fieldMap(
+    const fields = createFieldMap(
       definition.lines.filter((line) => line.moduleIndex === index),
     );
 
@@ -712,7 +502,7 @@ export const readFxList = (definition: IniDefinition): FxListDef => {
         module.slot,
         index,
         fields,
-        rangeOf(fields.get('initialdelay') ?? []) ?? { ...RANGE_ZERO },
+        readRange(fields.get('initialdelay') ?? []) ?? { ...RANGE_ZERO },
         parseIniNumber,
       ),
     ];
@@ -721,7 +511,7 @@ export const readFxList = (definition: IniDefinition): FxListDef => {
   return { name: definition.name, nuggets, sounds, effects };
 };
 
-export const referencedNames = (
+export const findStartedNames = (
   def: ParticleDef | FxListDef,
 ): { systems: string[]; fxLists: string[] } =>
   'nuggets' in def
@@ -732,126 +522,3 @@ export const referencedNames = (
         ),
         fxLists: def.event?.fx ? [def.event.fx] : [],
       };
-
-export interface NumericField {
-  id: string;
-  line: number;
-  token: number;
-  module: string;
-  moduleIndex: number;
-  keyword: string;
-  part: string;
-  value: number;
-  integer: boolean;
-}
-
-const partNames = (keyword: string, count: number): string[] => {
-  const key = keyword.toLowerCase();
-
-  if (/^color[1-8]$/.test(key)) {
-    return ['R', 'G', 'B', 'frame'];
-  }
-  if (/^alpha[1-8]$/.test(key)) {
-    return ['min', 'max', 'frame'];
-  }
-  if (count === 3) {
-    return ['X', 'Y', 'Z'];
-  }
-  if (count === 2) {
-    return ['min', 'max'];
-  }
-  return Array.from({ length: count }, (_, index) =>
-    count > 1 ? `${index + 1}` : '',
-  );
-};
-
-export const numericFields = (definition: IniDefinition): NumericField[] =>
-  definition.lines.flatMap((line) => {
-    const parts = partNames(line.keyword.text, line.values.length);
-
-    return line.values.flatMap((value, token) => {
-      const number = parseIniNumber(value.text);
-
-      if (isNaN(number)) {
-        return [];
-      }
-
-      const part = parts[token] ?? `${token + 1}`;
-
-      return [
-        {
-          id: `${line.line}:${token}`,
-          line: line.line,
-          token,
-          module: line.module
-            ? line.module === line.moduleType
-              ? line.module
-              : `${line.module} = ${line.moduleType}`
-            : '',
-          moduleIndex: line.moduleIndex,
-          keyword: line.keyword.text,
-          part,
-          value: number,
-          integer:
-            part === 'frame' ||
-            /^(color[1-8]|burstcount|burstdelay|lifetime|systemlifetime|initialdelay|totalframes|framesperrow|sortlevel)$/i.test(
-              line.keyword.text,
-            ),
-        },
-      ];
-    });
-  });
-
-export const formatIniNumber = (value: number, integer: boolean): string => {
-  if (integer || Number.isInteger(value)) {
-    return String(Math.round(value));
-  }
-  return String(Number(value.toFixed(4)));
-};
-
-export interface ValueEdit {
-  line: number;
-  start: number;
-  end: number;
-  text: string;
-}
-
-export const valueEdits = (
-  definition: IniDefinition,
-  values: ReadonlyMap<string, number>,
-): ValueEdit[] =>
-  numericFields(definition).flatMap((field) => {
-    const value = values.get(field.id);
-
-    if (value === undefined || value === field.value) {
-      return [];
-    }
-
-    const token = definition.lines.find((line) => line.line === field.line)!
-      .values[field.token];
-    const prefix = /^[A-Za-z]:/.exec(token.text)?.[0] ?? '';
-
-    return [
-      {
-        line: field.line,
-        start: token.start,
-        end: token.end,
-        text: prefix + formatIniNumber(value, field.integer),
-      },
-    ];
-  });
-
-export const applyValueEdits = (text: string, edits: ValueEdit[]): string => {
-  const lines = text.split(/\r?\n/);
-  const newline = /\r\n/.test(text) ? '\r\n' : '\n';
-
-  [...edits]
-    .sort((a, b) => b.line - a.line || b.start - a.start)
-    .forEach((edit) => {
-      const line = lines[edit.line];
-
-      lines[edit.line] =
-        line.slice(0, edit.start) + edit.text + line.slice(edit.end);
-    });
-  return lines.join(newline);
-};

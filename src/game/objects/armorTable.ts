@@ -59,7 +59,7 @@ export const readArmorRows = (
       };
     });
 
-export const damageTypes = (rows: ArmorRow[]): string[] => {
+export const listDamageTypes = (rows: ArmorRow[]): string[] => {
   const types = new Set(rows.flatMap((row) => Object.keys(row.cells)));
 
   types.delete('DEFAULT');
@@ -73,7 +73,7 @@ export interface ArmorShown {
 
 const UNARMORED = '100%';
 
-export const shownArmor = (row: ArmorRow, type: string): ArmorShown => {
+export const resolveShownArmor = (row: ArmorRow, type: string): ArmorShown => {
   const own = row.cells[type];
   const fallback = row.cells.DEFAULT;
 
@@ -87,7 +87,7 @@ export type ArmorEdit =
   | { kind: 'replace'; line: number; start: number; end: number; old: string }
   | { kind: 'insert'; line: number; text: string };
 
-export const armorEdit = (
+export const planArmorEdit = (
   row: ArmorRow,
   type: string,
   value: string,
@@ -95,7 +95,7 @@ export const armorEdit = (
 ): ArmorEdit => {
   const cell = row.cells[type];
 
-  if (cell && !shownArmor(row, type).inherited) {
+  if (cell && !resolveShownArmor(row, type).inherited) {
     return {
       kind: 'replace',
       line: cell.line,
@@ -111,7 +111,7 @@ export const armorEdit = (
   };
 };
 
-export const armorValue = (typed: string): string | undefined => {
+export const parseArmorValue = (typed: string): string | undefined => {
   const match = /^\s*(-?\d+(?:\.\d+)?)\s*%?\s*$/.exec(typed);
 
   return match ? `${Number(match[1])}%` : undefined;

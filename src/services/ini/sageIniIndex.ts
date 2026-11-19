@@ -2,62 +2,28 @@ import { FileType, ProgressLocation, Uri, window, workspace } from "vscode";
 import type { Disposable, LogOutputChannel, TextDocument } from "vscode";
 import type { ArchiveModel } from "../archives/archiveModel";
 import type { VirtualNode } from "../archives/virtualNode";
-import { getFileNodes } from "../archives/virtualNode";
+import { findChild, getFileNodes } from "../archives/virtualTree";
 import { getNodeUri } from "../archives/nodeAddress";
 import type { SageIniSchema } from "../../formats/ini/sageIniSchema";
-import { languageOfArchive } from "../../game/text/gameLanguage";
+import { getArchiveLanguage } from "../../game/text/gameLanguage";
 import {
-  FILE_USES,
   collectEntries,
   reachedThroughMacros,
 } from "../../formats/ini/sageIniEntries";
-import type { EntryBodyToken } from "../../formats/ini/sageIniEntries";
-import { canonicalNamespace } from "../../formats/ini/sageReferenceFields";
+import { toCanonicalNamespace } from "../../formats/ini/sageReferenceFields";
 import { SAGE_INI_LANGUAGE } from "../../constants";
 import { findString, parseStringTable } from "../../formats/str/sageStringTable";
-import type { SageString } from "../../formats/str/sageStringTable";
+import { createSageIniTables } from "./sageIniTables";
+import type {
+  SageDefinition,
+  SageMacro,
+  SageReference,
+  SageStringPlace,
+} from "./sageIniTables";
 import { decodeIniText } from "../../core/windows1252";
-
-export interface SageDefinition {
-  uri: Uri;
-  line: number;
-  endLine: number;
-  keyword: string;
-  start: number;
-  end: number;
-  name: string;
-}
-
-export interface SageMacro {
-  name: string;
-  value: string;
-  start: number;
-  end: number;
-  uri: Uri;
-  line: number;
-}
-
-export interface SageStringPlace extends SageString {
-  uri: Uri;
-  language?: string;
-}
 
 const isMapStringTable = (uri: Uri): boolean =>
   uri.path.toLowerCase().endsWith("/map.str");
-
-export interface SageReference {
-  uri: Uri;
-  line: number;
-  start: number;
-  end: number;
-  field: string;
-}
-
-export { FILE_USES };
-
-interface SageBodyToken extends EntryBodyToken {
-  uri: Uri;
-}
 
 const OPEN_DOCUMENT_DELAY_MS = 300;
 
@@ -68,77 +34,12 @@ const LOOSE_PATTERN = "**/*.{ini,inc,bhav,str,INI,INC,BHAV,STR}";
 const isSageEntry = (node: VirtualNode): boolean =>
   node.type === FileType.File && ENTRY_PATTERN.test(node.entryPath);
 
-const record = <T>(
-  table: Map<string, Map<string, T[]>>,
-  namespace: string,
-  name: string,
-  value: T,
-): void => {
-  const byName = table.get(namespace.toLowerCase()) ?? new Map<string, T[]>();
-  const key = name.toLowerCase();
-
-  byName.set(key, [...(byName.get(key) ?? []), value]);
-  table.set(namespace.toLowerCase(), byName);
-};
-
-const isUnderRoot = ({ uri }: { uri: Uri }, rootKey: string): boolean => {
-  const path = uri.path.toLowerCase();
-
-  return path === rootKey || path.startsWith(`${rootKey}/`);
-};
-
-const purgeList = <T extends { uri: Uri }>(
-  table: Map<string, T[]>,
-  rootKey: string,
-): void => {
-  for (const [key, places] of table) {
-    const kept = places.filter((place) => !isUnderRoot(place, rootKey));
-
-    if (kept.length) {
-      table.set(key, kept);
-    } else {
-      table.delete(key);
-    }
-  }
-};
-
-const purgeOne = <T extends { uri: Uri }>(
-  table: Map<string, T>,
-  rootKey: string,
-): void => {
-  for (const [key, value] of table) {
-    if (isUnderRoot(value, rootKey)) {
-      table.delete(key);
-    }
-  }
-};
-
-const purgeNamespaced = <T extends { uri: Uri }>(
-  table: Map<string, Map<string, T[]>>,
-  rootKey: string,
-): void => {
-  for (const byName of table.values()) {
-    purgeList(byName, rootKey);
-  }
-};
-
 export class SageIniIndex implements Disposable {
-  private definitions = new Map<string, Map<string, SageDefinition[]>>();
-  private references = new Map<string, Map<string, SageReference[]>>();
-
-  private macros = new Map<string, SageMacro>();
-
-  private constantUses = new Map<string, SageReference[]>();
-
-  private bodyTokens = new Map<string, SageBodyToken[]>();
-
-  private indexedFiles = new Set<string>();
+  private readonly tables = createSageIniTables();
 
   private openVersions = new Map<string, number>();
 
   private readonly pendingOpen = new Map<string, NodeJS.Timeout>();
-
-  private strings = new Map<string, SageStringPlace[]>();
 
   private activeStrings?: Map<string, SageStringPlace>;
   private language?: string;
@@ -146,6 +47,10 @@ export class SageIniIndex implements Disposable {
   private indexed = new Set<string>();
 
   private building?: Promise<void>;
+
+  private refreshing: Promise<void> = Promise.resolve();
+
+  private needsBuild = true;
   private readonly subscriptions: Disposable[];
 
   public constructor(
@@ -154,6 +59,7 @@ export class SageIniIndex implements Disposable {
     private readonly log: LogOutputChannel,
   ) {
     const watcher = workspace.createFileSystemWatcher(LOOSE_PATTERN);
+    const creations = workspace.createFileSystemWatcher("**/*", false, true, true);
     const reindexLooseFile = (uri: Uri) => {
       this.forget(uri.path.toLowerCase());
 
@@ -161,14 +67,33 @@ export class SageIniIndex implements Disposable {
         void this.indexLooseFile(uri).catch((error: unknown) =>
           this.log.error(`Failed to index ${uri.fsPath}`, error),
         );
+      } else {
+        this.needsBuild = true;
       }
     };
 
     this.subscriptions = [
-      archiveModel.onDidChangeArchive(({ rootPath }) => {
-        this.forget(rootPath.toLowerCase());
+      archiveModel.onDidChangeArchive(
+        ({ rootPath, archivePath, loaded, entries }) => {
+          const rootKey = rootPath.toLowerCase();
+
+          if (entries && !this.building && this.indexed.has(rootKey)) {
+            this.refreshEntries(archivePath, rootKey, entries);
+            return;
+          }
+
+          this.forget(rootKey);
+          this.needsBuild ||= !loaded;
+        },
+      ),
+      archiveModel.onDidScan(() => {
+        this.needsBuild = true;
       }),
       watcher,
+      creations,
+      creations.onDidCreate(() => {
+        this.needsBuild = true;
+      }),
       watcher.onDidChange(reindexLooseFile),
       watcher.onDidCreate(reindexLooseFile),
       watcher.onDidDelete((uri) => this.forget(uri.path.toLowerCase())),
@@ -187,28 +112,23 @@ export class SageIniIndex implements Disposable {
   }
 
   public reset(): void {
-    this.definitions.clear();
-    this.references.clear();
-    this.macros.clear();
-    this.constantUses.clear();
-    this.bodyTokens.clear();
-    this.indexedFiles.clear();
+    this.tables.clear();
     this.openVersions.clear();
-    this.strings.clear();
     this.activeStrings = undefined;
     this.indexed.clear();
+    this.needsBuild = true;
   }
 
   public findMacro(name: string): SageMacro | undefined {
-    return this.macros.get(name.toLowerCase());
+    return this.tables.macros.get(name.toLowerCase());
   }
 
   public findString(value: string): SageStringPlace | undefined {
-    return findString(this.activeTable(), value) as SageStringPlace | undefined;
+    return findString(this.getActiveStringTable(), value) as SageStringPlace | undefined;
   }
 
   public get stringCount(): number {
-    return this.activeTable().size;
+    return this.getActiveStringTable().size;
   }
 
   public setLanguage(language: string | undefined): void {
@@ -218,11 +138,11 @@ export class SageIniIndex implements Disposable {
     }
   }
 
-  private activeTable(): Map<string, SageStringPlace> {
+  private getActiveStringTable(): Map<string, SageStringPlace> {
     if (!this.activeStrings) {
       const table = new Map<string, SageStringPlace>();
 
-      for (const [key, places] of this.strings) {
+      for (const [key, places] of this.tables.strings) {
         const usable = places.filter(
           (place) => !place.language || place.language === this.language,
         );
@@ -239,11 +159,11 @@ export class SageIniIndex implements Disposable {
   }
 
   public findMacroUses(name: string): readonly SageReference[] {
-    return this.constantUses.get(name.toLowerCase()) ?? [];
+    return this.tables.constantUses.get(name.toLowerCase()) ?? [];
   }
 
-  public getMacroNames(): SageMacro[] {
-    return [...this.macros.values()].sort((a, b) =>
+  public getMacros(): SageMacro[] {
+    return [...this.tables.macros.values()].sort((a, b) =>
       a.name.localeCompare(b.name),
     );
   }
@@ -253,22 +173,22 @@ export class SageIniIndex implements Disposable {
     name: string,
   ): readonly SageDefinition[] {
     return (
-      this.definitions
-        .get(canonicalNamespace(namespace).toLowerCase())
+      this.tables.definitions
+        .get(toCanonicalNamespace(namespace).toLowerCase())
         ?.get(name.toLowerCase()) ?? []
     );
   }
 
   public countDefinitions(namespace: string): number {
     return (
-      this.definitions.get(canonicalNamespace(namespace).toLowerCase())?.size ??
+      this.tables.definitions.get(toCanonicalNamespace(namespace).toLowerCase())?.size ??
       0
     );
   }
 
   public getNames(namespace: string): string[] {
-    const byName = this.definitions.get(
-      canonicalNamespace(namespace).toLowerCase(),
+    const byName = this.tables.definitions.get(
+      toCanonicalNamespace(namespace).toLowerCase(),
     );
 
     if (!byName) {
@@ -290,12 +210,12 @@ export class SageIniIndex implements Disposable {
   ): SageDefinition[] {
     const unused: SageDefinition[] = [];
 
-    for (const [namespace, byName] of this.definitions) {
-      if (skip.has(namespace) || !this.references.has(namespace)) {
+    for (const [namespace, byName] of this.tables.definitions) {
+      if (skip.has(namespace) || !this.tables.references.has(namespace)) {
         continue;
       }
 
-      const named = this.references.get(namespace)!;
+      const named = this.tables.references.get(namespace)!;
 
       for (const [name, definitions] of byName) {
         if (!named.get(name)?.length) {
@@ -310,11 +230,11 @@ export class SageIniIndex implements Disposable {
     namespace: string,
     name: string,
   ): readonly SageReference[] {
-    const key = canonicalNamespace(namespace).toLowerCase();
+    const key = toCanonicalNamespace(namespace).toLowerCase();
     const folded = name.toLowerCase();
-    const written = this.references.get(key);
+    const written = this.tables.references.get(key);
     const direct = written?.get(folded) ?? [];
-    const holders = this.bodyTokens.get(folded);
+    const holders = this.tables.bodyTokens.get(folded);
 
     if (!holders?.length || !written) {
       return direct;
@@ -322,7 +242,7 @@ export class SageIniIndex implements Disposable {
 
     const viaMacros = reachedThroughMacros(
       holders,
-      this.bodyTokens,
+      this.tables.bodyTokens,
       (macro) => (written.get(macro)?.length ?? 0) > 0,
     ).map(
       (holder): SageReference => ({
@@ -330,7 +250,7 @@ export class SageIniIndex implements Disposable {
         line: holder.line,
         start: holder.start,
         end: holder.end,
-        field: `#define ${this.macros.get(holder.macro)?.name ?? holder.macro}`,
+        field: `#define ${this.tables.macros.get(holder.macro)?.name ?? holder.macro}`,
       }),
     );
 
@@ -338,12 +258,16 @@ export class SageIniIndex implements Disposable {
   }
 
   public whenReady(): Promise<void> {
-    this.building ??= this.buildWithProgress();
+    if (!this.building && this.needsBuild) {
+      this.building = this.buildWithProgress();
+    }
 
-    return this.building;
+    return (this.building ?? Promise.resolve()).then(() => this.refreshing);
   }
 
   private async buildWithProgress(): Promise<void> {
+    this.needsBuild = false;
+
     try {
       await window.withProgress(
         {
@@ -354,9 +278,59 @@ export class SageIniIndex implements Disposable {
       );
     } catch (error) {
       this.log.error("Failed to index INI definitions", error);
+      this.needsBuild = true;
     } finally {
       this.building = undefined;
     }
+  }
+
+  private refreshEntries(
+    archivePath: string,
+    rootKey: string,
+    entries: readonly string[],
+  ): void {
+    entries.forEach((entry) =>
+      this.purge(`${rootKey}/${entry.toLowerCase()}`),
+    );
+    this.openVersions.clear();
+    this.refreshing = this.refreshing
+      .then(() => this.readEntries(archivePath, entries))
+      .catch((error: unknown) =>
+        this.log.error(`Failed to index ${archivePath}`, error),
+      );
+  }
+
+  private async readEntries(
+    archivePath: string,
+    entries: readonly string[],
+  ): Promise<void> {
+    const archive = this.archiveModel.getArchiveByPath(archivePath);
+
+    if (archive) {
+      const schema = await this.getSchema();
+      const nodes = new Set(
+        entries.flatMap((entry) => {
+          const found = findChild(archive.root, entry);
+
+          return found ? getFileNodes(found).filter(isSageEntry) : [];
+        }),
+      );
+
+      await this.archiveModel.readFiles(
+        [...nodes].map((node) => ({ node })),
+        async ({ node }, content) => {
+          this.indexContent(
+            getNodeUri(node),
+            node.entryPath,
+            content,
+            schema,
+            getArchiveLanguage(archive.archivePath),
+          );
+        },
+      );
+    }
+
+    await this.syncOpenDocuments();
   }
 
   private forget(rootKey: string): void {
@@ -366,18 +340,7 @@ export class SageIniIndex implements Disposable {
   }
 
   private purge(rootKey: string): void {
-    for (const file of this.indexedFiles) {
-      if (file === rootKey || file.startsWith(`${rootKey}/`)) {
-        this.indexedFiles.delete(file);
-      }
-    }
-
-    purgeNamespaced(this.definitions, rootKey);
-    purgeNamespaced(this.references, rootKey);
-    purgeOne(this.macros, rootKey);
-    purgeList(this.constantUses, rootKey);
-    purgeList(this.bodyTokens, rootKey);
-    purgeList(this.strings, rootKey);
+    this.tables.purge(rootKey);
     this.activeStrings = undefined;
   }
 
@@ -520,19 +483,14 @@ export class SageIniIndex implements Disposable {
           node.entryPath,
           content,
           schema,
-          languageOfArchive(root.archive.archivePath),
+          getArchiveLanguage(root.archive.archivePath),
         );
       },
     );
   }
 
   private indexStrings(uri: Uri, text: string, language?: string): void {
-    for (const [key, record] of parseStringTable(text)) {
-      this.strings.set(key, [
-        ...(this.strings.get(key) ?? []),
-        { ...record, uri, language },
-      ]);
-    }
+    this.tables.replaceStrings(uri, parseStringTable(text), language);
     this.activeStrings = undefined;
   }
 
@@ -558,43 +516,6 @@ export class SageIniIndex implements Disposable {
       return;
     }
 
-    const fileKey = uri.path.toLowerCase();
-
-    if (this.indexedFiles.has(fileKey)) {
-      this.purge(fileKey);
-    }
-
-    this.indexedFiles.add(fileKey);
-
-    const entries = collectEntries(text, entryPath, schema);
-
-    entries.macros.forEach((macro) => {
-      this.macros.set(macro.name.toLowerCase(), { ...macro, uri });
-    });
-
-    entries.bodyTokens.forEach((token) => {
-      const list = this.bodyTokens.get(token.text) ?? [];
-
-      list.push({ ...token, uri });
-      this.bodyTokens.set(token.text, list);
-    });
-
-    entries.definitions.forEach(({ namespace, ...definition }) =>
-      record(this.definitions, namespace, definition.name, {
-        uri,
-        ...definition,
-      }),
-    );
-
-    entries.constantUses.forEach(({ key, ...use }) =>
-      this.constantUses.set(key, [
-        ...(this.constantUses.get(key) ?? []),
-        { uri, ...use },
-      ]),
-    );
-
-    entries.references.forEach(({ namespace, name, ...place }) =>
-      record(this.references, namespace, name, { uri, ...place }),
-    );
+    this.tables.replaceFile(uri, collectEntries(text, entryPath, schema));
   }
 }

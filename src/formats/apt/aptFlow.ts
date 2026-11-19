@@ -26,7 +26,7 @@ export interface TimelineFlow {
 const own = (commands: TimelineCommand[]) =>
   commands.filter((command) => command.target.length === 0);
 
-export const timelineFlow = (
+export const readTimelineFlow = (
   frames: readonly Frame[],
   behaviours: Readonly<Record<number, Behaviour>>,
   characters: readonly (Character | undefined)[],

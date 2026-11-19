@@ -1,11 +1,12 @@
 import { BINDINGS, classifySurface } from '../../formats/apt/aptGadgets';
 import type { Binding, GadgetInfo } from '../../formats/apt/aptGadgets';
-import { pathKey } from './avm/engine';
+import { toPathKey } from './avm/engine';
 import type { Engine } from './avm/engine';
 import { parseTyped } from './avm/engine';
 import type { Value } from './avm/value';
 import { AsObject } from './avm/value';
-import type { Instance, Player } from './player';
+import type { Instance } from './instance';
+import type { Player } from './player';
 
 export interface Gadget extends GadgetInfo {
   instance: Instance;
@@ -15,7 +16,7 @@ export interface Gadget extends GadgetInfo {
 const text = (value: Value): string | undefined =>
   typeof value === 'string' ? value : undefined;
 
-export const namePath = (instance: Instance, root: Instance): string | undefined => {
+export const getNamePath = (instance: Instance, root: Instance): string | undefined => {
   const names: string[] = [];
 
   for (let at: Instance | undefined = instance; at && at !== root; at = at.parent) {
@@ -27,22 +28,14 @@ export const namePath = (instance: Instance, root: Instance): string | undefined
   return names.join('.');
 };
 
-export const findGadgets = (player: Player): Gadget[] => {
-  const { vm } = player;
-
-  if (!vm) {
-    return [];
-  }
-
-  const found: Gadget[] = [];
-
-  for (const instance of player.all()) {
-    if (instance.visible === false || instance === player.root) {
-      continue;
-    }
-
-    const own = vm.objectOf(instance);
-    const info = classifySurface({
+export const findGadgetOf = (
+  player: Player,
+  instance: Instance,
+): Gadget | undefined => {
+  const own = player.vm?.objectOf(instance);
+  const info =
+    own &&
+    classifySurface({
       type: text(own.get('_type')),
       load: text(own.get('_Load')),
       init: text(own.get('_Init')),
@@ -52,12 +45,22 @@ export const findGadgets = (player: Player): Gadget[] => {
       mode: text(own.get('_mode')),
     });
 
-    if (info) {
-      found.push({ ...info, instance, path: namePath(instance, player.root) });
-    }
-  }
-  return found;
+  return info && { ...info, instance, path: getNamePath(instance, player.root) };
 };
+
+export const findGadgets = (player: Player): Gadget[] =>
+  player.all().flatMap((instance) => {
+    const gadget =
+      instance.visible === false || instance === player.root
+        ? undefined
+        : findGadgetOf(player, instance);
+
+    return gadget ? [gadget] : [];
+  });
+
+export const isEngineSurface = (player: Player, instance: Instance): boolean =>
+  instance.character?.type === 'sprite' &&
+  ['image', 'view3d'].includes(findGadgetOf(player, instance)?.kind ?? '');
 
 const show = (value: string | number | boolean): string => String(value);
 
@@ -69,7 +72,7 @@ export const readBinding = (
 ): Value => {
   const override =
     gadget.path !== undefined
-      ? engine.overrides.get(pathKey(`${gadget.path}.${binding.name}`))
+      ? engine.overrides.get(toPathKey(`${gadget.path}.${binding.name}`))
       : undefined;
 
   if (override !== undefined) {
@@ -100,7 +103,7 @@ export const writeBinding = (
   }
 };
 
-export const bindingsOf = (
+export const listBindings = (
   player: Player,
   engine: Engine,
   gadget: Gadget,
@@ -113,5 +116,5 @@ export const bindingsOf = (
     ),
     overridden:
       gadget.path !== undefined &&
-      engine.overrides.has(pathKey(`${gadget.path}.${binding.name}`)),
+      engine.overrides.has(toPathKey(`${gadget.path}.${binding.name}`)),
   }));

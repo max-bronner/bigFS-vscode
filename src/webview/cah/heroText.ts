@@ -44,10 +44,10 @@ export const describeBling = (bling: BlingView): string =>
     .filter(Boolean)
     .join(' - ');
 
-const hex32 = (value: number): string => value.toString(16).padStart(8, '0');
+const formatHex32 = (value: number): string => value.toString(16).padStart(8, '0');
 
 export const describeChecksum = (file: HeroView['file']): string =>
-  `${file.storedCrc === undefined ? 'none stored' : `stored ${hex32(file.storedCrc)}`}, will save as ${hex32(file.crc)}`;
+  `${file.storedCrc === undefined ? 'none stored' : `stored ${formatHex32(file.storedCrc)}`}, will save as ${formatHex32(file.crc)}`;
 
 export const describeVersion = (version: number): string =>
   version + (version < 8 ? ' (saving writes version 8)' : '');

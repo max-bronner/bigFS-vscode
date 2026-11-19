@@ -10,7 +10,7 @@ export interface LineInsertion {
   lines: string[];
 }
 
-export const lineEndOf = (text: string): string =>
+export const detectLineEnd = (text: string): string =>
   text.includes('\r\n') ? '\r\n' : '\n';
 
 export const replaceInLines = (
@@ -39,7 +39,7 @@ export const insertLines = (
   text: string,
   insertions: readonly LineInsertion[],
 ): string => {
-  const eol = lineEndOf(text);
+  const eol = detectLineEnd(text);
   const lines = text.split(/\r?\n/);
 
   for (const insertion of [...insertions]

@@ -18,7 +18,7 @@ const SOUND_FIRST_PARAMETER: ReadonlySet<string> = new Set([
 
 const normal = (name: string) => name.toLowerCase();
 
-export const soundParameterIndexes = (
+export const findSoundParameterIndexes = (
   name: string,
   parameters: readonly string[],
 ): number[] =>
@@ -30,7 +30,7 @@ export const withSoundParameters = <
   call: T,
 ): T & { sounds: number[] } => ({
   ...call,
-  sounds: soundParameterIndexes(call.name, call.parameters),
+  sounds: findSoundParameterIndexes(call.name, call.parameters),
 });
 
 export const markSounds = (nodes: MapScriptNode[]): MapScriptNode[] =>

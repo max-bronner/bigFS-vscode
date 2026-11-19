@@ -1,33 +1,25 @@
 import {
   FileType,
   ProgressLocation,
-  Range,
   Uri,
   commands,
   window,
   workspace,
 } from 'vscode';
-import type { Disposable, QuickPickItem } from 'vscode';
+import type { Disposable } from 'vscode';
 import path from 'path';
 import { writeArchiveFile } from '../../node/archiveFile';
 import type { BigFileEntry } from '../../formats/big/bigFormat';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
-import { getFileNodes } from '../../services/archives/virtualNode';
+import { getFileNodes } from '../../services/archives/virtualTree';
 import type { VirtualNode } from '../../services/archives/virtualNode';
-import { getNodeUri } from '../../services/archives/nodeAddress';
-import { skippedFromPackage } from '../../node/modPackage';
+import { isSkippedFromPackage } from '../../node/modPackage';
 import { recordPackedArchive } from '../../services/archives/packagedOutputs';
 import { formatCount } from '../../core/messages';
-import type { RegisterNodeCommand } from '../explorer/commandCenter';
-import { decodeWindows1252 } from '../../core/windows1252';
+import type { RegisterNodeCommand } from '../../services/archives/nodeCommands';
 import { registerCommand } from '../../platform/commands';
 
 const BIG4_TRAILER = Uint8Array.from([0x4c, 0x32, 0x31, 0x39, 0, 0, 0, 0]);
-
-const TEXT_ENTRY_PATTERN =
-  /\.(ini|inc|bhav|str|txt|wnd|lua|xml|csv|cfg|scb|mll|htm|html)$/i;
-
-const SEARCH_RESULT_LIMIT = 2000;
 
 export const listFiles = async (
   folder: Uri,
@@ -73,7 +65,7 @@ const packFolder = async (folder: Uri): Promise<void> => {
       location: ProgressLocation.Notification,
       title: `Packing ${path.basename(target.fsPath)}`,
     },
-    () => packFolderInto(folder, target, skippedFromPackage),
+    () => packFolderInto(folder, target, isSkippedFromPackage),
   );
 
   if (count) {
@@ -172,122 +164,6 @@ const overrideInFolder = async (
   }
 };
 
-export interface SearchResult extends QuickPickItem {
-  uri: Uri;
-  line: number;
-  start: number;
-  length: number;
-}
-
-export const findInArchives = async (
-  archiveModel: ArchiveModel,
-  phrase: string,
-  {
-    onArchive = () => undefined,
-    isCancelled = () => false,
-  }: {
-    onArchive?: (name: string, share: number) => void;
-    isCancelled?: () => boolean;
-  } = {},
-): Promise<SearchResult[]> => {
-  const needle = phrase.toLowerCase();
-  const results: SearchResult[] = [];
-
-  const roots = archiveModel.getArchiveRoots();
-
-  for (const root of roots) {
-    if (isCancelled() || results.length >= SEARCH_RESULT_LIMIT) {
-      break;
-    }
-
-    onArchive(root.name, 100 / roots.length);
-
-    try {
-      await archiveModel.loadArchiveOf(root);
-    } catch {
-      continue;
-    }
-
-    const nodes = getFileNodes(root).filter((node) =>
-      TEXT_ENTRY_PATTERN.test(node.name),
-    );
-
-    await archiveModel.readFiles(
-      nodes.map((node) => ({ node })),
-      async ({ node }, content) => {
-        const text = decodeWindows1252(content);
-
-        if (!text.toLowerCase().includes(needle)) {
-          return;
-        }
-
-        text.split(/\r?\n/).forEach((line, index) => {
-          const start = line.toLowerCase().indexOf(needle);
-
-          if (start >= 0 && results.length < SEARCH_RESULT_LIMIT) {
-            results.push({
-              label: line.trim(),
-              description: `${root.name}/${node.entryPath}:${index + 1}`,
-              uri: getNodeUri(node),
-              line: index,
-              start,
-              length: phrase.length,
-            });
-          }
-        });
-      },
-    );
-  }
-
-  return results;
-};
-
-const searchArchives = async (archiveModel: ArchiveModel): Promise<void> => {
-  const phrase = await window.showInputBox({
-    prompt: 'Text to find in every archive',
-    placeHolder: 'GondorFighter',
-  });
-
-  if (!phrase) {
-    return;
-  }
-
-  const results = await window.withProgress(
-    {
-      location: ProgressLocation.Notification,
-      title: `Searching archives for "${phrase}"`,
-      cancellable: true,
-    },
-    (progress, token) =>
-      findInArchives(archiveModel, phrase, {
-        onArchive: (name, share) =>
-          progress.report({ message: name, increment: share }),
-        isCancelled: () => token.isCancellationRequested,
-      }),
-  );
-
-  if (!results.length) {
-    window.showInformationMessage(`No archive holds "${phrase}".`);
-    return;
-  }
-
-  const picked = await window.showQuickPick(results, {
-    title: `${formatCount(results.length, 'result')} for "${phrase}"${results.length >= SEARCH_RESULT_LIMIT ? ' (first ' + SEARCH_RESULT_LIMIT + ')' : ''}`,
-    matchOnDescription: true,
-  });
-
-  if (picked) {
-    await window.showTextDocument(picked.uri, {
-      selection: new Range(
-        picked.line,
-        picked.start,
-        picked.line,
-        picked.start + picked.length,
-      ),
-    });
-  }
-};
-
 export const registerModCommands = (
   register: RegisterNodeCommand,
   archiveModel: ArchiveModel,
@@ -299,9 +175,6 @@ export const registerModCommands = (
   return [
     registerCommand('bigfs.packFolder', (folder?: Uri) =>
       folder ? packFolder(folder) : undefined,
-    ),
-    registerCommand('bigfs.searchArchives', () =>
-      searchArchives(archiveModel),
     ),
   ];
 };

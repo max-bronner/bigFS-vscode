@@ -3,7 +3,7 @@ import { checkMovie } from '../../formats/apt/aptIntegrity';
 import type { Problem } from '../../formats/apt/aptIntegrity';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
 import { describeError } from '../../core/errors';
-import { movieAccess, workspaceMovies } from './aptAccess';
+import { createMovieAccess, findWorkspaceMovies } from './aptAccess';
 import type { AptDocument } from './aptDocument';
 
 export const showProblems = (
@@ -37,7 +37,7 @@ export const checkAptDocument = async (
 ): Promise<Problem[]> => {
   const found = [
     ...(await checkMovie(
-      movieAccess(
+      createMovieAccess(
         document.uri,
         document.name,
         document.image.bytes,
@@ -68,7 +68,7 @@ export const checkAptWorkspace = async (
       cancellable: true,
     },
     async (progress, token) => {
-      const movies = await workspaceMovies(archiveModel);
+      const movies = await findWorkspaceMovies(archiveModel);
 
       let errors = 0;
       let warnings = 0;
@@ -91,13 +91,13 @@ export const checkAptWorkspace = async (
         try {
           found = await checkMovie(
             open
-              ? movieAccess(
+              ? createMovieAccess(
                   uri,
                   open.name,
                   open.image.bytes,
                   open.editedFiles,
                 )
-              : movieAccess(
+              : createMovieAccess(
                   uri,
                   name,
                   await vscode.workspace.fs.readFile(uri),

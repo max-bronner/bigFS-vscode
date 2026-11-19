@@ -37,7 +37,7 @@ const VSCODE = {
 const restrict = (files, { patterns = [], paths = [] }) => ({
     files,
     rules: {
-        "@typescript-eslint/no-restricted-imports": ["warn", { paths, patterns }],
+        "@typescript-eslint/no-restricted-imports": ["error", { paths, patterns }],
     },
 });
 

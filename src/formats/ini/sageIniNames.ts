@@ -1,7 +1,7 @@
 import { FRAGMENT_CONTEXT, ROOT_CONTEXT } from './sageIniSchema';
 import type { SageIniSchema } from './sageIniSchema';
 import type { SageStatement, SageToken } from './sageIniParser';
-import { canonicalNamespace, parentNamespace } from './sageReferenceFields';
+import { toCanonicalNamespace, getParentNamespace } from './sageReferenceFields';
 
 export interface Declaration {
   name: SageToken;
@@ -10,7 +10,7 @@ export interface Declaration {
 
 const NOT_NESTED_DEFINITIONS: ReadonlySet<string> = new Set(['object']);
 
-export const declarationOf = (
+export const getDeclaration = (
   statement: Pick<SageStatement, 'block' | 'context' | 'keyword' | 'values'>,
   schema: SageIniSchema,
 ): Declaration | undefined => {
@@ -24,7 +24,7 @@ export const declarationOf = (
   const isFileScope =
     context === ROOT_CONTEXT ||
     (context === FRAGMENT_CONTEXT && schema.isEngineBlock(keyword.text));
-  const namespace = canonicalNamespace(keyword.text);
+  const namespace = toCanonicalNamespace(keyword.text);
 
   if (
     isFileScope ||
@@ -38,10 +38,10 @@ export const declarationOf = (
   return undefined;
 };
 
-export const parentOf = (
+export const getParent = (
   statement: Pick<SageStatement, 'block' | 'keyword' | 'values'>,
 ): { token: SageToken; namespace: string } | undefined => {
-  const namespace = parentNamespace(statement.keyword.text);
+  const namespace = getParentNamespace(statement.keyword.text);
   const token = statement.values[1];
 
   return statement.block && namespace && token
