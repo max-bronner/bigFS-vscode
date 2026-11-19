@@ -15,6 +15,7 @@ import { settings } from '../../platform/settings';
 import { renderWebviewPage } from '../../platform/webview/webviewPage';
 import { createFfmpegFrameSource, probe, runProcess } from '../../node/ffmpeg';
 import { decodeDds, decodeTga } from '../../formats/texture/textureTools';
+import type { ArchiveModel } from '../../services/archives/archiveModel';
 import { toUri } from '../../services/archives/commandTarget';
 import type { FromVideoPage, ToVideoPage } from '../../webview/video/protocol';
 import type { CommandTarget } from '../../services/archives/commandTarget';
@@ -50,9 +51,34 @@ const findFfmpeg = async (): Promise<string | undefined> => {
   return undefined;
 };
 
+const confirmOverwrite = async (
+  input: vscode.Uri,
+  output: vscode.Uri,
+): Promise<boolean> => {
+  const exists =
+    output.toString() === input.toString() ||
+    (await Promise.resolve(vscode.workspace.fs.stat(output)).then(
+      () => true,
+      () => false,
+    ));
+
+  return (
+    !exists ||
+    (await vscode.window.showWarningMessage(
+      `${path.basename(output.path)} already exists. Replace it?`,
+      { modal: true },
+      'Replace',
+    )) === 'Replace'
+  );
+};
+
 class BrowserFrames {
   private readonly panel: vscode.WebviewPanel;
-  private readonly pending = new Map<number, (data: Uint8Array) => void>();
+  private readonly pending = new Map<
+    number,
+    { resolve: (data: Uint8Array) => void; reject: (error: Error) => void }
+  >();
+  private isDisposed = false;
   public readonly meta: Promise<{
     width: number;
     height: number;
@@ -80,14 +106,19 @@ class BrowserFrames {
         } else if (message.kind === 'error') {
           reject(new Error(message.message));
         } else if (message.kind === 'frame') {
-          this.pending.get(message.index)?.(new Uint8Array(message.data));
+          this.pending.get(message.index)?.resolve(new Uint8Array(message.data));
           this.pending.delete(message.index);
         }
       });
     });
-    this.panel.onDidDispose(() =>
-      failed(new Error('The reading panel was closed')),
-    );
+    this.panel.onDidDispose(() => {
+      const closed = new Error('The reading panel was closed');
+
+      this.isDisposed = true;
+      failed(closed);
+      this.pending.forEach(({ reject }) => reject(closed));
+      this.pending.clear();
+    });
     this.panel.webview.html = renderBrowserPage(
       this.panel.webview.asWebviewUri(file),
       this.panel.webview,
@@ -101,8 +132,12 @@ class BrowserFrames {
     width: number,
     height: number,
   ): Promise<Uint8Array> {
-    return new Promise((resolve) => {
-      this.pending.set(index, resolve);
+    return new Promise((resolve, reject) => {
+      if (this.isDisposed) {
+        reject(new Error('The reading panel was closed'));
+        return;
+      }
+      this.pending.set(index, { resolve, reject });
       const request: ToVideoPage = {
         kind: 'frame',
         index,
@@ -224,6 +259,7 @@ const getKeyInterval = (fps: number): number => {
 const convert = async (
   target: Target,
   extensionUri: vscode.Uri,
+  archives: ArchiveModel,
 ): Promise<vscode.Uri | undefined> => {
   let input = toUri(target);
 
@@ -329,9 +365,11 @@ const convert = async (
         }
 
         const browser = new BrowserFrames(file, extensionUri);
-        const meta = await browser.meta;
 
         stop = () => browser.dispose();
+
+        const meta = await browser.meta;
+
         [width, height, fps] = [meta.width, meta.height, 30];
         makeSource = (w, h, rate) => {
           const count = Math.max(1, Math.floor(meta.duration * rate));
@@ -370,7 +408,7 @@ const convert = async (
     }
 
     const output =
-      input.scheme === 'file'
+      input.scheme === 'file' && !archives.isReadOnlyUri(input)
         ? vscode.Uri.joinPath(input, '..', `${name}.vp6`)
         : await vscode.window.showSaveDialog({
             defaultUri: vscode.workspace.workspaceFolders?.[0]
@@ -383,6 +421,9 @@ const convert = async (
           });
 
     if (!output) {
+      return undefined;
+    }
+    if (!(await confirmOverwrite(input, output))) {
       return undefined;
     }
 
@@ -465,10 +506,11 @@ const convert = async (
 
 export const registerVideoCommands = (
   context: vscode.ExtensionContext,
+  archives: ArchiveModel,
 ): void => {
   context.subscriptions.push(
     registerCommand('bigfs.convertToVp6', (target: Target) =>
-      convert(target, context.extensionUri),
+      convert(target, context.extensionUri, archives),
     ),
   );
 };

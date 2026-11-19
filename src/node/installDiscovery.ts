@@ -61,12 +61,8 @@ export interface FoundInstall {
 
 const INSTALL_VALUES = ['InstallPath', 'Install Dir'];
 
-const isSameFolder = (a: string, b: string): boolean => {
-  const normalise = (text: string) =>
-    text.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-
-  return normalise(a) === normalise(b);
-};
+const normaliseFolder = (text: string): string =>
+  text.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 
 const trimSeparator = (folder: string): string =>
   folder.length > 3 ? folder.replace(/[\\/]+$/, '') : folder;
@@ -221,15 +217,18 @@ export const listWineCandidates = (driveC: string): string[] =>
   );
 
 const removeDuplicateFolders = (folders: string[]): string[] => {
-  const seen: string[] = [];
+  const seen = new Set<string>();
 
-  for (const folder of folders) {
-    if (!seen.some((held) => isSameFolder(held, folder))) {
-      seen.push(folder);
+  return folders.filter((folder) => {
+    const key = normaliseFolder(folder);
+
+    if (seen.has(key)) {
+      return false;
     }
-  }
 
-  return seen;
+    seen.add(key);
+    return true;
+  });
 };
 
 export interface DiscoveryHost {

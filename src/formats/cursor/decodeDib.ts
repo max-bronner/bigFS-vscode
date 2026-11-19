@@ -100,14 +100,11 @@ export const decodeDib = (bytes: Uint8Array): DibImage => {
         const index =
           (bytes[colourRow + (bit >> 3)] >> (8 - bitsPerPixel - (bit & 7))) &
           ((1 << bitsPerPixel) - 1);
-        const entry = (palette as Uint8Array).subarray(
-          index * 4,
-          index * 4 + 3,
-        );
+        const entry = index * 4;
 
-        pixels[to] = entry[2] ?? 0;
-        pixels[to + 1] = entry[1] ?? 0;
-        pixels[to + 2] = entry[0] ?? 0;
+        pixels[to] = (palette as Uint8Array)[entry + 2] ?? 0;
+        pixels[to + 1] = (palette as Uint8Array)[entry + 1] ?? 0;
+        pixels[to + 2] = (palette as Uint8Array)[entry] ?? 0;
         pixels[to + 3] = 255;
       }
     }

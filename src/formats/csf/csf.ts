@@ -2,6 +2,7 @@ import {
   decodeWindows1252,
   encodeWindows1252,
   findUnencodableCharacters,
+  fromCodeUnits,
 } from '../../core/windows1252';
 
 export interface CsfString {
@@ -108,7 +109,7 @@ export const parseCsf = (bytes: Uint8Array): CsfFile => {
 
       at += length * 2;
 
-      const string: CsfString = { text: String.fromCharCode(...units) };
+      const string: CsfString = { text: fromCodeUnits(units) };
 
       if (kind === 'WRTS') {
         const speechLength = u32('speech length');

@@ -75,6 +75,15 @@ suite('APT integrity', () => {
     assert.deepStrictEqual(await messages(image, files), []);
   });
 
+  test('a geometry file larger than a function call can take as arguments still checks', async () => {
+    const { image, files, shape } = buildIntactMovie();
+    const path = `Menu_geometry/${shape}.ru`;
+
+    files.set(path, Buffer.concat([files.get(path)!, Buffer.alloc(300000, 10)]));
+
+    assert.deepStrictEqual(await messages(image, files), []);
+  });
+
   test('missing and left over files are found, each once', async () => {
     const { image, files, texture, shape } = buildIntactMovie();
 

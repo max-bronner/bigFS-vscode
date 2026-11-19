@@ -89,8 +89,9 @@ export class GameViewModel implements Disposable {
 
     const installs: InstallFiles<GameFileRef>[] = [];
     const topFolders = new Set(GAME_FOLDERS);
+    const sources = this.archiveModel.getSources();
 
-    for (const source of this.archiveModel.getSources()) {
+    for (const source of sources) {
       const archives: InstallFiles<GameFileRef>['archives'] = [];
 
       for (const archive of this.archiveModel.getArchivesOf(source.id)) {
@@ -117,7 +118,7 @@ export class GameViewModel implements Disposable {
       installs.push({ loose: [], archives });
     }
 
-    for (const [index, source] of this.archiveModel.getSources().entries()) {
+    for (const [index, source] of sources.entries()) {
       if (source.baseUri.scheme !== 'file') {
         continue;
       }

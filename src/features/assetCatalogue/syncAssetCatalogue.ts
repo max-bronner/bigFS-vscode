@@ -293,8 +293,16 @@ const showSyncPanel = (
       localResourceRoots: [getPageBundleFolder(extensionUri)],
     },
   );
-  const post = (message: SyncMessage | SyncResultMessage) =>
-    void panel.webview.postMessage(message);
+  let isDisposed = false;
+  const post = (message: SyncMessage | SyncResultMessage) => {
+    if (!isDisposed) {
+      void panel.webview.postMessage(message);
+    }
+  };
+
+  panel.onDidDispose(() => {
+    isDisposed = true;
+  });
 
   panel.webview.html = renderAssetCataloguePage(
     getPageBundleOptions(extensionUri, panel.webview, 'assetCatalogue'),

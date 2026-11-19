@@ -147,6 +147,24 @@ suite('SAGE INI index tables', () => {
     assert.strictEqual(tables.macros.has('speed'), false);
   });
 
+  test('purging the file that last wrote a macro falls back to the earlier definition', () => {
+    const tables = createSageIniTables();
+    const macro = (value: string) => ({
+      name: 'SPEED',
+      value,
+      line: 0,
+      start: 8,
+      end: 13,
+    });
+
+    tables.replaceFile(uriOf('/m/a.ini'), entries({ macros: [macro('1')] }));
+    tables.replaceFile(uriOf('/m/b.ini'), entries({ macros: [macro('2')] }));
+    tables.purge('/m/b.ini');
+
+    assert.strictEqual(tables.macros.get('speed')?.value, '1');
+    assert.strictEqual(tables.macros.get('speed')?.uri.path, '/m/a.ini');
+  });
+
   test('a string table read again does not double its records', () => {
     const tables = createSageIniTables();
     const uri = uriOf('/lang/English.big/data/english/lotr.str');

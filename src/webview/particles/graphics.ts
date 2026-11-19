@@ -29,6 +29,17 @@ void main() {
 }`;
 const { canvas, gl } = viewer;
 
+const ATTRIBUTES = [
+  ['aPos', 3, 0],
+  ['aCorner', 2, 3],
+  ['aSize', 1, 5],
+  ['aAngle', 1, 6],
+  ['aColor', 4, 7],
+  ['aUv', 4, 11],
+] as const;
+
+const UNIFORM_NAMES = ['uViewProj', 'uRight', 'uUp', 'uAlphaTest', 'uTexture'] as const;
+
 const setUp = (gl: WebGLRenderingContext) => {
   const compile = (vertex: string, fragment: string) => {
     const program = gl.createProgram()!;
@@ -95,8 +106,20 @@ const setUp = (gl: WebGLRenderingContext) => {
     }
   }
 
+  const spriteProgram = compile(SPRITE_VERTEX, SPRITE_FRAGMENT);
+  const attributes = ATTRIBUTES.map(([name, size, offset]) => ({
+    location: gl.getAttribLocation(spriteProgram, name),
+    size,
+    offset,
+  }));
+  const uniforms = Object.fromEntries(
+    UNIFORM_NAMES.map((name) => [name, gl.getUniformLocation(spriteProgram, name)]),
+  ) as Record<(typeof UNIFORM_NAMES)[number], WebGLUniformLocation | null>;
+
   return {
-    spriteProgram: compile(SPRITE_VERTEX, SPRITE_FRAGMENT),
+    spriteProgram,
+    attributes,
+    uniforms,
     spriteBuffer,
     spriteData,
     indexBuffer,
@@ -230,7 +253,14 @@ export const drawSystems = (
 
   let covered = 0;
   let drawn = 0;
-  const { gl, spriteProgram, spriteBuffer, spriteData, indexBuffer } = graphics;
+  const {
+    gl,
+    spriteProgram,
+    spriteBuffer,
+    spriteData,
+    indexBuffer,
+    uniforms,
+  } = graphics;
   const order = world.systems
     .map((system) => {
       const d = system.origin.map(
@@ -250,18 +280,7 @@ export const drawSystems = (
   gl.bindBuffer(gl.ARRAY_BUFFER, spriteBuffer);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
 
-  const attributes = (
-    [
-      ['aPos', 3, 0],
-      ['aCorner', 2, 3],
-      ['aSize', 1, 5],
-      ['aAngle', 1, 6],
-      ['aColor', 4, 7],
-      ['aUv', 4, 11],
-    ] as const
-  ).map(([name, size, offset]) => {
-    const location = gl.getAttribLocation(spriteProgram, name);
-
+  const attributes = graphics.attributes.map(({ location, size, offset }) => {
     gl.enableVertexAttribArray(location);
     gl.vertexAttribPointer(
       location,
@@ -273,9 +292,8 @@ export const drawSystems = (
     );
     return location;
   });
-  const uniform = (name: string) => gl.getUniformLocation(spriteProgram, name);
 
-  gl.uniformMatrix4fv(uniform('uViewProj'), false, matrix);
+  gl.uniformMatrix4fv(uniforms.uViewProj, false, matrix);
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
 
@@ -283,10 +301,10 @@ export const drawSystems = (
     const marker = def!.type === 'DRAWABLE';
     const flat = def!.groundAligned;
 
-    gl.uniform3fv(uniform('uRight'), flat ? [-2, 0, 0] : basis.right);
-    gl.uniform3fv(uniform('uUp'), flat ? [0, 2, 0] : basis.up);
+    gl.uniform3fv(uniforms.uRight, flat ? [-2, 0, 0] : basis.right);
+    gl.uniform3fv(uniforms.uUp, flat ? [0, 2, 0] : basis.up);
     gl.uniform1f(
-      uniform('uAlphaTest'),
+      uniforms.uAlphaTest,
       (BLENDS[def!.shader] ?? BLENDS.ADDITIVE)(gl),
     );
     gl.activeTexture(gl.TEXTURE0);
@@ -297,7 +315,7 @@ export const drawSystems = (
         textures.get(def!.particleName.toLowerCase())) ||
         graphics.fallbackTexture,
     );
-    gl.uniform1i(uniform('uTexture'), 0);
+    gl.uniform1i(uniforms.uTexture, 0);
 
     const readsAlpha = def!.shader !== 'ADDITIVE';
     const particles = system.particles.slice(
@@ -310,18 +328,15 @@ export const drawSystems = (
       const batch = particles.slice(first, first + CHUNK);
 
       batch.forEach((p, i) => {
-        const position = p.previous.map(
-          (v, k) => v + (p.position[k] - v) * blend,
-        );
+        const x = p.previous[0] + (p.position[0] - p.previous[0]) * blend;
+        const y = p.previous[1] + (p.position[1] - p.previous[1]) * blend;
+        const z = p.previous[2] + (p.position[2] - p.previous[2]) * blend;
         const size = marker
           ? 6
           : p.previousSize + (p.size - p.previousSize) * blend;
         const angle = p.previousAngle + (p.angle - p.previousAngle) * blend;
         const depth =
-          matrix[3] * position[0] +
-          matrix[7] * position[1] +
-          matrix[11] * position[2] +
-          matrix[15];
+          matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
 
         if (depth > 0.001) {
           const pixels =
@@ -329,34 +344,42 @@ export const drawSystems = (
 
           covered += pixels * pixels;
         }
-        const color = colourKeys
-          ? p.previousColor.map((v, k) => v + (p.color[k] - v) * blend)
-          : [1, 1, 1];
+
+        let red = 1;
+        let green = 1;
+        let blue = 1;
+
+        if (colourKeys) {
+          red = p.previousColor[0] + (p.color[0] - p.previousColor[0]) * blend;
+          green = p.previousColor[1] + (p.color[1] - p.previousColor[1]) * blend;
+          blue = p.previousColor[2] + (p.color[2] - p.previousColor[2]) * blend;
+        }
         const alpha =
           !colourKeys || !readsAlpha
             ? 1
             : p.previousAlpha + (p.alpha - p.previousAlpha) * blend;
         const uv = computeFlipbookUv(def!.flipbook, p, blend);
+        const drawnSize = Math.max(0, size);
 
-        CORNERS.forEach((corner, c) => {
-          spriteData.set(
-            [
-              position[0],
-              position[1],
-              position[2],
-              corner[0],
-              corner[1],
-              Math.max(0, size),
-              angle,
-              color[0],
-              color[1],
-              color[2],
-              marker ? 1 : alpha,
-              ...uv,
-            ],
-            (i * 4 + c) * FLOATS,
-          );
-        });
+        for (let c = 0; c < CORNERS.length; c++) {
+          const at = (i * 4 + c) * FLOATS;
+
+          spriteData[at] = x;
+          spriteData[at + 1] = y;
+          spriteData[at + 2] = z;
+          spriteData[at + 3] = CORNERS[c][0];
+          spriteData[at + 4] = CORNERS[c][1];
+          spriteData[at + 5] = drawnSize;
+          spriteData[at + 6] = angle;
+          spriteData[at + 7] = red;
+          spriteData[at + 8] = green;
+          spriteData[at + 9] = blue;
+          spriteData[at + 10] = marker ? 1 : alpha;
+          spriteData[at + 11] = uv[0];
+          spriteData[at + 12] = uv[1];
+          spriteData[at + 13] = uv[2];
+          spriteData[at + 14] = uv[3];
+        }
       });
       gl.bufferSubData(
         gl.ARRAY_BUFFER,

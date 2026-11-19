@@ -89,7 +89,10 @@ const createParticlePreview = (
         }),
       ];
     },
-    onMessage: (message) => receive(message),
+    onMessage: (message): Promise<unknown> =>
+      receive(message).catch((error: unknown) =>
+        panel.post({ kind: 'notice', message: describeError(error) }),
+      ),
     onDispose: onClose,
   });
 

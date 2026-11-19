@@ -24,6 +24,10 @@ export const decompressRefPack = (stream: Uint8Array): Uint8Array => {
     throw new Error(`RefPack claims ${declared} bytes, more than is allowed`);
   }
 
+  if (declared > stream.length * 344 + 3) {
+    throw new Error(`RefPack claims ${declared} bytes, more than its stream holds`);
+  }
+
   const out = new Uint8Array(declared);
   let length = 0;
   const need = (count: number) => {

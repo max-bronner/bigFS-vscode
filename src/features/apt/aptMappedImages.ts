@@ -97,7 +97,7 @@ const loadJpeg = async (
 
   if (bytes && size && !sent.has(path)) {
     sent.add(path);
-    answer.jpegs[path] = bytes;
+    answer.jpegs[path] = Uint8Array.from(bytes);
   }
   return size;
 };

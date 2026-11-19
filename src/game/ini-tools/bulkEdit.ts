@@ -363,6 +363,7 @@ const createReader = (workspace: BulkWorkspace) => {
     unit: Unit,
     selector: FieldSelector,
     inheritedFrom?: Unit,
+    depth = 0,
   ): { field: FieldRef; inheritedFrom?: Unit }[] => {
     const found = readOwnFields(unit).filter((field) => matches(selector, field));
 
@@ -371,10 +372,9 @@ const createReader = (workspace: BulkWorkspace) => {
     }
 
     const parent = findParent(unit);
-    let hops = 0;
 
-    return parent && hops++ < MAX_DEPTH && parent.block !== unit.block
-      ? select(parent, selector, inheritedFrom ?? parent)
+    return parent && depth < MAX_DEPTH && parent.block !== unit.block
+      ? select(parent, selector, inheritedFrom ?? parent, depth + 1)
       : [];
   };
 

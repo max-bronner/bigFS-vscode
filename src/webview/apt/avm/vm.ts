@@ -36,6 +36,11 @@ import type {
 
 const MAX_NESTING = 32;
 
+export const MAX_INTERVALS = 256;
+
+export const toIntervalTicks = (ms: number): number =>
+  Number.isFinite(ms) ? Math.max(1, Math.round((ms * 30) / 1000)) : 1;
+
 export class Vm implements VmState, EngineVm {
   public readonly global: AsObject;
   public readonly protos: BuiltinProtos;
@@ -238,8 +243,15 @@ export class Vm implements VmState, EngineVm {
     ms: number,
     args: Value[],
   ): number {
+    if (this.intervals.size >= MAX_INTERVALS) {
+      this.engine.log(
+        `setInterval ignored: ${MAX_INTERVALS} timers are running`,
+      );
+      return 0;
+    }
+
     const id = this.nextInterval++;
-    const every = Math.max(1, Math.round((ms * 30) / 1000));
+    const every = toIntervalTicks(ms);
 
     this.intervals.set(id, {
       callee,

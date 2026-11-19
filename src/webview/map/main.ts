@@ -9,7 +9,7 @@ import { getOwner } from './mapModel';
 import { vscode } from './messaging';
 import { WAYPOINT_TEMPLATE, finishArea, setMode } from './modes';
 import { showObject } from './objectDetails';
-import { showObjects } from './objectList';
+import { markSelectedObject, showObjects } from './objectList';
 import type { MapToPage } from './protocol';
 import { state } from './state';
 
@@ -54,11 +54,19 @@ const refresh = () => {
 
 const actions: MapActions = {
   select(index) {
+    const previous = state.selected;
+    const previousArea = state.selectedArea;
+
     state.selected = index;
     if (index !== undefined) {
       state.selectedArea = undefined;
     }
-    refresh();
+    if (state.selectedArea !== previousArea) {
+      showInfo(actions);
+    }
+    markSelectedObject(previous);
+    showObject(actions);
+    draw();
   },
   selectArea(index) {
     state.selectedArea = index;

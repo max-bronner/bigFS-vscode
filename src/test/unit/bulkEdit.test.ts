@@ -170,6 +170,18 @@ suite('INI bulk edits', () => {
       );
     });
 
+    test('children inheriting from each other end the search instead of overflowing', () => {
+      const file = source(
+        'loop.ini',
+        'ChildObject A B\n  Side = X\nEnd\nChildObject B A\n  Side = Y\nEnd\n',
+      );
+
+      assert.deepStrictEqual(
+        across([file], [], { blocks: 'ChildObject' }).changes,
+        [],
+      );
+    });
+
     test('a ChildObject that writes no value edits its parent where it is defined', () => {
       const file = source(
         'a.ini',

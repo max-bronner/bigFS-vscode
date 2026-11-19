@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.3 (pre-release)
+
+- Fix: loose files of a base game install that is not a workspace folder are read-only in the game view. Import image, Export as PNG, Edit W3D Animation, Convert String Table and Convert to VP6 no longer appear on them, and when run from the palette they ask where to save instead of writing into the install.
+
+- Fix: saving into an archive of 64 MB or more no longer overwrites an entry that shares its offset with an empty one.
+
+- Fix: crafted or broken APT, W3D, INI, STR, PNG, VP6, TGA and RefPack files are refused with a message instead of exhausting memory, hanging or crashing the editor; large valid .ru files, long CSF and CAH strings and large shapes and maps no longer fail to open.
+
+- Fix: saving an APT movie after an undo writes what the editor shows, JPEG-backed mapped images draw, bulk edits and the new object wizard no longer misplace changes in archive files with unsaved edits, and a movie rename skips importers it cannot write up front.
+
+- Fix: closing the video reader no longer hangs a conversion, and converting a .vp6 onto itself asks first; CSF tables from a game install open read-only; Validate INI no longer reports success after a cancel.
+
+- Fix: Reset in the APT script editor discards the draft instead of applying it; armor table edits keep focus and the typed text; the string table no longer swallows the click after leaving a cell; video playback stops cleanly at a frame it cannot decode; notices stay up their full time.
+
+- Fix: bulk edit no longer overflows the stack on ChildObjects that inherit from each other; deleted loose INI folders and removed #define overrides leave the index correctly; mapped image hovers stop showing stale pictures.
+
+- Faster: texture, PNG, VP6 and WAV decoding, archive imports and transfers, and the APT, particle, timeline, map and catalogue pages redo far less work; INI, STR, WND and APT text checks wait for a pause in typing.
+
 ## 0.1.2 (pre-release)
 
 - asset.dat in the explorer: each install's catalogue opens in a viewer, and a sync panel lists the files no record stands for, the records no file answers and the out-of-date model records, and writes the catalogue back.

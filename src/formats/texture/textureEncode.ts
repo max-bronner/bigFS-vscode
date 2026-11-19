@@ -1,3 +1,4 @@
+import { checkDimensions } from './textureTools';
 import type { RgbaImage } from './textureTools';
 
 const crcTable = (() => {
@@ -143,6 +144,8 @@ export const decodePng = (
     );
   }
 
+  checkDimensions(width, height);
+
   if (width * height > 64 * 1024 * 1024) {
     throw new Error('The image is too large');
   }
@@ -150,6 +153,11 @@ export const decodePng = (
   const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[colourType] as number;
   const stride = width * channels;
   const raw = inflate(concat(data), height * (stride + 1));
+
+  if (raw.length < height * (stride + 1)) {
+    throw new Error('The PNG image data ends early');
+  }
+
   const pixels = new Uint8Array(width * height * 4);
   let previous = new Uint8Array(stride);
 
@@ -190,31 +198,31 @@ export const decodePng = (
       }
     }
 
-    for (let column = 0; column < width; column++) {
-      const out = (row * width + column) * 4;
-      const value = line.subarray(
-        column * channels,
-        column * channels + channels,
-      );
+    if (colourType === 6) {
+      pixels.set(line, row * width * 4);
+    } else {
+      for (let column = 0; column < width; column++) {
+        const out = (row * width + column) * 4;
+        const at = column * channels;
 
-      if (colourType === 3) {
-        const index = value[0];
+        if (colourType === 3) {
+          const index = line[at] * 3;
 
-        pixels.set(
-          palette?.subarray(index * 3, index * 3 + 3) ?? [0, 0, 0],
-          out,
-        );
-        pixels[out + 3] = transparency?.[index] ?? 255;
-      } else if (colourType === 0 || colourType === 4) {
-        pixels.set(
-          [value[0], value[0], value[0], colourType === 4 ? value[1] : 255],
-          out,
-        );
-      } else {
-        pixels.set(
-          [value[0], value[1], value[2], colourType === 6 ? value[3] : 255],
-          out,
-        );
+          pixels[out] = palette?.[index] ?? 0;
+          pixels[out + 1] = palette?.[index + 1] ?? 0;
+          pixels[out + 2] = palette?.[index + 2] ?? 0;
+          pixels[out + 3] = transparency?.[line[at]] ?? 255;
+        } else if (colourType === 2) {
+          pixels[out] = line[at];
+          pixels[out + 1] = line[at + 1];
+          pixels[out + 2] = line[at + 2];
+          pixels[out + 3] = 255;
+        } else {
+          pixels[out] = line[at];
+          pixels[out + 1] = line[at];
+          pixels[out + 2] = line[at];
+          pixels[out + 3] = colourType === 4 ? line[at + 1] : 255;
+        }
       }
     }
 
@@ -291,9 +299,8 @@ class Sink {
 
   public constructor(public readonly bytes: Uint8Array) {}
 
-  public push(...values: number[]) {
-    this.bytes.set(values, this.at);
-    this.at += values.length;
+  public push(value: number) {
+    this.bytes[this.at++] = value;
   }
 }
 const from565 = (c: number) => [
@@ -389,16 +396,14 @@ const encodeColourBlock = (block: Uint8Array, out: Sink, isDxt1: boolean) => {
     indices |= best << (index * 2);
   }
 
-  out.push(
-    c0 & 255,
-    c0 >> 8,
-    c1 & 255,
-    c1 >> 8,
-    indices & 255,
-    (indices >>> 8) & 255,
-    (indices >>> 16) & 255,
-    indices >>> 24,
-  );
+  out.push(c0 & 255);
+  out.push(c0 >> 8);
+  out.push(c1 & 255);
+  out.push(c1 >> 8);
+  out.push(indices & 255);
+  out.push((indices >>> 8) & 255);
+  out.push((indices >>> 16) & 255);
+  out.push(indices >>> 24);
 };
 
 const encodeAlphaBlock = (block: Uint8Array, out: Sink) => {
@@ -415,7 +420,8 @@ const encodeAlphaBlock = (block: Uint8Array, out: Sink) => {
     low,
     ...[1, 2, 3, 4, 5, 6].map((step) => ((7 - step) * high + step * low) / 7),
   ];
-  let bits = 0n;
+  let lowBits = 0;
+  let highBits = 0;
 
   for (let index = 0; index < 16; index++) {
     const alpha = block[index * 4 + 3];
@@ -427,13 +433,22 @@ const encodeAlphaBlock = (block: Uint8Array, out: Sink) => {
       }
     });
 
-    bits |= BigInt(high === low ? 0 : best) << BigInt(index * 3);
+    const chosen = high === low ? 0 : best;
+
+    if (index < 8) {
+      lowBits |= chosen << (index * 3);
+    } else {
+      highBits |= chosen << ((index - 8) * 3);
+    }
   }
 
-  out.push(high, low);
+  out.push(high);
+  out.push(low);
 
-  for (let byte = 0; byte < 6; byte++) {
-    out.push(Number((bits >> BigInt(byte * 8)) & 255n));
+  for (const half of [lowBits, highBits]) {
+    out.push(half & 255);
+    out.push((half >> 8) & 255);
+    out.push((half >> 16) & 255);
   }
 };
 
@@ -449,9 +464,12 @@ const getLevelSize = (image: RgbaImage, format: DdsFormat) =>
 const encodeLevel = (image: RgbaImage, format: DdsFormat, out: Sink) => {
   if (format === 'RGBA') {
     for (let index = 0; index < image.width * image.height; index++) {
-      const p = image.pixels.subarray(index * 4, index * 4 + 4);
+      const at = index * 4;
 
-      out.push(p[2], p[1], p[0], p[3]);
+      out.push(image.pixels[at + 2]);
+      out.push(image.pixels[at + 1]);
+      out.push(image.pixels[at]);
+      out.push(image.pixels[at + 3]);
     }
 
     return;
@@ -466,13 +484,13 @@ const encodeLevel = (image: RgbaImage, format: DdsFormat, out: Sink) => {
           const sx = Math.min(image.width - 1, bx * 4 + x);
           const sy = Math.min(image.height - 1, by * 4 + y);
 
-          block.set(
-            image.pixels.subarray(
-              (sy * image.width + sx) * 4,
-              (sy * image.width + sx) * 4 + 4,
-            ),
-            (y * 4 + x) * 4,
-          );
+          const from = (sy * image.width + sx) * 4;
+          const to = (y * 4 + x) * 4;
+
+          block[to] = image.pixels[from];
+          block[to + 1] = image.pixels[from + 1];
+          block[to + 2] = image.pixels[from + 2];
+          block[to + 3] = image.pixels[from + 3];
         }
       }
 

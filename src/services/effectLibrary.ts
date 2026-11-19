@@ -32,19 +32,31 @@ export class EffectLibrary {
     name: string,
     keywords: string[],
     localText = '',
+    parsed = new Map<string, IniDefinition[]>(),
   ): Promise<IniDefinition | undefined> {
     const matches = (definition: IniDefinition) =>
       definition.name.toLowerCase() === name.toLowerCase() &&
       keywords.includes(definition.keyword);
-    const local = findParticleDefinitions(localText).find(matches);
+    const parseOnce = (key: string, read: () => string | Promise<string>) =>
+      parsed.has(key)
+        ? parsed.get(key)!
+        : Promise.resolve(read()).then((text) => {
+            const definitions = findParticleDefinitions(text);
+
+            parsed.set(key, definitions);
+            return definitions;
+          });
+    const local = (await parseOnce('', () => localText)).find(matches);
 
     if (local) {
       return local;
     }
     for (const keyword of keywords) {
       for (const place of this.index.findDefinitions(keyword, name)) {
-        const found = findParticleDefinitions(
-          await readWorkspaceText(place.uri),
+        const found = (
+          await parseOnce(place.uri.toString(), () =>
+            readWorkspaceText(place.uri),
+          )
         ).find(matches);
 
         if (found) {
@@ -67,6 +79,7 @@ export class EffectLibrary {
     const fxLists: Record<string, FxListDef> = {};
     const notes = new Set<string>();
     const queue = [...names];
+    const parsed = new Map<string, IniDefinition[]>();
     const visit = (def: ParticleDef | FxListDef) => {
       const { systems: reached, fxLists: lists } = findStartedNames(def);
 
@@ -95,6 +108,7 @@ export class EffectLibrary {
         next.name,
         next.list ? ['FXList'] : ['FXParticleSystem', 'ParticleSystem'],
         localText,
+        parsed,
       );
 
       if (!found) {

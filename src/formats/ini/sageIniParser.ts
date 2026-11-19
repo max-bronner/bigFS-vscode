@@ -78,9 +78,15 @@ const MACRO_PATTERN = /^\s*#define\s+([A-Za-z_][A-Za-z0-9_]*)\s*(.*)$/i;
 export const stripComment = (line: string): string => {
   const semicolon = line.indexOf(';');
   const slashes = line.indexOf('//');
-  const markers = [semicolon, slashes].filter((at) => at >= 0);
 
-  return markers.length ? line.slice(0, Math.min(...markers)) : line;
+  if (semicolon < 0 && slashes < 0) {
+    return line;
+  }
+
+  const end =
+    semicolon < 0 ? slashes : slashes < 0 ? semicolon : Math.min(semicolon, slashes);
+
+  return line.slice(0, end);
 };
 
 export const tokenize = (content: string): SageToken[] => {
@@ -132,6 +138,8 @@ const opensInlineDefinition = (
 ): boolean =>
   keyword.text === 'AddEmotion' && values[0]?.text.toUpperCase() === 'OVERRIDE';
 
+const MAX_BLOCK_DEPTH = 64;
+
 export const parseSageIni = (
   lines: string[],
   schema: SageIniSchema,
@@ -148,10 +156,13 @@ export const parseSageIni = (
   const open: SageBlock[] = [];
 
   let scriptStart = -1;
+  let overflowDepth = 0;
 
   lines.forEach((line, index) => {
+    const content = stripComment(line);
+
     if (scriptStart >= 0) {
-      if (END_SCRIPT_PATTERN.test(stripComment(line))) {
+      if (END_SCRIPT_PATTERN.test(content)) {
         scripts.push({ startLine: scriptStart, endLine: index });
         scriptStart = -1;
       }
@@ -159,12 +170,11 @@ export const parseSageIni = (
       return;
     }
 
-    if (BEGIN_SCRIPT_PATTERN.test(stripComment(line))) {
+    if (BEGIN_SCRIPT_PATTERN.test(content)) {
       scriptStart = index;
       return;
     }
 
-    const content = stripComment(line);
     const trimmed = content.trim();
 
     if (!trimmed) {
@@ -217,9 +227,11 @@ export const parseSageIni = (
     }
 
     if (END_PATTERN.test(keyword.text)) {
-      const closing = open.pop();
+      const closing = overflowDepth > 0 ? undefined : open.pop();
 
-      if (closing) {
+      if (overflowDepth > 0) {
+        overflowDepth -= 1;
+      } else if (closing) {
         closing.endLine = index;
         closing.isClosed = true;
       } else {
@@ -255,6 +267,11 @@ export const parseSageIni = (
     statements.push(statement);
 
     if (kind !== 'block') {
+      return;
+    }
+
+    if (open.length >= MAX_BLOCK_DEPTH) {
+      overflowDepth += 1;
       return;
     }
 

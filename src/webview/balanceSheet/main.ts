@@ -177,6 +177,20 @@ const createRowElement = (row: SheetRow) => {
   return tr;
 };
 
+const showMoreHint = (rowCount: number) => {
+  $('more').textContent =
+    rowCount > state.shown
+      ? `Showing ${state.shown}; scroll to the end for more`
+      : '';
+};
+
+const appendRows = (first: number) => {
+  const rows = getVisibleRows().sort(compare);
+
+  $('rows').append(...rows.slice(first, state.shown).map(createRowElement));
+  showMoreHint(rows.length);
+};
+
 const render = () => {
   $('head').replaceChildren(
     ...['name', ...state.columns].map((column) => {
@@ -199,10 +213,7 @@ const render = () => {
 
   $('count').textContent = `${rows.length} of ${state.rows.length} templates`;
   $('rows').replaceChildren(...rows.slice(0, state.shown).map(createRowElement));
-  $('more').textContent =
-    rows.length > state.shown
-      ? `Showing ${state.shown}; scroll to the end for more`
-      : '';
+  showMoreHint(rows.length);
 };
 
 for (const id of ['filter', 'side', 'selectable', 'buildable']) {
@@ -218,8 +229,10 @@ window.addEventListener('scroll', () => {
     window.innerHeight + window.scrollY >= document.body.scrollHeight - 200 &&
     $('more').textContent
   ) {
+    const first = state.shown;
+
     state.shown += PAGE;
-    render();
+    appendRows(first);
   }
 });
 

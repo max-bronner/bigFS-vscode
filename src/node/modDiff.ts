@@ -119,7 +119,7 @@ export interface ComparedFile {
 }
 
 const areBytesEqual = (a: Uint8Array, b: Uint8Array) =>
-  a.length === b.length && a.every((byte, index) => byte === b[index]);
+  a.length === b.length && Buffer.compare(a, b) === 0;
 
 export const compareWithBase = async (
   files: ModFile[],

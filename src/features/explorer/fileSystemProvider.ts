@@ -3,7 +3,7 @@ import type { ArchiveModel } from '../../services/archives/archiveModel';
 import { SCHEME } from '../../constants';
 import type { VirtualNode } from '../../services/archives/virtualNode';
 
-export class BigFileSystemProvider implements vscode.FileSystemProvider {
+export class BigFileSystemProvider implements vscode.FileSystemProvider, vscode.Disposable {
   private onDidChangeFileEmitter = new vscode.EventEmitter<
     vscode.FileChangeEvent[]
   >();
@@ -11,11 +11,19 @@ export class BigFileSystemProvider implements vscode.FileSystemProvider {
 
   private bufferedEvents: vscode.FileChangeEvent[] = [];
   private fireSoonHandle?: NodeJS.Timeout;
+  private readonly archiveSubscription: vscode.Disposable;
 
   constructor(private archiveModel: ArchiveModel) {
-    archiveModel.onDidChangeArchive(({ rootPath }) => {
+    this.archiveSubscription = archiveModel.onDidChangeArchive(({ rootPath }) => {
       this.fireChangedDocuments(rootPath);
     });
+  }
+
+  dispose(): void {
+    this.archiveSubscription.dispose();
+    clearTimeout(this.fireSoonHandle);
+    this.bufferedEvents = [];
+    this.onDidChangeFileEmitter.dispose();
   }
 
   private fireChangedDocuments(rootPath: string): void {

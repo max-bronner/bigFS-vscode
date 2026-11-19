@@ -145,6 +145,9 @@ export const watchSageIniDiagnostics = (
       documents.parse(document),
       documents.getSchema(),
     ]);
+    const scripts = parsed.scripts.filter(
+      (script) => script.endLine > script.startLine,
+    );
     const diagnostics = [
       ...findSageIniProblems(parsed, schema).map((problem) =>
         toDiagnostic(document, problem),
@@ -155,12 +158,15 @@ export const watchSageIniDiagnostics = (
       ...(await getCheckedAssetDiagnostics(parsed, locator, SOURCE).catch(
         () => [],
       )),
-      ...findScriptProblems(
-        Array.from(
-          { length: document.lineCount },
-          (_, line) => document.lineAt(line).text,
-        ),
-        parsed.scripts.filter((script) => script.endLine > script.startLine),
+      ...(scripts.length
+        ? findScriptProblems(
+            Array.from(
+              { length: document.lineCount },
+              (_, line) => document.lineAt(line).text,
+            ),
+            scripts,
+          )
+        : []
       ).map((problem) => {
         const diagnostic = new Diagnostic(
           new Range(

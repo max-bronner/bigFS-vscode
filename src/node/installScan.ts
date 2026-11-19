@@ -37,8 +37,15 @@ export const findArchives = async (
   }
 
   const found: string[] = [];
+  let entries;
 
-  for (const entry of await readdir(folder, { withFileTypes: true })) {
+  try {
+    entries = await readdir(folder, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+
+  for (const entry of entries) {
     const full = path.join(folder, entry.name);
 
     if (entry.isDirectory()) {

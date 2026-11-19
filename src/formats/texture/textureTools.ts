@@ -15,7 +15,7 @@ export interface DecodedTexture {
 
 const MAX_DIMENSION = 8192;
 
-const checkDimensions = (width: number, height: number): void => {
+export const checkDimensions = (width: number, height: number): void => {
   if (!width || !height || width > MAX_DIMENSION || height > MAX_DIMENSION) {
     throw new Error(
       `Image size ${width}x${height} is outside 1 to ${MAX_DIMENSION}`,
@@ -142,24 +142,34 @@ export const decodeTga = (wrapped: Uint8Array): DecodedTexture => {
   }
 
   const count = width * height;
-  const stored = new Uint8Array(count * 4);
   const storedBytesPerPixel = type.kind === 'mapped' ? 1 : bytesPerPixel;
+
+  const minimumDataLength = type.rle
+    ? Math.ceil(count / 128) * (1 + storedBytesPerPixel)
+    : count * storedBytesPerPixel;
+
+  if (cursor + minimumDataLength > bytes.length) {
+    throw new Error('TGA pixel data runs past the end of the file');
+  }
+
+  const stored = new Uint8Array(count * 4);
 
   const put = (at: number, pixel: number): void => {
     if (palette) {
       const index = bytes[at] * 4;
 
-      stored.set(palette.subarray(index, index + 4), pixel * 4);
+      const to = pixel * 4;
+
+      stored[to] = palette[index];
+      stored[to + 1] = palette[index + 1];
+      stored[to + 2] = palette[index + 2];
+      stored[to + 3] = palette[index + 3];
     } else {
       readTgaPixel(bytes, at, bytesPerPixel, stored, pixel * 4, hasAlpha);
     }
   };
 
   if (!type.rle) {
-    if (cursor + count * storedBytesPerPixel > bytes.length) {
-      throw new Error('TGA pixel data runs past the end of the file');
-    }
-
     for (let pixel = 0; pixel < count; pixel++) {
       put(cursor + pixel * storedBytesPerPixel, pixel);
     }
@@ -203,11 +213,21 @@ export const decodeTga = (wrapped: Uint8Array): DecodedTexture => {
   for (let row = 0; row < height; row++) {
     const sourceRow = isTopFirst ? row : height - 1 - row;
 
-    for (let column = 0; column < width; column++) {
-      const sourceColumn = isRightFirst ? width - 1 - column : column;
-      const from = (sourceRow * width + sourceColumn) * 4;
+    if (!isRightFirst) {
+      const from = sourceRow * width * 4;
 
-      pixels.set(stored.subarray(from, from + 4), (row * width + column) * 4);
+      pixels.set(stored.subarray(from, from + width * 4), row * width * 4);
+      continue;
+    }
+
+    for (let column = 0; column < width; column++) {
+      const from = (sourceRow * width + width - 1 - column) * 4;
+      const to = (row * width + column) * 4;
+
+      pixels[to] = stored[from];
+      pixels[to + 1] = stored[from + 1];
+      pixels[to + 2] = stored[from + 2];
+      pixels[to + 3] = stored[from + 3];
     }
   }
 
@@ -242,20 +262,23 @@ const decodeColourBlock = (
   const [r1, g1, b1] = expand565(second);
   const isFourColour = !hasPunchThrough || first > second;
   const colours = [
-    [r0, g0, b0, 255],
-    [r1, g1, b1, 255],
-    isFourColour
+    r0, g0, b0, 255,
+    r1, g1, b1, 255,
+    ...(isFourColour
       ? [(2 * r0 + r1) / 3, (2 * g0 + g1) / 3, (2 * b0 + b1) / 3, 255]
-      : [(r0 + r1) / 2, (g0 + g1) / 2, (b0 + b1) / 2, 255],
-    isFourColour
+      : [(r0 + r1) / 2, (g0 + g1) / 2, (b0 + b1) / 2, 255]),
+    ...(isFourColour
       ? [(r0 + 2 * r1) / 3, (g0 + 2 * g1) / 3, (b0 + 2 * b1) / 3, 255]
-      : [0, 0, 0, 0],
+      : [0, 0, 0, 0]),
   ];
 
   for (let texel = 0; texel < 16; texel++) {
-    const index = (bytes[at + 4 + (texel >> 2)] >> ((texel & 3) * 2)) & 3;
+    const index = ((bytes[at + 4 + (texel >> 2)] >> ((texel & 3) * 2)) & 3) * 4;
 
-    out.set(colours[index], texel * 4);
+    out[texel * 4] = colours[index];
+    out[texel * 4 + 1] = colours[index + 1];
+    out[texel * 4 + 2] = colours[index + 2];
+    out[texel * 4 + 3] = colours[index + 3];
   }
 };
 
@@ -341,10 +364,13 @@ const decodeBlockLevel = (
 
       for (let y = 0; y < 4 && blockY + y < height; y++) {
         for (let x = 0; x < 4 && blockX + x < width; x++) {
-          pixels.set(
-            block.subarray((y * 4 + x) * 4, (y * 4 + x) * 4 + 4),
-            ((blockY + y) * width + blockX + x) * 4,
-          );
+          const from = (y * 4 + x) * 4;
+          const to = ((blockY + y) * width + blockX + x) * 4;
+
+          pixels[to] = block[from];
+          pixels[to + 1] = block[from + 1];
+          pixels[to + 2] = block[from + 2];
+          pixels[to + 3] = block[from + 3];
         }
       }
     }
@@ -443,14 +469,16 @@ export const decodeDds = (wrapped: Uint8Array): DecodedTexture => {
           value |= bytes[cursor + pixel * bytesPerPixel + byte] << (byte * 8);
         }
 
-        shapes.forEach(({ shift, max }, channel) => {
+        for (let channel = 0; channel < 4; channel++) {
+          const { shift, max } = shapes[channel];
+
           pixels[pixel * 4 + channel] =
             channel === 3 && !hasAlphaMask
               ? 255
               : max
                 ? Math.round((((value >>> shift) & max) * 255) / max)
                 : 0;
-        });
+        }
       }
     }
 

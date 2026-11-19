@@ -31,6 +31,11 @@ const getKeysUnder = (
   entryPath: string,
 ): string[] => {
   const key = entryPath.toLowerCase();
+
+  if (entries.has(key)) {
+    return [key];
+  }
+
   const prefix = `${key}/`;
 
   return Array.from(entries.keys()).filter(
@@ -374,18 +379,20 @@ export class Archive {
         const now = Date.now();
 
         for (const change of changes) {
-          const changedPath =
-            change.kind === 'move' || change.kind === 'copy'
-              ? change.to
-              : change.path;
+          if (change.kind === 'remove') {
+            continue;
+          }
 
-          for (const key of this.entries.keys()) {
-            if (
-              key === changedPath.toLowerCase() ||
-              key.startsWith(`${changedPath.toLowerCase()}/`)
-            ) {
-              this.entryWrittenAt.set(key, now);
-            }
+          if (change.kind === 'put') {
+            this.entryWrittenAt.set(change.path.toLowerCase(), now);
+            continue;
+          }
+
+          const changedPath =
+            change.kind === 'addDirectory' ? change.path : change.to;
+
+          for (const key of getKeysUnder(this.entries, changedPath)) {
+            this.entryWrittenAt.set(key, now);
           }
         }
       }

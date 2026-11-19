@@ -24,8 +24,12 @@ import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
 import { readWorkspaceText } from '../../services/ini/workspaceText';
 import { registerCommand } from '../../platform/commands';
+import { describeError } from '../../core/errors';
+import { createDebouncer } from '../../core/debounce';
 
 const COLUMNS = 5;
+
+const REFRESH_DELAY = 300;
 
 const createCommandSetEditor = (
   context: vscode.ExtensionContext,
@@ -40,6 +44,11 @@ const createCommandSetEditor = (
   const scripts = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview');
   let slots = new Map<number, string>();
 
+  const refreshSoon = createDebouncer(() => {
+    refresh().catch((error: unknown) => {
+      void vscode.window.showErrorMessage(describeError(error));
+    });
+  }, REFRESH_DELAY);
   const panel = createSingletonPanel<FromCommandSetPage, CommandSetMessage>({
     viewType: 'bigfs.commandSet',
     title: `CommandSet: ${name}`,
@@ -78,12 +87,16 @@ body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vsco
       return [
         vscode.workspace.onDidChangeTextDocument((event) => {
           if (event.document.uri.toString() === uri.toString()) {
-            void refresh();
+            refreshSoon.schedule();
           }
         }),
+        { dispose: refreshSoon.cancel },
       ];
     },
-    onMessage: (message) => receive(message),
+    onMessage: (message) =>
+      receive(message).catch((error: unknown) => {
+        void vscode.window.showErrorMessage(describeError(error));
+      }),
     onDispose: onClose,
   });
 

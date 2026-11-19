@@ -23,7 +23,6 @@ const createCell = (text: string, className?: string): HTMLTableCellElement => {
 export const renderTable = (
   state: TableState,
   post: (message: FromStringsPage) => void,
-  redraw: () => void,
 ): void => {
   const visible = filterRows(state.rows, state.filter);
   const shown = visible.slice(0, (state.page + 1) * ROWS_PER_PAGE);
@@ -54,7 +53,6 @@ export const renderTable = (
           false,
           (value) =>
             post({ kind: 'setLabel', id: row.id, label: row.label, value }),
-          redraw,
         );
       const textCell = createCell(
         row.text,
@@ -71,7 +69,6 @@ export const renderTable = (
           true,
           (value) =>
             post({ kind: 'setText', id: row.id, label: row.label, value }),
-          redraw,
         );
       tr.append(label, textCell);
       if (state.hasSpeech) {
@@ -84,7 +81,6 @@ export const renderTable = (
             false,
             (value) =>
               post({ kind: 'setSpeech', id: row.id, label: row.label, value }),
-            redraw,
           );
         tr.append(speech);
       }

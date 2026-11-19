@@ -113,9 +113,13 @@ const newPlayer = (rootScripts: boolean, logged: boolean) => {
   });
 };
 
-const addLog = (line: string): void => {
-  log.push(line);
-  log.splice(0, Math.max(0, log.length - LOG_LINES));
+let logDirty = false;
+
+const flushLog = (): void => {
+  if (!logDirty) {
+    return;
+  }
+  logDirty = false;
   logList.replaceChildren(
     ...log.map((text) => {
       const element = document.createElement("div");
@@ -124,6 +128,15 @@ const addLog = (line: string): void => {
       return element;
     }),
   );
+};
+
+const addLog = (line: string): void => {
+  log.push(line);
+  log.splice(0, Math.max(0, log.length - LOG_LINES));
+  if (!logDirty) {
+    logDirty = true;
+    requestAnimationFrame(flushLog);
+  }
 };
 
 const rootScriptsRun = () => view.interact || view.scripts;
@@ -135,8 +148,13 @@ export const currentPlayer = (): Player => {
   return player;
 };
 
-export const restart = (): void => {
+const discardPlayer = (): void => {
+  player?.dispose();
   player = undefined;
+};
+
+export const restart = (): void => {
+  discardPlayer();
   ghosts.clear();
   extent = undefined;
   stagePointer.reset();
@@ -298,6 +316,7 @@ const paintOnStage = (ctx: CanvasRenderingContext2D, leaf: Leaf): void => {
 };
 
 export const render = (): void => {
+  flushLog();
   const current = currentPlayer();
 
   drawPass++;
@@ -532,6 +551,14 @@ const stagePointer = attachStagePointer(stage, {
 
 let lastTime: number | undefined;
 let owed = 0;
+let pendingFrame: number | undefined;
+
+const scheduleLoop = (): void => {
+  pendingFrame ??= requestAnimationFrame((time) => {
+    pendingFrame = undefined;
+    loop(time);
+  });
+};
 
 const loop = (time: number) => {
   if (!view.playing) {
@@ -561,11 +588,11 @@ const loop = (time: number) => {
       render();
     }
   }
-  requestAnimationFrame(loop);
+  scheduleLoop();
 };
 
 export const playFrom = (frame: number): void => {
-  player = undefined;
+  discardPlayer();
   if (frame) {
     currentPlayer().goTo(currentPlayer().root, frame, true);
   }
@@ -580,6 +607,6 @@ export const play = (playing: boolean): void => {
   byId("play").textContent = playing ? "⏸" : "▶";
   showMode();
   if (playing) {
-    requestAnimationFrame(loop);
+    scheduleLoop();
   }
 };

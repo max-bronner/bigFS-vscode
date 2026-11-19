@@ -202,7 +202,7 @@ let lastStatus = 0;
 const onFrame = (now: number) => {
   drawTimeline();
   showStats(now);
-  hud.textContent = [
+  const status = [
     ...(hasGraphics ? [] : ['WebGL is not available; nothing is drawn.']),
     `frame ${world.frame}  ${(world.frame / STEP_HZ).toFixed(1)} s`,
     `${world.systems.length} systems  ${world.liveParticles} particles` +
@@ -210,6 +210,10 @@ const onFrame = (now: number) => {
     `wind ${world.options.wind}  hollow box ${world.options.hollowBox}`,
     ...(state.scene?.comparing ? ['showing the block as written (C)'] : []),
   ].join('\n');
+
+  if (status !== hud.textContent) {
+    hud.textContent = status;
+  }
   if (now - lastStatus > 1000) {
     lastStatus = now;
     post({

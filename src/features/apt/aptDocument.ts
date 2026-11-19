@@ -28,7 +28,7 @@ import type { PageMovie, TexturePixels } from '../../webview/apt/protocol';
 import { toMovieKey } from './aptLibrary';
 import { decodeWindows1252 } from '../../core/windows1252';
 import { describeError } from '../../core/errors';
-import { packSnapshot, unpackSnapshot } from './aptSnapshot';
+import { packSnapshot, pathsToRevert, unpackSnapshot } from './aptSnapshot';
 import type { AptSnapshot } from './aptSnapshot';
 
 export interface BuiltMovie {
@@ -98,10 +98,13 @@ export class AptDocument implements vscode.CustomDocument {
   public files = new Map<string, Uint8Array>();
 
   private constBytes: Uint8Array;
-  private readonly savedConst: Uint8Array;
+  private savedConst: Uint8Array;
+
+  private touchedBySave = new Set<string>();
   private parsedConst: ConstFile;
 
   private readonly read: (relative: string) => Promise<Uint8Array | undefined>;
+  private readonly readOriginal: (relative: string) => Promise<Uint8Array | undefined>;
   private readonly cache = new Map<string, Promise<Uint8Array | undefined>>();
   private readonly textures = new Map<
     string,
@@ -120,18 +123,20 @@ export class AptDocument implements vscode.CustomDocument {
     this.constBytes = constBytes;
     this.savedConst = constBytes;
     this.parsedConst = parseConst(constBytes);
+    this.readOriginal = (relative) =>
+      this.readCached(
+        relative,
+        async () =>
+          (await readOwnFile(uri, relative)) ??
+          (await locator.read(
+            relative.slice(relative.lastIndexOf('/') + 1),
+            uri,
+          )),
+      );
     this.read = (relative) =>
       this.files.has(relative)
         ? Promise.resolve(unlessRemoved(this.files.get(relative)!))
-        : this.readCached(
-            relative,
-            async () =>
-              (await readOwnFile(uri, relative)) ??
-              (await locator.read(
-                relative.slice(relative.lastIndexOf('/') + 1),
-                uri,
-              )),
-          );
+        : this.readOriginal(relative);
   }
 
   public static async open(
@@ -417,13 +422,11 @@ export class AptDocument implements vscode.CustomDocument {
 
   public async save(target: vscode.Uri = this.uri): Promise<void> {
     const folder = vscode.Uri.joinPath(target, '..');
+    const inPlace = target.toString() === this.uri.toString();
 
     await vscode.workspace.fs.writeFile(target, this.image.bytes);
 
-    if (
-      target.toString() !== this.uri.toString() ||
-      this.constBytes !== this.savedConst
-    ) {
+    if (!inPlace || this.constBytes !== this.savedConst) {
       const stem = target.path
         .slice(target.path.lastIndexOf('/') + 1)
         .replace(/\.apt$/i, '');
@@ -434,17 +437,40 @@ export class AptDocument implements vscode.CustomDocument {
       );
     }
 
+    const remove = (relative: string): Promise<void> =>
+      Promise.resolve(
+        vscode.workspace.fs.delete(vscode.Uri.joinPath(folder, relative)),
+      ).catch(() => undefined);
+
+    if (inPlace) {
+      for (const relative of pathsToRevert(this.touchedBySave, this.files)) {
+        const original = await this.readOriginal(relative);
+
+        if (original?.length) {
+          await vscode.workspace.fs.writeFile(
+            vscode.Uri.joinPath(folder, relative),
+            original,
+          );
+        } else {
+          await remove(relative);
+        }
+      }
+    }
+
     for (const [relative, bytes] of this.files) {
       if (!bytes.length) {
-        await Promise.resolve(
-          vscode.workspace.fs.delete(vscode.Uri.joinPath(folder, relative)),
-        ).catch(() => undefined);
+        await remove(relative);
         continue;
       }
       await vscode.workspace.fs.writeFile(
         vscode.Uri.joinPath(folder, relative),
         bytes,
       );
+    }
+
+    if (inPlace) {
+      this.savedConst = this.constBytes;
+      this.touchedBySave = new Set(this.files.keys());
     }
   }
 }

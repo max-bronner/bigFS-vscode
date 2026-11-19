@@ -11,6 +11,17 @@ const UPPER_HALF = new Map(
 
 const CHUNK = 0x8000;
 
+export const fromCodeUnits = (units: ArrayLike<number>): string => {
+  const chunks: string[] = [];
+
+  for (let at = 0; at < units.length; at += CHUNK) {
+    chunks.push(
+      String.fromCharCode(...Array.prototype.slice.call(units, at, at + CHUNK)),
+    );
+  }
+  return chunks.join('');
+};
+
 const isAscii = (bytes: Uint8Array): boolean => {
   for (let at = 0; at < bytes.length; at += 1) {
     if (bytes[at] > 0x7f) {

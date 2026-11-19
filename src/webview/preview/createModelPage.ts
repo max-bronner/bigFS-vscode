@@ -5,7 +5,7 @@ import { element } from '../shared/element';
 import { createViewer } from '../shared/viewer/createViewer';
 import type { ClipChoice } from '../shared/viewer/createClipPicker';
 import { listFileClips } from './listFileClips';
-import type { FileUse, ModelMessage } from './protocol';
+import type { FileUse, FromPreviewPage, ModelMessage } from './protocol';
 
 const OWN = '#own';
 const PARTS_HINT =
@@ -26,9 +26,7 @@ export interface ModelPage {
 export const createModelPage = (
   main: HTMLElement,
   post: (
-    message:
-      | { kind: 'animation'; file: string }
-      | { kind: 'reveal'; uri: string; line: number },
+    message: Extract<FromPreviewPage, { kind: 'animation' | 'reveal' }>,
   ) => void,
 ): ModelPage => {
   const usedIn = element('p');

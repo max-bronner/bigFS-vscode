@@ -172,7 +172,10 @@ const pointOn = (event: MouseEvent): [number, number] => [
   event.offsetY / scale,
 ];
 
-const pressAt = (shape: Target, point: [number, number]): Drag | undefined => {
+const grabAt = (
+  shape: Target,
+  point: [number, number],
+): { mode: NonNullable<Drag['mode']>; transform: Affine } | undefined => {
   const run = runsOf(shape)[shownRun];
 
   if (shape.movie !== state.movie || run?.style.kind !== 'texture') {
@@ -181,12 +184,18 @@ const pressAt = (shape: Target, point: [number, number]): Drag | undefined => {
 
   const mode = pickBox(mappedBox(run), point, (HANDLE_RADIUS + 2) / scale);
 
+  return mode && { mode, transform: [...run.style.transform] as Affine };
+};
+
+const pressAt = (shape: Target, point: [number, number]): Drag | undefined => {
+  const grab = grabAt(shape, point);
+
   return (
-    mode && {
-      mode,
+    grab && {
+      mode: grab.mode,
       run: shownRun,
       start: point,
-      transform: [...run.style.transform] as Affine,
+      transform: grab.transform,
       original: structuredClone(runsOf(shape)),
       moved: false,
     }
@@ -382,11 +391,11 @@ export const showAtlas = (): void => {
     if (drag) {
       dragTo(shape, point, event.shiftKey);
     } else {
-      const press = pressAt(shape, point);
+      const grab = grabAt(shape, point);
 
-      canvas!.style.cursor = !press
+      canvas!.style.cursor = !grab
         ? 'default'
-        : press.mode === 'move'
+        : grab.mode === 'move'
           ? 'move'
           : 'nwse-resize';
     }

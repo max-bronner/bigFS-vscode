@@ -59,7 +59,7 @@ export class SageIniIndex implements Disposable {
     private readonly log: LogOutputChannel,
   ) {
     const watcher = workspace.createFileSystemWatcher(LOOSE_PATTERN);
-    const creations = workspace.createFileSystemWatcher("**/*", false, true, true);
+    const folders = workspace.createFileSystemWatcher("**/*", false, true, false);
     const reindexLooseFile = (uri: Uri) => {
       this.forget(uri.path.toLowerCase());
 
@@ -90,9 +90,18 @@ export class SageIniIndex implements Disposable {
         this.needsBuild = true;
       }),
       watcher,
-      creations,
-      creations.onDidCreate(() => {
+      folders,
+      folders.onDidCreate(() => {
         this.needsBuild = true;
+      }),
+      folders.onDidDelete((uri) => {
+        const removed = uri.path.toLowerCase();
+
+        for (const key of [...this.indexed]) {
+          if (key === removed || key.startsWith(`${removed}/`)) {
+            this.forget(key);
+          }
+        }
       }),
       watcher.onDidChange(reindexLooseFile),
       watcher.onDidCreate(reindexLooseFile),

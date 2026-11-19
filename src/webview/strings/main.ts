@@ -14,7 +14,7 @@ const state: TableState = {
 };
 const filter = document.getElementById('filter') as HTMLInputElement;
 const post = (message: FromStringsPage) => vscode.postMessage(message);
-const show = () => renderTable(state, post, show);
+const show = () => renderTable(state, post);
 
 filter.addEventListener('input', () => {
   state.filter = filter.value;

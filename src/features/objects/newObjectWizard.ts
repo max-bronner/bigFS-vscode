@@ -65,7 +65,7 @@ export const registerNewObjectWizard = (
     line: number,
     keyword?: string,
   ): Promise<Located | undefined> => {
-    const lines = (await readWorkspaceText(uri)).split(/\r?\n/);
+    const lines = (isArchiveUri(uri) ? await readEntryText(uri) : await readWorkspaceText(uri)).split(/\r?\n/);
     const block = parseSageIni(lines, await documents.getSchema()).blocks.find(
       (each) =>
         each.startLine <= line &&

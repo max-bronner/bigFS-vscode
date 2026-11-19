@@ -12,6 +12,9 @@ import { toUri } from '../../services/archives/commandTarget';
 import type { AptDocument } from './aptDocument';
 import { registerCommand } from '../../platform/commands';
 import { describeError } from '../../core/errors';
+import { createKeyedDebouncer } from '../../core/debounce';
+
+const CHECK_DELAY_MS = 250;
 
 export const TEXT_SCHEME = 'bigfs-apt-text';
 
@@ -100,19 +103,27 @@ export class AptTextView
       }
     };
 
+    const checkSoon = createKeyedDebouncer(
+      check,
+      CHECK_DELAY_MS,
+      (document: vscode.TextDocument) => document.uri.toString(),
+    );
+
     this.subscriptions = [
       this.changes,
       this.diagnostics,
+      { dispose: checkSoon.dispose },
       vscode.workspace.registerFileSystemProvider(TEXT_SCHEME, this, {
         isCaseSensitive: true,
       }),
       vscode.workspace.onDidOpenTextDocument(check),
       vscode.workspace.onDidChangeTextDocument(({ document }) =>
-        check(document),
+        checkSoon.schedule(document),
       ),
-      vscode.workspace.onDidCloseTextDocument((document) =>
-        this.diagnostics.delete(document.uri),
-      ),
+      vscode.workspace.onDidCloseTextDocument((document) => {
+        checkSoon.cancel(document.uri.toString());
+        this.diagnostics.delete(document.uri);
+      }),
       registerCommand('bigfs.openAptText', (target?: unknown) =>
         this.open(target),
       ),

@@ -23,6 +23,7 @@ import {
   addSnapshotView,
   backupSnapshot,
   createSnapshotDocument,
+  isReadOnlyFile,
   readSnapshotSource,
   recordSnapshotEdit,
   redrawSnapshotViews,
@@ -85,20 +86,30 @@ const connect = (
     summary: string;
   },
   handle: (message: PageMessage) => Promise<void> | void,
-): (() => Thenable<boolean>) => {
+): (() => Promise<void>) => {
   panel.webview.options = {
     enableScripts: true,
     localResourceRoots: [getPageBundleFolder(extensionUri)],
   };
   panel.webview.html = renderHtml(panel.webview, extensionUri);
 
-  const send = () => {
+  let isDisposed = false;
+
+  panel.onDidDispose(() => {
+    isDisposed = true;
+  });
+
+  const send = async () => {
     const message: StringsToPage = { kind: 'table', ...table() };
 
-    return panel.webview.postMessage(message);
+    if (!isDisposed) {
+      await panel.webview.postMessage(message);
+    }
   };
 
   panel.webview.onDidReceiveMessage(async (message: PageMessage) => {
+    let failed = false;
+
     try {
       await handle(message);
     } catch (error) {
@@ -107,10 +118,15 @@ const connect = (
         message: describeError(error),
       };
 
-      await panel.webview.postMessage(notice);
+      failed = true;
+      if (!isDisposed) {
+        await panel.webview.postMessage(notice);
+      }
     }
 
-    await send();
+    if (failed || message.kind === 'ready') {
+      await send();
+    }
   });
 
   return send;
@@ -319,7 +335,7 @@ export class CsfEditorProvider implements vscode.CustomEditorProvider<CsfDocumen
   ): Promise<CsfDocument> {
     const file = parseCsf(await readSnapshotSource(uri, context.backupId));
 
-    return createSnapshotDocument(uri, file, false);
+    return createSnapshotDocument(uri, file, await isReadOnlyFile(uri));
   }
 
   private change(
@@ -327,6 +343,10 @@ export class CsfEditorProvider implements vscode.CustomEditorProvider<CsfDocumen
     label: string,
     mutate: (file: CsfFile) => void,
   ): void {
+    if (document.isReadOnly) {
+      throw new Error('This string table is read-only');
+    }
+
     const after = cloneCsf(document.snapshot);
 
     mutate(after);

@@ -58,7 +58,23 @@ const run = (operation: TimelineOperation) => {
   }
 };
 
-const cellsOf = (frames: ReturnType<typeof shownTimeline> & object) => {
+const memoised = <Result>(
+  compute: (timeline: NonNullable<ReturnType<typeof shownTimeline>>) => Result,
+) => {
+  const cache = new WeakMap<object, Result>();
+
+  return (timeline: NonNullable<ReturnType<typeof shownTimeline>>): Result => {
+    let result = cache.get(timeline.frames);
+
+    if (result === undefined) {
+      result = compute(timeline);
+      cache.set(timeline.frames, result);
+    }
+    return result;
+  };
+};
+
+const cellsOf = memoised((frames: NonNullable<ReturnType<typeof shownTimeline>>) => {
   const depths = new Set<number>();
   const present = new Set<number>();
   const cells = frames.frames.map((frame) => {
@@ -86,7 +102,25 @@ const cellsOf = (frames: ReturnType<typeof shownTimeline> & object) => {
   });
 
   return { depths: [...depths].sort((a, b) => a - b), cells };
-};
+});
+
+const tweensOf = memoised((timeline) => {
+  const tweens = detectTweens(decodeTimeline(undefined, timeline.frames));
+  const byDepth = new Map<number, DetectedTween[]>();
+
+  for (const tween of tweens) {
+    byDepth.set(tween.depth, [...(byDepth.get(tween.depth) ?? []), tween]);
+  }
+  return { tweens, byDepth };
+});
+
+const flowOf = memoised((timeline) =>
+  readTimelineFlow(
+    timeline.frames,
+    timeline.movie.behaviours,
+    timeline.movie.characters,
+  ),
+);
 
 const poseAt = (frame: number, depth: number): Pose | undefined => {
   const timeline = shownTimeline();
@@ -468,6 +502,9 @@ const select = (frame: number, depth: number | undefined, extend: boolean) => {
     selection.anchor = selection.from = selection.to = frame;
   }
   selection.depth = depth;
+
+  const hadForm = form !== undefined;
+
   form = undefined;
   goToFrame(frame);
   if (depth !== undefined && poseAt(frame, depth)) {
@@ -475,7 +512,12 @@ const select = (frame: number, depth: number | undefined, extend: boolean) => {
   }
   showDetails();
   render();
-  showTimeline();
+
+  const timeline = shownTimeline();
+
+  if (hadForm || !timeline || !refreshSelection(timeline.frames.length)) {
+    showTimeline();
+  }
 };
 
 const describeJump = (jump: Jump): string =>
@@ -581,6 +623,48 @@ const scriptRow = (
   }
 };
 
+const isPicked = (frame: number, depth: number): boolean =>
+  frame >= selection.from &&
+  frame <= selection.to &&
+  (selection.depth === undefined || selection.depth === depth);
+
+let shownBar: HTMLElement | undefined;
+
+const createBar = (frameCount: number): HTMLElement => {
+  const onion = document.createElement('select');
+
+  onion.title = 'Onion skin: frames either side drawn faintly (N)';
+  onion.append(
+    ...[0, 1, 2, 3].map(
+      (each) => new Option(each ? `onion ±${each}` : 'onion off', String(each)),
+    ),
+  );
+  onion.value = String(view.onion);
+  onion.onchange = () => setOnion(Number(onion.value));
+
+  const bar = toolbar(frameCount);
+
+  bar.prepend(onion);
+  return bar;
+};
+
+const refreshSelection = (frameCount: number): boolean => {
+  if (!shownBar?.isConnected) {
+    return false;
+  }
+  panel.querySelectorAll<HTMLElement>('.cell').forEach((cell) => {
+    cell.classList.toggle(
+      'picked',
+      isPicked(Number(cell.dataset.frame), Number(cell.dataset.depth)),
+    );
+  });
+  const bar = createBar(frameCount);
+
+  shownBar.replaceWith(bar);
+  shownBar = bar;
+  return true;
+};
+
 export const showTimeline = (): void => {
   const timeline = shownTimeline();
 
@@ -595,14 +679,9 @@ export const showTimeline = (): void => {
   selection.from = Math.min(selection.from, selection.to);
 
   const { depths, cells } = cellsOf(timeline);
-  const tweens = detectTweens(decodeTimeline(undefined, timeline.frames));
+  const { tweens, byDepth } = tweensOf(timeline);
   const table = document.createElement('table');
-
-  const flow = readTimelineFlow(
-    timeline.frames,
-    timeline.movie.behaviours,
-    timeline.movie.characters,
-  );
+  const flow = flowOf(timeline);
 
   labelRow(table, flow, frameCount);
 
@@ -634,10 +713,9 @@ export const showTimeline = (): void => {
     cells.forEach((marks, frame) => {
       const cell = line.insertCell();
       const mark = marks.get(depth);
-      const tween = tweens.find(
-        (each) =>
-          each.depth === depth && each.from <= frame && frame <= each.to,
-      );
+      const tween = byDepth
+        .get(depth)
+        ?.find((each) => each.from <= frame && frame <= each.to);
 
       cell.className = `cell ${mark ?? 'empty'}`;
       if (tween) {
@@ -649,13 +727,8 @@ export const showTimeline = (): void => {
         cell.ondblclick = () => editTween(tween);
       }
       cell.dataset.frame = String(frame);
-      if (
-        frame >= selection.from &&
-        frame <= selection.to &&
-        (selection.depth === undefined || selection.depth === depth)
-      ) {
-        cell.classList.add('picked');
-      }
+      cell.dataset.depth = String(depth);
+      cell.classList.toggle('picked', isPicked(frame, depth));
       cell.onclick = (event) => select(frame, depth, event.shiftKey);
     });
   }
@@ -677,20 +750,9 @@ export const showTimeline = (): void => {
               : formulaForm(selection.depth),
           ]
         : [];
-  const onion = document.createElement('select');
+  const bar = createBar(frameCount);
 
-  onion.title = 'Onion skin: frames either side drawn faintly (N)';
-  onion.append(
-    ...[0, 1, 2, 3].map(
-      (each) => new Option(each ? `onion ±${each}` : 'onion off', String(each)),
-    ),
-  );
-  onion.value = String(view.onion);
-  onion.onchange = () => setOnion(Number(onion.value));
-
-  const bar = toolbar(frameCount);
-
-  bar.prepend(onion);
+  shownBar = bar;
 
   const previous = panel.querySelector('.grid')?.scrollLeft ?? 0;
 

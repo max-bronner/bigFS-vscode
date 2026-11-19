@@ -70,17 +70,29 @@ const hintNoBaseGame = () => {
     });
 };
 
-export const shouldCheckAssets = (names: Set<string>): boolean => {
-  const mode = settings.iniCheckAssets.get();
-  let models = 0;
+const modelCounts = new WeakMap<Set<string>, number>();
 
-  if (mode === 'auto') {
+const countModels = (names: Set<string>): number => {
+  let models = modelCounts.get(names);
+
+  if (models === undefined) {
+    models = 0;
+
     for (const name of names) {
       if (name.endsWith('.w3d')) {
         models++;
       }
     }
+
+    modelCounts.set(names, models);
   }
+
+  return models;
+};
+
+export const shouldCheckAssets = (names: Set<string>): boolean => {
+  const mode = settings.iniCheckAssets.get();
+  const models = mode === 'auto' ? countModels(names) : 0;
 
   const decision = decideAssetCheck(
     mode,
@@ -98,8 +110,9 @@ export const getAssetDiagnostics = (
   parsed: SageDocument,
   names: Set<string>,
   source: string,
+  references = findAssetReferences(parsed),
 ): Diagnostic[] =>
-  findAssetReferences(parsed)
+  references
     .filter((reference) =>
       reference.candidates.every((candidate) => !names.has(candidate)),
     )
@@ -153,11 +166,10 @@ export const getCheckedAssetDiagnostics = async (
     return [];
   }
 
-  const missing = () =>
-    findAssetReferences(parsed).filter((reference) =>
-      reference.candidates.every((candidate) => !names!.has(candidate)),
-    );
-  const first = missing();
+  const references = findAssetReferences(parsed);
+  const first = references.filter((reference) =>
+    reference.candidates.every((candidate) => !names!.has(candidate)),
+  );
 
   if (
     first.length &&
@@ -165,5 +177,5 @@ export const getCheckedAssetDiagnostics = async (
   ) {
     names = await locator!.getFileNames();
   }
-  return getAssetDiagnostics(parsed, names, source);
+  return getAssetDiagnostics(parsed, names, source, references);
 };

@@ -4,7 +4,7 @@ import { registerTextureCommands } from './textureCommands';
 
 export const registerTextures = (
   context: ExtensionContext,
-  _services: Services,
+  services: Services,
 ): void => {
-  registerTextureCommands(context);
+  registerTextureCommands(context, services.archives);
 };

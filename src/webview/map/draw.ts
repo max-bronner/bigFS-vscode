@@ -217,8 +217,15 @@ export const draw = (): void => {
     ),
   );
 
-  canvas.width = Math.round(heights.width * scale);
-  canvas.height = Math.round(heights.height * scale);
+  const width = Math.round(heights.width * scale);
+  const height = Math.round(heights.height * scale);
+
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  } else {
+    context.clearRect(0, 0, width, height);
+  }
   context.imageSmoothingEnabled = true;
   context.drawImage(relief.surface, 0, 0, canvas.width, canvas.height);
   if (state.layers.boundary) {

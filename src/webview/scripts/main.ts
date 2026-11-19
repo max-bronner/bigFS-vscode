@@ -1,16 +1,15 @@
-import type { SoundReply } from '../../core/soundClip';
 import { pageSoundPlayer } from '../shared/pageSoundPlayer';
 import { element } from '../shared/element';
 import { createScriptTree } from '../shared/scriptTree';
 import { getVsCodeApi } from '../shared/vscodeApi';
-import type { FromScriptsPage, ScriptsMessage } from './protocol';
+import type { FromScriptsPage, ToScriptsPage } from './protocol';
 
 const vscode = getVsCodeApi<FromScriptsPage>();
 const root = document.getElementById('root')!;
 
 window.addEventListener(
   'message',
-  ({ data }: MessageEvent<ScriptsMessage | SoundReply>) => {
+  ({ data }: MessageEvent<ToScriptsPage>) => {
   if (data.kind === 'sound') {
     void pageSoundPlayer.receive(data);
     return;

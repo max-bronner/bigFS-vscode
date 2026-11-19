@@ -5,6 +5,9 @@ import {
   findBlockPointers,
 } from '../../formats/apt/aptScript';
 import type { AptDocument } from './aptDocument';
+import { createKeyedDebouncer } from '../../core/debounce';
+
+const CHECK_DELAY_MS = 250;
 
 export const SCRIPT_SCHEME = 'bigfs-apt-script';
 
@@ -35,19 +38,27 @@ export class AptScripts
       }
     };
 
+    const checkSoon = createKeyedDebouncer(
+      check,
+      CHECK_DELAY_MS,
+      (document: vscode.TextDocument) => document.uri.toString(),
+    );
+
     this.subscriptions = [
       this.changes,
       this.diagnostics,
+      { dispose: checkSoon.dispose },
       vscode.workspace.registerFileSystemProvider(SCRIPT_SCHEME, this, {
         isCaseSensitive: true,
       }),
       vscode.workspace.onDidOpenTextDocument(check),
       vscode.workspace.onDidChangeTextDocument(({ document }) =>
-        check(document),
+        checkSoon.schedule(document),
       ),
-      vscode.workspace.onDidCloseTextDocument((document) =>
-        this.diagnostics.delete(document.uri),
-      ),
+      vscode.workspace.onDidCloseTextDocument((document) => {
+        checkSoon.cancel(document.uri.toString());
+        this.diagnostics.delete(document.uri);
+      }),
     ];
   }
 
@@ -135,8 +146,16 @@ export class AptScripts
   }
 
   private decompileScript(uri: vscode.Uri) {
-    const { document, block } = this.resolve(uri);
+    return this.decompileResolved(this.resolve(uri));
+  }
 
+  private decompileResolved({
+    document,
+    block,
+  }: {
+    document: AptDocument;
+    block: number;
+  }) {
     return decompileBlock(
       document.image.bytes,
       block,
@@ -176,15 +195,16 @@ export class AptScripts
   }
 
   public stat(uri: vscode.Uri): vscode.FileStat {
-    const { document } = this.resolve(uri);
+    const resolved = this.resolve(uri);
+    const script = this.decompileResolved(resolved);
 
     return {
       type: vscode.FileType.File,
       ctime: 0,
-      mtime: document.version,
-      size: encoder.encode(this.decompileScript(uri).text).length,
+      mtime: resolved.document.version,
+      size: encoder.encode(script.text).length,
       permissions:
-        this.decompileScript(uri).mode === 'listing'
+        script.mode === 'listing'
           ? vscode.FilePermission.Readonly
           : undefined,
     };
@@ -197,7 +217,7 @@ export class AptScripts
   public async writeFile(uri: vscode.Uri, content: Uint8Array): Promise<void> {
     const { document, block } = this.resolve(uri);
 
-    if (this.decompileScript(uri).mode === 'listing') {
+    if (this.decompileResolved({ document, block }).mode === 'listing') {
       throw vscode.FileSystemError.NoPermissions(
         'This block only shows as a listing and cannot be compiled back',
       );

@@ -138,7 +138,7 @@ export const registerBulkEdit = (
             sources.set(key, {
               uri: key,
               document: parseSageIni(
-                (await readWorkspaceText(uri)).split(/\r?\n/),
+                (isArchiveUri(uri) ? await readEntryText(uri) : await readWorkspaceText(uri)).split(/\r?\n/),
                 schema,
                 { isFragment: isFragmentPath(uri.path) },
               ),

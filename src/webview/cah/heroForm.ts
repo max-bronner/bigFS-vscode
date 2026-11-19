@@ -7,6 +7,7 @@ import {
   describePower,
   describeVersion,
 } from './heroText';
+import { captureFocus } from '../shared/captureFocus';
 import type { FromCahPage, HeroView } from './protocol';
 
 const byId = (id: string): HTMLElement => document.getElementById(id)!;
@@ -14,6 +15,16 @@ const byId = (id: string): HTMLElement => document.getElementById(id)!;
 const COLOR_NAMES = ['Primary', 'Secondary', 'Tertiary'];
 
 export const renderHero = (
+  hero: HeroView,
+  post: (message: FromCahPage) => void,
+): void => {
+  const restoreFocus = captureFocus(document.body);
+
+  buildForm(hero, post);
+  restoreFocus();
+};
+
+const buildForm = (
   hero: HeroView,
   post: (message: FromCahPage) => void,
 ): void => {

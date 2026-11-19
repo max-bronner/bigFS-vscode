@@ -181,20 +181,24 @@ export const writeDat = (entries: Map<number, DatLocation>): string => {
 export const getRunBounds = (
   runs: RuRun[],
 ): [number, number, number, number] | undefined => {
-  const xs: number[] = [];
-  const ys: number[] = [];
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  let hasPoint = false;
 
   for (const run of runs) {
     for (const points of [run.triangles, run.lines]) {
       for (let i = 0; i < points.length; i += 2) {
-        xs.push(points[i]);
-        ys.push(points[i + 1]);
+        hasPoint = true;
+        left = Math.min(left, points[i]);
+        right = Math.max(right, points[i]);
+        top = Math.min(top, points[i + 1]);
+        bottom = Math.max(bottom, points[i + 1]);
       }
     }
   }
-  return xs.length
-    ? [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
-    : undefined;
+  return hasPoint ? [left, top, right, bottom] : undefined;
 };
 
 export const fitTexture = (

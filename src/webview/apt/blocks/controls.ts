@@ -283,6 +283,14 @@ export const characterPicker = (
       );
       list.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
     };
+    const moveActive = (step: number) => {
+      const next = Math.max(0, Math.min(active + step, shown.length - 1));
+
+      list.children[active]?.classList.remove('active');
+      active = next;
+      list.children[active]?.classList.add('active');
+      list.children[active]?.scrollIntoView({ block: 'nearest' });
+    };
     const pick = (id: number) => {
       close();
       trigger.textContent = label(id);
@@ -296,8 +304,7 @@ export const characterPicker = (
     };
     search.onkeydown = (event) => {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        active += event.key === 'ArrowDown' ? 1 : -1;
-        paint();
+        moveActive(event.key === 'ArrowDown' ? 1 : -1);
       } else if (event.key === 'Enter' && shown.length) {
         pick(shown[active]);
       } else if (event.key === 'Escape') {

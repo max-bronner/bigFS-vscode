@@ -64,21 +64,37 @@ const mul16 = (a: number, b: number) => Math.imul(a, b) >> 16;
 
 const i16 = (value: number) => (value << 16) >> 16;
 
-const idct8 = (s: number[], bias: number, shift: number): number[] => {
-  const tA = mul16(C1S7, s[1]) + mul16(C7S1, s[7]);
-  const tB = mul16(C7S1, s[1]) - mul16(C1S7, s[7]);
-  let tC = mul16(C3S5, s[3]) + mul16(C5S3, s[5]);
-  let tD = mul16(C3S5, s[5]) - mul16(C5S3, s[3]);
+const idct8 = (
+  source: ArrayLike<number>,
+  from: number,
+  target: Int16Array | Int32Array,
+  to: number,
+  stride: number,
+  bias: number,
+  shift: number,
+): void => {
+  const s0 = source[from];
+  const s1 = source[from + stride];
+  const s2 = source[from + 2 * stride];
+  const s3 = source[from + 3 * stride];
+  const s4 = source[from + 4 * stride];
+  const s5 = source[from + 5 * stride];
+  const s6 = source[from + 6 * stride];
+  const s7 = source[from + 7 * stride];
+  const tA = mul16(C1S7, s1) + mul16(C7S1, s7);
+  const tB = mul16(C7S1, s1) - mul16(C1S7, s7);
+  let tC = mul16(C3S5, s3) + mul16(C5S3, s5);
+  let tD = mul16(C3S5, s5) - mul16(C5S3, s3);
   const tA1 = mul16(C4S4, tA - tC);
   const tB1 = mul16(C4S4, tB - tD);
 
   tC = tA + tC;
   tD = tB + tD;
 
-  const tE = mul16(C4S4, s[0] + s[4]) + bias;
-  let tF = mul16(C4S4, s[0] - s[4]) + bias;
-  let tG = mul16(C2S6, s[2]) + mul16(C6S2, s[6]);
-  let tH = mul16(C6S2, s[2]) - mul16(C2S6, s[6]);
+  const tE = mul16(C4S4, s0 + s4) + bias;
+  let tF = mul16(C4S4, s0 - s4) + bias;
+  let tG = mul16(C2S6, s2) + mul16(C6S2, s6);
+  let tH = mul16(C6S2, s2) - mul16(C2S6, s6);
   const tE1 = tE - tG;
 
   tG = tE + tG;
@@ -91,33 +107,25 @@ const idct8 = (s: number[], bias: number, shift: number): number[] => {
 
   tH = tB1 + tH;
 
-  return [
-    tG + tC,
-    tA2 + tH,
-    tA2 - tH,
-    tE1 + tD,
-    tE1 - tD,
-    tF + tB2,
-    tF - tB2,
-    tG - tC,
-  ].map((value) => (value | 0) >> shift);
+  target[to] = ((tG + tC) | 0) >> shift;
+  target[to + stride] = ((tA2 + tH) | 0) >> shift;
+  target[to + 2 * stride] = ((tA2 - tH) | 0) >> shift;
+  target[to + 3 * stride] = ((tE1 + tD) | 0) >> shift;
+  target[to + 4 * stride] = ((tE1 - tD) | 0) >> shift;
+  target[to + 5 * stride] = ((tF + tB2) | 0) >> shift;
+  target[to + 6 * stride] = ((tF - tB2) | 0) >> shift;
+  target[to + 7 * stride] = ((tG - tC) | 0) >> shift;
 };
 
-export const idct = (coeffs: Int16Array): void => {
-  const rows: number[][] = [];
+const ROW_PASS = new Int32Array(64);
 
+export const idct = (coeffs: Int16Array): void => {
   for (let row = 0; row < 8; row++) {
-    rows.push(idct8(Array.from(coeffs.subarray(row * 8, row * 8 + 8)), 0, 0));
+    idct8(coeffs, row * 8, ROW_PASS, row * 8, 1, 0, 0);
   }
 
   for (let column = 0; column < 8; column++) {
-    idct8(
-      rows.map((row) => row[column]),
-      8,
-      4,
-    ).forEach((value, row) => {
-      coeffs[row * 8 + column] = i16(value);
-    });
+    idct8(ROW_PASS, column, coeffs, column, 8, 8, 4);
   }
 };
 
@@ -126,25 +134,27 @@ export const idctDc = (dc: number): number =>
 
 const clampU8 = (value: number) => (value < 0 ? 0 : value > 255 ? 255 : value);
 
+const STARTS = new Int32Array(8);
+
 const rowStarts = (
   plane: Plane,
   bx: number,
   by: number,
   isField: boolean,
-): number[] => {
+): number => {
   const first = isField ? (by & ~1) * 8 + (by & 1) : by * 8;
   const step = isField ? 2 : 1;
-  const starts: number[] = [];
+  let count = 0;
 
   for (let row = 0; row < 8; row++) {
     const y = first + row * step;
 
     if (y < plane.height && bx * 8 + 8 <= plane.width) {
-      starts.push(y * plane.width + bx * 8);
+      STARTS[count++] = y * plane.width + bx * 8;
     }
   }
 
-  return starts;
+  return count;
 };
 
 export const putBlock = (
@@ -155,22 +165,24 @@ export const putBlock = (
   by: number,
   isField: boolean,
 ): void => {
-  const starts = rowStarts(plane, bx, by, isField);
+  const count = rowStarts(plane, bx, by, isField);
 
   if (dcOnly) {
     const value = clampU8(idctDc(coeffs[0]) + 128);
 
-    starts.forEach((start) => plane.data.fill(value, start, start + 8));
+    for (let row = 0; row < count; row++) {
+      plane.data.fill(value, STARTS[row], STARTS[row] + 8);
+    }
 
     return;
   }
 
   idct(coeffs);
-  starts.forEach((start, row) => {
+  for (let row = 0; row < count; row++) {
     for (let column = 0; column < 8; column++) {
-      plane.data[start + column] = clampU8(coeffs[row * 8 + column] + 128);
+      plane.data[STARTS[row] + column] = clampU8(coeffs[row * 8 + column] + 128);
     }
-  });
+  }
 };
 
 export const addBlock = (
@@ -181,28 +193,30 @@ export const addBlock = (
   by: number,
   isField: boolean,
 ): void => {
-  const starts = rowStarts(plane, bx, by, isField);
+  const count = rowStarts(plane, bx, by, isField);
 
   if (dcOnly) {
     const dc = idctDc(coeffs[0]);
 
-    starts.forEach((start) => {
+    for (let row = 0; row < count; row++) {
       for (let column = 0; column < 8; column++) {
-        plane.data[start + column] = clampU8(plane.data[start + column] + dc);
+        const at = STARTS[row] + column;
+
+        plane.data[at] = clampU8(plane.data[at] + dc);
       }
-    });
+    }
 
     return;
   }
 
   idct(coeffs);
-  starts.forEach((start, row) => {
+  for (let row = 0; row < count; row++) {
     for (let column = 0; column < 8; column++) {
-      plane.data[start + column] = clampU8(
-        plane.data[start + column] + coeffs[row * 8 + column],
-      );
+      const at = STARTS[row] + column;
+
+      plane.data[at] = clampU8(plane.data[at] + coeffs[row * 8 + column]);
     }
-  });
+  }
 };
 
 export interface Mv {

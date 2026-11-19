@@ -112,15 +112,21 @@ const control = (
       if (gadget.kind === 'listbox') {
         select.size = 5;
       }
+      let shownItems: string | undefined;
+
       select.onchange = () => write(gadget, '_selected', select.value);
       return {
         element: select,
         fill: (g) => {
+          const text = String(value(g, '_items'));
           const items = splitItems(value(g, '_items'));
 
-          select.replaceChildren(
-            ...items.map((item, at) => new Option(item, String(at))),
-          );
+          if (text !== shownItems) {
+            select.replaceChildren(
+              ...items.map((item, at) => new Option(item, String(at))),
+            );
+            shownItems = text;
+          }
           select.selectedIndex = Math.min(
             items.length - 1,
             toNumberOr(value(g, '_selected'), -1),

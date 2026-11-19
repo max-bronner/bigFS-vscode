@@ -87,6 +87,8 @@ export const scriptField = (options: ScriptFieldOptions): HTMLElement => {
     layer.scrollTop = area.scrollTop;
     layer.scrollLeft = area.scrollLeft;
   });
+  const reset = editable ? document.createElement('button') : undefined;
+
   area.addEventListener('keydown', (event) => {
     if (event.key === 'Tab' && !event.shiftKey && editable) {
       event.preventDefault();
@@ -99,8 +101,12 @@ export const scriptField = (options: ScriptFieldOptions): HTMLElement => {
       event.stopPropagation();
     }
   });
-  area.addEventListener('blur', () => {
-    if (!editable || area.value === options.text) {
+  area.addEventListener('blur', (event) => {
+    if (
+      !editable ||
+      event.relatedTarget === reset ||
+      area.value === options.text
+    ) {
       return;
     }
 
@@ -125,9 +131,7 @@ export const scriptField = (options: ScriptFieldOptions): HTMLElement => {
   repaint();
   code.append(layer, area);
   wrapper.append(code, status);
-  if (editable) {
-    const reset = document.createElement('button');
-
+  if (reset) {
     reset.className = 'bk-button';
     reset.textContent = 'Reset';
     reset.title = 'Throw away the unapplied text';

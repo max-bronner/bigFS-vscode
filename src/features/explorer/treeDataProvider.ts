@@ -1,4 +1,4 @@
-import type { Event } from 'vscode';
+import type { Event, Uri } from 'vscode';
 import { settings } from '../../platform/settings';
 import {
   TreeItem,
@@ -62,6 +62,7 @@ export const isGameViewShown = (): boolean =>
 const createGameItem = (
   { node, sourceId }: GameRow,
   isReadOnly: (node: VirtualNode) => boolean,
+  isLooseFileReadOnly: (uri: Uri) => boolean,
 ): TreeItem => {
   if (node.children) {
     const item = new TreeItem(node.name, TreeItemCollapsibleState.Collapsed);
@@ -92,7 +93,7 @@ const createGameItem = (
   item.contextValue =
     winner.ref.kind === 'entry'
       ? getContextValue('file', isReadOnly(winner.ref.node))
-      : getContextValue('looseFile');
+      : getContextValue('looseFile', isLooseFileReadOnly(uri));
   item.command = { command: 'vscode.open', title: 'Open', arguments: [uri] };
 
   return item;
@@ -206,8 +207,10 @@ export class BigTreeDataProvider implements TreeDataProvider<ExplorerRow> {
     }
 
     if (isGameRow(element)) {
-      return createGameItem(element, (node) =>
-        this.archiveModel.isReadOnly(node.archive),
+      return createGameItem(
+        element,
+        (node) => this.archiveModel.isReadOnly(node.archive),
+        (uri) => this.archiveModel.isReadOnlyUri(uri),
       );
     }
 

@@ -35,8 +35,15 @@ export interface SoundPlayer {
   stop(): void;
 }
 
-const decodeBase64 = (text: string): Uint8Array =>
-  Uint8Array.from(atob(text), (character) => character.charCodeAt(0));
+const decodeBase64 = (text: string): Uint8Array => {
+  const binary = atob(text);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let at = 0; at < binary.length; at++) {
+    bytes[at] = binary.charCodeAt(at);
+  }
+  return bytes;
+};
 
 export const createSoundPlayer = (backend: SoundBackend): SoundPlayer => {
   let state: SoundState = { phase: 'idle' };

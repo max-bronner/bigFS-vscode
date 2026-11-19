@@ -6,7 +6,7 @@ import { registerModDiffCommands } from './modDiffCommands';
 
 export const registerMods = (
   context: ExtensionContext,
-  { archives, gameView, explorerSelection }: Services,
+  { archives, gameView, explorerSelection, iniDocuments }: Services,
 ): void => {
   context.subscriptions.push(
     ...registerModCommands(
@@ -14,5 +14,5 @@ export const registerMods = (
       archives,
     ),
   );
-  registerModDiffCommands(context, gameView);
+  registerModDiffCommands(context, gameView, iniDocuments);
 };

@@ -1,6 +1,12 @@
+import { isDiskPathBelow } from '../../core/paths';
+
 export interface WritableSource {
   readonly label: string;
   readonly external: boolean;
+}
+
+export interface LocatedSource extends WritableSource {
+  readonly baseUri: { readonly scheme: string; readonly fsPath: string };
 }
 
 export class ReadOnlySourceError extends Error {
@@ -21,3 +27,15 @@ export const assertWritableSource = (source: WritableSource): void => {
     throw new ReadOnlySourceError(source.label);
   }
 };
+
+export const isInReadOnlySource = (
+  sources: readonly LocatedSource[],
+  filePath: string,
+  ignoreCase = process.platform === 'win32',
+): boolean =>
+  sources.some(
+    (source) =>
+      source.baseUri.scheme === 'file' &&
+      isReadOnlySource(source) &&
+      isDiskPathBelow(filePath, source.baseUri.fsPath, ignoreCase),
+  );

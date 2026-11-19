@@ -1,4 +1,5 @@
 import { createByteReader } from "../../core/byteReader";
+import { fromCodeUnits } from "../../core/windows1252";
 
 export const POWER_SLOTS = 15;
 
@@ -171,7 +172,7 @@ const createCahReader = (bytes: Uint8Array) => {
     u32,
     tag: (label: string): string => String.fromCharCode(...take(label, 4)),
     ascii: (label: string): string =>
-      String.fromCharCode(...take(label, length(label))),
+      fromCodeUnits(take(label, length(label))),
     wide: (label: string): string => {
       const units = length(label);
       const raw = take(label, units * 2);
