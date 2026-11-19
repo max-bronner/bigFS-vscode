@@ -14,6 +14,7 @@ uniform int uvGenerated;
 uniform vec4 detailUvLinear;
 uniform vec2 detailUvOffset;
 uniform int detailUvGenerated;
+uniform float pointSize;
 varying vec3 vNormal;
 varying vec2 vUv;
 varying vec2 vDetailUv;
@@ -42,6 +43,7 @@ void main() {
   vPosition = position + offset;
   vToEye = eye - vPosition;
   gl_Position = viewProjection * vec4(position + offset, 1.0);
+  gl_PointSize = pointSize;
 }`;
 
 const FRAGMENT_BODY = `

@@ -98,6 +98,7 @@ export class AptEditorProvider
       isReadOnly: (movie) => !isEditable(archiveModel, movie),
     });
     this.disposables = [
+      game.gameLanguage.onDidChange(() => this.redrawAll()),
       this.scriptTabs,
       this.textView,
       this.problems,

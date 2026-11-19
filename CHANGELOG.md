@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1
+
+- Fix: APT movies show the game's text in the chosen language even when opened before the INI index finished reading, follow a change of game language without reopening, and resolve `$KEY` strings their scripts push themselves instead of showing `MISSING`.
+
+- Fix: hovering a string label or a `#define` name in INI right after start waits for the index instead of showing nothing, and go to definition on a string label such as `DisplayName = OBJECT:GondorFighter` opens its record in the chosen language's string table.
+
+- New: the W3D preview lists the files related to the opened model, found through its objects' draw modules and the skeleton each file names: state and damage models, skins, the skeleton and the animations its objects' states play. Picking one switches the model or plays the animation on it.
+
+- New: the 3D viewer's skeleton view marks attachment pivots apart from the other joints, names a joint on hover or every bone with **Names**, and follows the playing animation; it is offered only for models with a hierarchy.
+
+- New: a **Custom…** background colour in the 3D viewer, remembered when the page is rebuilt.
+
 ## 0.2.0
 
 First stable release: the same extension as 0.1.3, now on the Marketplace's release channel, so it installs without choosing the pre-release version.

@@ -4,6 +4,9 @@ import type { ModelLocations } from "./modelLocations";
 
 const BOX_COLOUR = [0.3, 0.9, 0.5, 1];
 const BONE_COLOUR = [1, 0.75, 0.2, 1];
+const ATTACHMENT_COLOUR = [0.3, 0.85, 1, 1];
+const JOINT_SIZE = 5;
+const ATTACHMENT_SIZE = 10;
 
 export interface BoxLines {
   buffer: WebGLBuffer;
@@ -13,6 +16,7 @@ export interface BoxLines {
 export interface BoneLines {
   buffer: WebGLBuffer;
   vertices: number[];
+  attachments: number[];
 }
 
 const bindSolid = (
@@ -46,7 +50,15 @@ export const drawModelLines = (
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(bones.vertices), gl.DYNAMIC_DRAW);
     bindSolid(gl, locations, BONE_COLOUR, bones.buffer);
     gl.drawArrays(gl.LINES, 0, bones.vertices.length / 3);
+    gl.uniform1f(locations.uniform("pointSize"), JOINT_SIZE);
     gl.drawArrays(gl.POINTS, 0, bones.vertices.length / 3);
+    if (bones.attachments.length) {
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(bones.attachments), gl.DYNAMIC_DRAW);
+      bindSolid(gl, locations, ATTACHMENT_COLOUR, bones.buffer);
+      gl.uniform1f(locations.uniform("pointSize"), ATTACHMENT_SIZE);
+      gl.drawArrays(gl.POINTS, 0, bones.attachments.length / 3);
+    }
+    gl.uniform1f(locations.uniform("pointSize"), 1);
     gl.enable(gl.DEPTH_TEST);
   }
 };

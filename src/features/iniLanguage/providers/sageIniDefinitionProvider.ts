@@ -100,6 +100,27 @@ export const createSageIniDefinitionProvider = (
       new Position(symbol.line, symbol.token.end),
     );
 
+    const string =
+      !places.length && !symbol.isDeclaration
+        ? index.findString(symbol.name)
+        : undefined;
+
+    if (string) {
+      const record = new Range(
+        new Position(string.line, 0),
+        new Position(string.line, LINE_END),
+      );
+
+      return [
+        {
+          originSelectionRange,
+          targetUri: string.uri,
+          targetRange: record,
+          targetSelectionRange: record,
+        },
+      ];
+    }
+
     return places.map(
       ({ uri, line, endLine }): LocationLink => ({
         originSelectionRange,

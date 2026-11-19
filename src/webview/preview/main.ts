@@ -48,6 +48,9 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPreviewPage>) => {
     case 'uses':
       modelPage?.setUses(data.uses);
       break;
+    case 'related':
+      modelPage?.setRelated(data.file, data.files);
+      break;
     case 'animations':
       modelPage?.setAnimations(data.own, data.foreign);
       break;

@@ -63,7 +63,11 @@ interface Fixture {
   concurrent: () => number;
 }
 
-const fixture = (movies: BuiltMovie[], delay = 5): Fixture => {
+const fixture = (
+  movies: BuiltMovie[],
+  delay = 5,
+  index: object = { stringCount: 0, whenReady: async () => undefined },
+): Fixture => {
   const documents = new Map(
     movies.map((movie) => [movie.movie.name.toLowerCase(), documentOf(movie)]),
   );
@@ -84,7 +88,7 @@ const fixture = (movies: BuiltMovie[], delay = 5): Fixture => {
   } as unknown as AptLibrary;
   const game = {
     gameLanguage: { ensure: async () => undefined },
-    index: { stringCount: 0 },
+    index,
     state: { get: (_key: string, fallback: unknown) => fallback },
   } as unknown as AptGameServices;
 
@@ -185,5 +189,61 @@ suite('APT movie imports', () => {
 
     assert.strictEqual(early, 0);
     assert.deepStrictEqual(Object.keys(message.textures), ['alone/tex']);
+  });
+
+  test('$KEY text is read once the string tables are, from fields, pools and pushes', async () => {
+    let isReady = false;
+    const table: Record<string, string> = {
+      'apt:soloplay': 'SOLO PLAY',
+      'apt:title': 'TITLE',
+      'apt:pushed': 'PUSHED',
+      'apt:inner': 'INNER',
+    };
+    const index = {
+      whenReady: async () => {
+        isReady = true;
+      },
+      get stringCount() {
+        return isReady ? Object.keys(table).length : 0;
+      },
+      findString: (label: string) => {
+        const text = isReady ? table[label.toLowerCase()] : undefined;
+
+        return text === undefined ? undefined : { text };
+      },
+    };
+    const movie = built('Texts', []);
+
+    movie.movie.consts = ['$Title'];
+    movie.movie.characters = [
+      { type: 'editText', text: '$SoloPlay&dropShadow' },
+    ] as unknown as typeof movie.movie.characters;
+    movie.movie.code = {
+      8: [
+        { offset: 8, opcode: 0xa1, name: 'EA_PushString', operand: '$Pushed' },
+        {
+          offset: 10,
+          opcode: 0x9b,
+          name: 'DefineFunction',
+          operand: {
+            name: 'f',
+            params: [],
+            flags: 0,
+            isVersion2: false,
+            body: [{ offset: 20, opcode: 0xa1, name: 'EA_PushString', operand: '$Inner' }],
+          },
+        },
+      ],
+    };
+
+    const { create } = fixture([movie], 5, index);
+    const message = await create.buildMovieMessage(documentOf(movie), new Set(), new Map());
+
+    assert.deepStrictEqual(message.texts, {
+      $title: 'TITLE',
+      $soloplay: 'SOLO PLAY',
+      $pushed: 'PUSHED',
+      $inner: 'INNER',
+    });
   });
 });

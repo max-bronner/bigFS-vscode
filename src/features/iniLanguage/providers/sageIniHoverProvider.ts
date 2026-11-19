@@ -213,6 +213,8 @@ export const createSageIniHoverProvider = (
       return new Hover(text, range);
     }
 
+    await index.whenReady();
+
     const macro = index.findMacro(token.text);
 
     if (macro) {
