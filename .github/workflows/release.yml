@@ -1,0 +1,253 @@
+name: Release
+
+# A pull request into master is tested and packaged; that job is the check
+# master's protection requires. A merge into master does the same and, when its
+# package.json version is not on the Marketplace yet, publishes it and tags the
+# commit v<version> with a GitHub release. A manual run stops after the package.
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Each job states the token rights it needs; none are inherited
+permissions: {}
+
+# Merges publish one after another, never two at once
+concurrency:
+  group: release-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Test and package
+    if: github.repository == 'max-bronner/bigFS-vscode'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      id: ${{ steps.version.outputs.id }}
+      version: ${{ steps.version.outputs.version }}
+      channel: ${{ steps.version.outputs.channel }}
+      vsix: ${{ steps.version.outputs.vsix }}
+      publish: ${{ steps.published.outputs.publish }}
+      sha256: ${{ steps.package.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No dependency cache: a release build takes nothing an earlier run left behind
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # An odd minor is the pre-release channel, an even one the stable channel
+      - name: Read the version and channel
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          id=$(node -p "const p = require('./package.json'); p.publisher + '.' + p.name")
+          name=$(node -p "require('./package.json').name")
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::package.json version '$version' is not major.minor.patch"
+            exit 1
+          fi
+          minor=${version#*.}
+          minor=${minor%%.*}
+          if (( minor % 2 )); then channel=pre-release; else channel=stable; fi
+          {
+            echo "id=$id"
+            echo "version=$version"
+            echo "channel=$channel"
+            echo "vsix=$name-$version.vsix"
+          } >> "$GITHUB_OUTPUT"
+          echo "$id $version, $channel channel" >> "$GITHUB_STEP_SUMMARY"
+
+      # Install scripts of dependencies do not run; the build needs none of them
+      - run: npm ci --ignore-scripts
+
+      # A version already published is built and tested but not published again
+      - name: Check whether the version is on the Marketplace yet
+        id: published
+        env:
+          EXTENSION_ID: ${{ steps.version.outputs.id }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ./node_modules/.bin/vsce show "$EXTENSION_ID" --json > published.json || true
+          if node -e '
+            const versions = JSON.parse(require("node:fs").readFileSync("published.json", "utf8")).versions.map((each) => each.version);
+            process.exit(versions.includes(process.argv[1]) ? 0 : 1);
+          ' "$VERSION" 2>/dev/null; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "$VERSION is already on the Marketplace: nothing is published; raise the version to release" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "$VERSION is not on the Marketplace yet: merging into master publishes it" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f published.json
+
+      # Trusted publishing works from vsce 4.1.0; checked whenever a version would be published, on pull requests too
+      - name: Check vsce can publish without a token
+        if: steps.published.outputs.publish == 'true'
+        run: |
+          installed=$(./node_modules/.bin/vsce --version)
+          if ! printf '%s\n' 4.1.0 "$installed" | sort --version-sort --check=quiet; then
+            echo "::error::@vscode/vsce $installed cannot publish with --oidc; the lockfile needs 4.1.0 or later"
+            exit 1
+          fi
+
+      - run: npm run test:unit
+
+      # vsce runs vscode:prepublish first: type checks, lint and the production build
+      - name: Package
+        id: package
+        env:
+          CHANNEL: ${{ steps.version.outputs.channel }}
+          VERSION: ${{ steps.version.outputs.version }}
+          VSIX: ${{ steps.version.outputs.vsix }}
+        run: |
+          flags=()
+          if [[ "$CHANNEL" == pre-release ]]; then flags+=(--pre-release); fi
+          ./node_modules/.bin/vsce package "${flags[@]}" --out "$VSIX"
+
+          manifest=$(unzip -p "$VSIX" extension.vsixmanifest)
+          if ! grep -q "Version=\"$VERSION\"" <<< "$manifest"; then
+            echo "::error::$VSIX does not hold version $VERSION"
+            exit 1
+          fi
+          if grep -q 'Microsoft.VisualStudio.Code.PreRelease' <<< "$manifest"; then packed=pre-release; else packed=stable; fi
+          if [[ "$packed" != "$CHANNEL" ]]; then
+            echo "::error::$VSIX is packaged as $packed, the version asks for $CHANNEL"
+            exit 1
+          fi
+          sha256=$(sha256sum "$VSIX" | cut -d' ' -f1)
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          echo "$VSIX sha256 $sha256" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vsix
+          path: ${{ steps.version.outputs.vsix }}
+          if-no-files-found: error
+
+  marketplace:
+    name: Publish to the Marketplace
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    # The Marketplace's Trusted Publishing policy names this workflow file and
+    # this environment; renaming either one needs the policy changed with it
+    environment:
+      name: release
+      url: https://marketplace.visualstudio.com/items?itemName=${{ needs.build.outputs.id }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VSIX: ${{ needs.build.outputs.vsix }}
+      SHA256: ${{ needs.build.outputs.sha256 }}
+      CHANNEL: ${{ needs.build.outputs.channel }}
+    steps:
+      # Only the lockfile's vsce is wanted from the checkout; no script of the repository runs here
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: vsix
+      - name: Check the package is the one that was tested
+        run: echo "$SHA256  $VSIX" | sha256sum --check
+      # With --packagePath, --pre-release packages nothing: it fails unless the package was built as one
+      - name: Publish
+        run: |
+          flags=()
+          if [[ "$CHANNEL" == pre-release ]]; then flags+=(--pre-release); fi
+          ./node_modules/.bin/vsce publish --oidc --packagePath "$VSIX" "${flags[@]}"
+
+  # Runs only when the repository variable PUBLISH_OPEN_VSX is true
+  open-vsx:
+    name: Publish to Open VSX
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.build.outputs.publish == 'true' && vars.PUBLISH_OPEN_VSX == 'true'
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      id-token: write
+    env:
+      VSIX: ${{ needs.build.outputs.vsix }}
+      SHA256: ${{ needs.build.outputs.sha256 }}
+      OVSX_VERSION: 1.4.0
+      NPM_CONFIG_IGNORE_SCRIPTS: 'true'
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: vsix
+      - name: Check the package is the one that was tested
+        run: echo "$SHA256  $VSIX" | sha256sum --check
+      # An OVSX_PAT secret on the environment is used when set; without one the
+      # registry's trusted publisher entry for this workflow is the sign-in
+      - name: Publish
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [[ -n "$OVSX_PAT" ]]; then
+            npx --yes "ovsx@$OVSX_VERSION" publish "$VSIX"
+          else
+            unset OVSX_PAT
+            npx --yes "ovsx@$OVSX_VERSION" publish "$VSIX" --trusted-publishing
+          fi
+
+  github-release:
+    name: Tag and attach the package to a GitHub release
+    needs: [build, marketplace]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VSIX: ${{ needs.build.outputs.vsix }}
+      SHA256: ${{ needs.build.outputs.sha256 }}
+      VERSION: ${{ needs.build.outputs.version }}
+      CHANNEL: ${{ needs.build.outputs.channel }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: vsix
+      - name: Check the package is the one that was tested
+        run: echo "$SHA256  $VSIX" | sha256sum --check
+      # Signed statement that this file was built by this workflow from this commit
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ needs.build.outputs.vsix }}
+      # The notes are the version's section of the changelog inside the package
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          unzip -p "$VSIX" extension/changelog.md | awk -v heading="## $VERSION" '
+            $0 == heading || index($0, heading " ") == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then echo "bigFS $VERSION" > notes.md; fi
+          flags=()
+          if [[ "$CHANNEL" == pre-release ]]; then flags+=(--prerelease); fi
+          gh release create "v$VERSION" "$VSIX" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "bigFS $VERSION" \
+            --notes-file notes.md \
+            "${flags[@]}"
