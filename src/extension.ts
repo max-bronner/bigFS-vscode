@@ -26,6 +26,7 @@ import { registerMods } from './features/mods';
 import { registerArchiveSearch } from './features/archiveSearch';
 import { registerFileFinder } from './features/fileFinder';
 import { registerExplorer } from './features/explorer';
+import { registerAssetCatalogue } from './features/assetCatalogue';
 
 const FEATURES: ((context: ExtensionContext, services: Services) => void)[] = [
   registerPreview,
@@ -50,6 +51,7 @@ const FEATURES: ((context: ExtensionContext, services: Services) => void)[] = [
   registerVideo,
   registerInstalls,
   registerMods,
+  registerAssetCatalogue,
   registerArchiveSearch,
   registerFileFinder,
   registerExplorer,

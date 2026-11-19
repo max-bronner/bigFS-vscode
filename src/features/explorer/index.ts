@@ -15,6 +15,7 @@ import { registerFileCommands } from './fileCommands';
 import { registerExtractCommands } from './extractCommands';
 import { registerClipboardCommands } from './clipboardCommands';
 import { createArchive } from './archiveFileActions';
+import { updateAtFirstTarget } from './updateAtFirstTarget';
 
 export const registerExplorer = (
   context: ExtensionContext,
@@ -31,9 +32,10 @@ export const registerExplorer = (
   const treeDataProvider = new BigTreeDataProvider(archives, gameView);
 
   const showView = (isGame: boolean) =>
-    settings.explorerView.update(
-      isGame ? 'game' : 'archives',
-      ConfigurationTarget.Workspace,
+    updateAtFirstTarget(
+      (target) =>
+        settings.explorerView.update(isGame ? 'game' : 'archives', target),
+      [ConfigurationTarget.Workspace, ConfigurationTarget.Global],
     );
 
   void setContextKey('gameView', isGameViewShown());

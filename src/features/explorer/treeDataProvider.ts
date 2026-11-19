@@ -25,6 +25,8 @@ import { getGameFiles } from '../../game/install/gameView';
 import { getContextValue } from './getContextValue';
 import { getParentRow } from './getParentRow';
 import { isReadOnlySource } from '../../services/archives/sourceAccess';
+import { findAssetCatalogue } from '../../services/archives/findAssetCatalogue';
+import { ASSET_CATALOGUE_NAME } from '../../formats/asset/assetCatalogue';
 
 const nameCollator = new Intl.Collator(undefined, {
   numeric: true,
@@ -58,7 +60,7 @@ export const isGameViewShown = (): boolean =>
   settings.explorerView.get() === 'game';
 
 const createGameItem = (
-  { node }: GameRow,
+  { node, sourceId }: GameRow,
   isReadOnly: (node: VirtualNode) => boolean,
 ): TreeItem => {
   if (node.children) {
@@ -77,7 +79,7 @@ const createGameItem = (
     winner.ref.kind === 'entry' ? getNodeUri(winner.ref.node) : winner.ref.uri;
   const item = new TreeItem(node.name, TreeItemCollapsibleState.None);
 
-  item.id = `game:/${node.path}`;
+  item.id = sourceId ? `/${sourceId}/${node.path}` : `game:/${node.path}`;
   item.resourceUri = uri;
   item.description = node.shadowed?.length
     ? `${winner.origin} · overrides ${node.shadowed.length}`
@@ -270,7 +272,37 @@ export class BigTreeDataProvider implements TreeDataProvider<ExplorerRow> {
     );
   }
 
-  private listFolderRows(sourceId: string, directoryPath: string): ExplorerRow[] {
+  private async listFolderRows(
+    sourceId: string,
+    directoryPath: string,
+  ): Promise<ExplorerRow[]> {
+    const source = this.archiveModel
+      .getSources()
+      .find((candidate) => candidate.id === sourceId);
+    const catalogue =
+      !directoryPath && source ? await findAssetCatalogue(source) : undefined;
+    const looseRows: ExplorerRow[] = catalogue
+      ? [
+          {
+            kind: 'game',
+            sourceId,
+            node: {
+              name: ASSET_CATALOGUE_NAME,
+              path: ASSET_CATALOGUE_NAME,
+              winner: {
+                entryPath: ASSET_CATALOGUE_NAME,
+                ref: { kind: 'loose', uri: catalogue },
+                origin: `${source!.label} (loose)`,
+              },
+            },
+          },
+        ]
+      : [];
+
+    return [...this.listArchiveRows(sourceId, directoryPath), ...looseRows];
+  }
+
+  private listArchiveRows(sourceId: string, directoryPath: string): ExplorerRow[] {
     const prefix = directoryPath ? `${directoryPath}/` : '';
     const folders = new Map<string, FolderRow>();
     const rows: ExplorerRow[] = [];

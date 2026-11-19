@@ -8,6 +8,8 @@ import { buildGameTree, indexByName, orderInstallFiles } from '../../game/instal
 import type { GameNode, InstallFiles } from '../../game/install/gameView';
 import { GAME_FOLDERS, listLooseFiles } from '../../node/installScan';
 import * as path from 'path';
+import { ASSET_CATALOGUE_NAME } from '../../formats/asset/assetCatalogue';
+import { findAssetCatalogue } from './findAssetCatalogue';
 
 export type GameFileRef =
   | { kind: 'entry'; node: VirtualNode; base?: boolean }
@@ -120,9 +122,12 @@ export class GameViewModel implements Disposable {
         continue;
       }
 
-      installs[index].loose = (
-        await listLooseFiles(source.baseUri.fsPath, topFolders)
-      ).map((entryPath) => ({
+      const catalogue = await findAssetCatalogue(source);
+
+      installs[index].loose = [
+        ...(catalogue ? [ASSET_CATALOGUE_NAME] : []),
+        ...(await listLooseFiles(source.baseUri.fsPath, topFolders)),
+      ].map((entryPath) => ({
         entryPath,
         ref: {
           kind: 'loose' as const,

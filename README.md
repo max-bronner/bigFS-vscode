@@ -87,6 +87,20 @@ your mod's archives.
   for a changed INI file what it changes definition by definition: those
   it adds and drops, and in each the values it changes, named by where
   they sit (`Body[ModuleTag_Body]/MaxHealth 200 → 220`).
+- **new** **asset.dat:** the catalogue the game keeps loose at an install's
+  root shows as a file at the root of the game view and beside each
+  source's archives, and opens in a read-only table of its records (every
+  model's chunks with their byte ranges, every texture and shader) to
+  filter and sort. **Sync with Assets…** (its button, the editor title, or
+  the palette) compares it with the files the game loads and lists the
+  files no record stands for, the records whose model changed, and the
+  records no file answers, each with a check box, a box per group and one
+  for everything. Apply writes a new `asset.dat` through a temporary file
+  after confirming the path: over a mod folder's own, or, for an install's,
+  into a mod folder you choose (Override in Folder); an install is never
+  written to. Only the models whose records need it are read. The format
+  and the rules for a model's entries follow mint's `sage/asset`; written
+  back unchanged, both games' catalogues come out byte for byte.
 - **Package Mod…** packs the mod folder into one archive after a report:
   against the base game, which files it overrides, which are new, and which
   a base archive would keep because it sorts before the archive's name (in
@@ -581,6 +595,7 @@ row, file or editor they act on.
 | Find Game Installs, Choose Game Language, Compare with Base Game, Package Mod…, Check Translations, Open Balance Sheet, Armor Table, Find Unused Definitions, Clear Unused Definitions, Check APT Movies | Command Palette | Workspace tools |
 | Convert String Table (.str ⇄ .csf), Open as Table | `.str`/`.csf` menu, editor title | String tables |
 | Show Layout Preview | `.wnd` editor title | WND preview |
+| **new** Sync with Assets… | `asset.dat` editor title and button, palette | asset.dat catalogue |
 | Export as PNG, Replace with PNG…, Convert to Game Texture… | `.tga`/`.dds`/`.png` menu | Textures |
 | Export Cursor as PNG… | `.cur`/`.ani` menu | Cursors |
 | Convert to Cursor… | `.png` menu | Cursors |
@@ -609,6 +624,7 @@ row, file or editor they act on.
 | bigFS Create-a-Hero | `.cah` |
 | bigFS Map | `.map`, `.bse` |
 | bigFS Script File | `.scb` |
+| **new** bigFS Asset Catalogue | `asset.dat` |
 
 Languages: `sage-ini` (`.ini`, `.inc`, `.bhav`), `sage-str`, `sage-wnd`,
 `apt-script` (`.aptscript`), **new** `apt-text` (`.apttext`, the APT text

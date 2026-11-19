@@ -7,6 +7,7 @@ export type ExplorerRow = VirtualNode | SourceRow | FolderRow | GameRow;
 export interface GameRow {
   readonly kind: 'game';
   readonly node: GameViewNode;
+  readonly sourceId?: string;
 }
 
 export interface SourceRow {

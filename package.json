@@ -291,6 +291,12 @@
         "category": "BIG"
       },
       {
+        "command": "bigfs.syncAssetCatalogue",
+        "title": "Sync with Assets…",
+        "category": "BIG",
+        "icon": "$(sync)"
+      },
+      {
         "command": "bigfs.packageMod",
         "title": "Package Mod…",
         "category": "BIG"
@@ -719,6 +725,11 @@
       ],
       "editor/title": [
         {
+          "command": "bigfs.syncAssetCatalogue",
+          "group": "navigation",
+          "when": "activeCustomEditorId == bigfs.assetCatalogue"
+        },
+        {
           "command": "bigfs.openAptText",
           "group": "navigation",
           "when": "activeCustomEditorId == bigfs.aptEditor"
@@ -1016,6 +1027,16 @@
           }
         ],
         "priority": "option"
+      },
+      {
+        "viewType": "bigfs.assetCatalogue",
+        "displayName": "bigFS Asset Catalogue",
+        "selector": [
+          {
+            "filenamePattern": "{asset,Asset,ASSET}.{dat,Dat,DAT}"
+          }
+        ],
+        "priority": "default"
       }
     ],
     "languages": [

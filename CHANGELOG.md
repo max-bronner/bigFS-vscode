@@ -2,6 +2,10 @@
 
 ## 0.1.1 (pre-release)
 
+- asset.dat in the explorer: each install's catalogue opens in a viewer, and a sync panel lists the files no record stands for, the records no file answers and the out-of-date model records, and writes the catalogue back.
+
+- Fix: opening a game install under Program Files and choosing the game view no longer fails on the read-only folder; the choice falls back to the user settings, so loose folders such as data/cursors show.
+
 - Fix: the Open button beside an imported character's source movie selects that character in the movie it opens, also when the movie is already open.
 
 - Fix: WAV previews play every PCM file, not only IMA ADPCM ones. 8, 16, 24 and 32-bit PCM, IEEE float and the extensible header are decoded and rewritten as 16-bit PCM like ADPCM already was; before, PCM went to the page as the Buffer it was read into, which arrives there as a plain object and does not play.

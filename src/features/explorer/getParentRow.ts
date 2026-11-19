@@ -52,6 +52,10 @@ export const getParentRow = async (
     );
   }
 
+  if (isGameRow(element) && element.sourceId) {
+    return getSourceRow(element.sourceId);
+  }
+
   if (isGameRow(element)) {
     const segments = element.node.path.split('/').slice(0, -1);
     let node: GameViewNode | undefined = await gameView.getRoot();
