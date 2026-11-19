@@ -5,9 +5,11 @@ import type {
 import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
 import type { ForeignClip } from '../../formats/w3d/w3dModelFinder';
 import type { ModelScene, SceneSkeleton } from '../../formats/w3d/w3dScene';
+import type { RelatedModel } from '../../game/objects/findRelatedModels';
 
 export interface ModelMessage extends ModelScene {
   shownOn?: string;
+  relatedFile?: string;
 }
 
 export interface FileUse {
@@ -81,6 +83,11 @@ export type ToPreviewPage =
   | { kind: 'animations'; own: string[]; foreign: ForeignClip[] }
   | { kind: 'uses'; uses: FileUse[] }
   | {
+      kind: 'related';
+      file: string;
+      files: RelatedModel[];
+    }
+  | {
       kind: 'animation';
       file: string;
       animation: W3dAnimation;
@@ -100,4 +107,5 @@ export type FromPreviewPage =
     }
   | { kind: 'reveal'; uri: string; line: number }
   | { kind: 'animation'; file: string }
+  | { kind: 'showModel'; file?: string }
   | { kind: 'videoFrame'; index: number };

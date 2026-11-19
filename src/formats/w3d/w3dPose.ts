@@ -1,3 +1,4 @@
+import { isAttachmentBone } from './isAttachmentBone';
 import { sampleChannel } from './w3dAnimation';
 import type { SampledChannel, W3dAnimation } from './w3dAnimation';
 import type { SceneMesh, SceneSkeleton } from './w3dScene';
@@ -186,3 +187,11 @@ export const buildBoneLines = (skeleton: SceneSkeleton, pose: Pose): number[] =>
 
     return parent ? [...parent.t, ...bone.t] : [];
   });
+
+export const listAttachmentJoints = (
+  skeleton: SceneSkeleton,
+  pose: Pose,
+): number[] =>
+  pose.world.flatMap((bone, index) =>
+    isAttachmentBone(skeleton.names[index] ?? '') ? [...bone.t] : [],
+  );

@@ -5,6 +5,7 @@ import type {
   ToPage,
 } from '../../webview/apt/protocol';
 import { collectTextKeys, resolveAptText } from '../../formats/apt/aptText';
+import type { AptInstruction } from '../../formats/apt/aptBytecode';
 import type { GameLanguage } from '../../services/ini/gameLanguage';
 import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
@@ -13,6 +14,19 @@ import type { AptLibrary, MovieLocation } from './aptLibrary';
 import { toMovieKey } from './aptLibrary';
 import { describeError } from '../../core/errors';
 import { readEngineAnswers } from './aptEngineAnswers';
+
+const listCodeStrings = (code: readonly AptInstruction[]): string[] =>
+  code.flatMap(({ operand }) => {
+    if (typeof operand === 'string') {
+      return [operand];
+    }
+    if (Array.isArray(operand)) {
+      return operand.filter((item): item is string => typeof item === 'string');
+    }
+    return operand && typeof operand === 'object'
+      ? listCodeStrings(operand.body)
+      : [];
+  });
 
 export interface AptGameServices {
   gameLanguage: GameLanguage;
@@ -243,7 +257,7 @@ export const createAptMovieImports = ({
   const resolveTexts = async (
     movies: readonly PageMovie[],
   ): Promise<Record<string, string> | undefined> => {
-    await game.gameLanguage.ensure();
+    await Promise.all([game.index.whenReady(), game.gameLanguage.ensure()]);
 
     if (!game.index.stringCount) {
       return undefined;
@@ -255,6 +269,7 @@ export const createAptMovieImports = ({
         ...movie.characters.flatMap((character) =>
           character.type === 'editText' ? [character.text] : [],
         ),
+        ...Object.values(movie.code ?? {}).flatMap(listCodeStrings),
       ]),
     );
 

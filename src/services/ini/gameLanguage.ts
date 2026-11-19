@@ -16,6 +16,7 @@ export class GameLanguage implements Disposable {
   private readonly subscription: Disposable;
   private asking?: Promise<string | undefined>;
   private declined?: string;
+  private applied?: string;
 
   public readonly onDidChange = this.changed.event;
 
@@ -81,6 +82,10 @@ export class GameLanguage implements Disposable {
   }
 
   private apply(language: string | undefined): void {
+    if (language === this.applied) {
+      return;
+    }
+    this.applied = language;
     this.index.setLanguage(language);
     this.changed.fire(language);
   }

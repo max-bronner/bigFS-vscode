@@ -23,7 +23,9 @@ import { createLineRenderer } from './createLineRenderer';
 import type { DrawLines } from './createLineRenderer';
 import { createPartsPanel } from './createPartsPanel';
 import { createTransport } from './createTransport';
+import { createBoneLabels } from './createBoneLabels';
 import { createViewControls } from './createViewControls';
+import type { SkyMemory } from './createViewControls';
 import { describeDetailLevels, describeModel } from './describeModel';
 import type { ViewerModel } from './describeModel';
 import { adoptViewerStyle } from './viewerStyle';
@@ -59,6 +61,7 @@ export interface ViewerClip {
 export interface ViewerOptions {
   onPickClip(id: string): void;
   partsHint?: string;
+  sky?: SkyMemory;
   target?: Vec3;
   radius?: number;
 }
@@ -68,6 +71,7 @@ export interface Viewer {
   gl: WebGLRenderingContext | undefined;
   stage: HTMLElement;
   side: HTMLElement;
+  bar: HTMLElement;
   orbit: Orbit;
   drawLines: DrawLines;
   addLayer(layer: ViewerLayer): void;
@@ -113,7 +117,13 @@ const openContext = (canvas: HTMLCanvasElement) => {
 
 export const createViewer = (
   root: HTMLElement,
-  { onPickClip, partsHint, target = DEFAULT_TARGET, radius = DEFAULT_RADIUS }: ViewerOptions,
+  {
+    onPickClip,
+    partsHint,
+    sky: skyMemory,
+    target = DEFAULT_TARGET,
+    radius = DEFAULT_RADIUS,
+  }: ViewerOptions,
 ): Viewer => {
   adoptViewerStyle();
 
@@ -198,6 +208,11 @@ export const createViewer = (
     showStatus(text);
     parts.refresh();
     invalidate();
+  }, skyMemory);
+  const boneLabels = createBoneLabels(canvas, () => {
+    if (view.choices.showBones) {
+      invalidate();
+    }
   });
   const parts = createPartsPanel(view.choices, () => rules, partsHint, invalidate);
 
@@ -281,6 +296,14 @@ export const createViewer = (
           basis.right[2], basis.up[2], -basis.forward[2],
         ],
       },
+    });
+    boneLabels.update({
+      skeleton: model?.skeleton,
+      pose,
+      matrix,
+      offset,
+      showAll: choices.showBoneNames,
+      showBones: choices.showBones,
     });
     layers.forEach((layer) => layer.draw?.(camera));
   };
@@ -369,7 +392,7 @@ export const createViewer = (
   transportBar.append(picker.select, ...transport.controls);
   viewBar.append(...view.controls, status);
   main.append(transportBar, viewBar, stage);
-  stage.append(canvas);
+  stage.append(canvas, boneLabels.layer);
   side.append(clipNotice, facts, levelFacts, parts.panel, help);
   root.classList.add('viewer');
   root.replaceChildren(main, side);
@@ -385,6 +408,7 @@ export const createViewer = (
     gl: graphics?.gl,
     stage,
     side,
+    bar: transportBar,
     orbit,
     drawLines: (lines, matrix, depthTest) => graphics?.drawLines(lines, matrix, depthTest),
     addLayer: (layer) => {

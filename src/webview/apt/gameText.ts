@@ -7,7 +7,7 @@ import {
 let texts: Record<string, string> | undefined;
 
 export const setGameText = (resolved: Record<string, string> | undefined) => {
-  texts = resolved;
+  texts = resolved && { ...texts, ...resolved };
 };
 
 export const localise = (text: string): string => {

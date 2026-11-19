@@ -6,6 +6,10 @@ const VIEWER_STYLE = `
 .viewer-status { margin-left: auto; opacity: 0.8; }
 .viewer-stage { flex: 1; min-height: 0; position: relative; }
 .viewer-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.viewer-bone-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.viewer-bone-label { position: absolute; transform: translate(7px, -50%); font-size: 11px; white-space: nowrap; color: #ffcf6e; text-shadow: 0 0 2px #000, 0 0 3px #000; }
+.viewer-bone-label.attachment { color: #7fdcff; font-weight: bold; }
+.viewer-bar input[type=color] { width: 2.2em; height: 1.6em; padding: 0; border: none; background: none; cursor: pointer; }
 .viewer-side { flex: none; width: 340px; overflow-y: auto; padding: 8px 10px; box-sizing: border-box; border-left: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
 .viewer-side p { margin: 6px 0; overflow-wrap: anywhere; }
 .viewer-side p:empty { display: none; }

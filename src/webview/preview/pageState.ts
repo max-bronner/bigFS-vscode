@@ -3,6 +3,7 @@ import { getVsCodeApi } from '../shared/vscodeApi';
 export interface PageState {
   zoom?: number;
   panelWidth?: number;
+  sky?: string;
 }
 
 export const readPageState = (): PageState =>

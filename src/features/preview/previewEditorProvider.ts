@@ -20,6 +20,7 @@ import { parseCursorFile } from '../../formats/cursor/parseCursorFile';
 import { Vp6Movie } from '../../formats/vp6/container';
 import type { EntryLocator } from '../../services/entryLocator';
 import type { TextureRegions } from './createTextureRegions';
+import type { FindRelatedModels } from './createRelatedModelSearch';
 import { renderWebviewPage } from '../../platform/webview/webviewPage';
 import type {
   FromPreviewPage,
@@ -213,6 +214,7 @@ export class PreviewEditorProvider
     private readonly locator: EntryLocator,
     private readonly extensionUri: vscode.Uri,
     private readonly regions: TextureRegions,
+    private readonly findRelated: FindRelatedModels,
   ) {}
 
   public static register(
@@ -220,10 +222,17 @@ export class PreviewEditorProvider
     locator: EntryLocator,
     extensionUri: vscode.Uri,
     regions: TextureRegions,
+    findRelated: FindRelatedModels,
   ): vscode.Disposable {
     return vscode.window.registerCustomEditorProvider(
       PREVIEW_VIEW_TYPE,
-      new PreviewEditorProvider(tools, locator, extensionUri, regions),
+      new PreviewEditorProvider(
+        tools,
+        locator,
+        extensionUri,
+        regions,
+        findRelated,
+      ),
       { supportsMultipleEditorsPerDocument: true },
     );
   }
@@ -248,6 +257,39 @@ export class PreviewEditorProvider
       (fileName) => this.locator.read(fileName, uri),
       this.tools,
     );
+  }
+
+  private async listAnimations(
+    skeleton: SceneSkeleton | undefined,
+    uri: vscode.Uri,
+  ): Promise<SkeletonClips> {
+    return skeleton
+      ? this.findAnimations(skeleton, uri)
+      : { own: [], foreign: [] };
+  }
+
+  private async buildRelatedModel(
+    file: string,
+    uri: vscode.Uri,
+  ): Promise<ToPreviewPage> {
+    try {
+      const read = await this.locator.read(file, uri);
+
+      if (!read) {
+        return { kind: 'animationError', message: `${file} is not in any archive or folder` };
+      }
+
+      const scene = await buildW3dScene(
+        isEarWrapped(read) ? decompressEar(read) : read,
+        (fileName: string) => this.locator.read(fileName, uri),
+        this.tools,
+        decodePng,
+      );
+
+      return { kind: 'model', ...scene, relatedFile: file };
+    } catch (error) {
+      return { kind: 'animationError', message: describeError(error) };
+    }
   }
 
   public openCustomDocument(uri: vscode.Uri): vscode.CustomDocument {
@@ -295,6 +337,11 @@ export class PreviewEditorProvider
           if (isDisposed) {
             return;
           }
+          if (built.kind === 'model') {
+            void this.findRelated(document.uri).then((files) =>
+              post({ kind: 'related', file: getFileName(document.uri), files }),
+            );
+          }
 
           attached?.dispose();
           if (built.kind === 'texture' && built.levels[0]) {
@@ -321,6 +368,18 @@ export class PreviewEditorProvider
                   (uses) => uses ?? [],
                   () => [],
                 ),
+            });
+          }
+        } else if (received.kind === 'showModel') {
+          const shown = received.file
+            ? await this.buildRelatedModel(received.file, document.uri)
+            : await message;
+
+          await post(shown);
+          if (shown.kind === 'model') {
+            await post({
+              kind: 'animations',
+              ...(await this.listAnimations(shown.skeleton, document.uri)),
             });
           }
         } else if (received.kind === 'popOut') {

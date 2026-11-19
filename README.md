@@ -126,7 +126,8 @@ your mod's archives.
 - Problems panel: unknown fields and modules, unclosed blocks, stray `End`,
   missing includes. **BIG: Validate INI Files** checks the whole workspace.
 - Highlighting, outline, folding, completion, hover with engine types and the
-  game's own text for string labels, go to definition, find references and
+  game's own text for string labels in the chosen language, go to definition
+  (a string label opens its record in the string table), find references and
   rename across archives and loose mod folders, `#include` links and
   `#define` macros.
 - Quick fixes: add a missing `End`, remove a stray one, and correct a
@@ -254,6 +255,21 @@ your mod's archives.
   list, play, stop, restart, step, time slider, speed, loop, bones, model, hidden
   parts, boxes, grid, level of detail, sky). A `.w3d` opened directly or by
   Ctrl-click shows the model alone; a preview adds its own panels beside it.
+- **Bones** draws the hierarchy over the model, following the playing pose:
+  lines between joints, a marker on each joint and larger blue markers on the
+  pivots things are attached to or fired from (`FIREPOINT`, `WEAPON`,
+  `PASSENGER`, `ARROW`, `FLAG`…). Hovering a joint names it; **Names** names
+  every bone. Both are offered only for a model with a hierarchy.
+- The background list has a **Custom…** colour; the W3D preview keeps the
+  chosen background, listed or custom, when VS Code rebuilds the page.
+- A `.w3d` lists the files that belong with it: the models its objects' draw
+  modules switch between (damage, snow, upgrades), other skins and LODs on its
+  skeleton, the skeleton, and the animations those objects' states play
+  (including other rigs' clips the animation list cannot find by name), each
+  with the object and state that names it. Picking a model shows it in place; picking an animation plays
+  it on the model on show, or on the model its state plays it on when that is
+  another skeleton. Files are related by the INI's draw modules and by the
+  skeleton each file's header names, never by name alone.
 
 **Particle preview**
 

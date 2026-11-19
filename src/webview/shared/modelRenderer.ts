@@ -1,5 +1,6 @@
 import {
   buildBoneLines,
+  listAttachmentJoints,
   getMeshOpacity,
   isMeshShown,
   poseAt,
@@ -449,11 +450,16 @@ export const createModelRenderer = (
     gl.disable(gl.CULL_FACE);
 
     const skeleton = scene.skeleton;
-    const boneVertices =
-      showBones && skeleton
-        ? buildBoneLines(skeleton, pose ?? poseAtBind(skeleton))
-        : [];
-    const bones: BoneLines = { buffer: boneBuffer, vertices: boneVertices };
+    const bonePose = skeleton && (pose ?? poseAtBind(skeleton));
+    const bones: BoneLines = {
+      buffer: boneBuffer,
+      vertices:
+        showBones && skeleton && bonePose ? buildBoneLines(skeleton, bonePose) : [],
+      attachments:
+        showBones && skeleton && bonePose
+          ? listAttachmentJoints(skeleton, bonePose)
+          : [],
+    };
 
     drawModelLines(
       gl,
