@@ -45,7 +45,9 @@ jobs:
           version=$(jq -r .version package.json)
           query=$(jq -n --arg id "$id" '{filters: [{criteria: [{filterType: 7, value: $id}]}], flags: 1}')
           versions=$(curl -sf -X POST https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery             -H 'Content-Type: application/json' -H 'Accept: application/json;api-version=7.2-preview.1'             -d "$query" | jq -r '.results[0].extensions[0].versions[]?.version') || versions=
-          if grep -qx "$version" <<< "$versions"; then
+          # The listing lags a release by minutes; the tag a successful publish creates does not
+          if git ls-remote --exit-code --tags "https://github.com/$GITHUB_REPOSITORY" "refs/tags/v$version" >/dev/null \
+            || grep -qx "$version" <<< "$versions"; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
             echo "$id $version is already on the Marketplace: nothing to publish" >> "$GITHUB_STEP_SUMMARY"
           else
