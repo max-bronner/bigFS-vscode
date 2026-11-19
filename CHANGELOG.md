@@ -1,10 +1,12 @@
 # Changelog
 
-## 0.1.1 (pre-release)
+## 0.1.2 (pre-release)
 
 - asset.dat in the explorer: each install's catalogue opens in a viewer, and a sync panel lists the files no record stands for, the records no file answers and the out-of-date model records, and writes the catalogue back.
 
 - Fix: opening a game install under Program Files and choosing the game view no longer fails on the read-only folder; the choice falls back to the user settings, so loose folders such as data/cursors show.
+
+## 0.1.1 (pre-release)
 
 - Fix: the Open button beside an imported character's source movie selects that character in the movie it opens, also when the movie is already open.
 
