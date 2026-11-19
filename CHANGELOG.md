@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+First stable release: the same extension as 0.1.3, now on the Marketplace's release channel, so it installs without choosing the pre-release version.
+
 ## 0.1.3 (pre-release)
 
 - Fix: loose files of a base game install that is not a workspace folder are read-only in the game view. Import image, Export as PNG, Edit W3D Animation, Convert String Table and Convert to VP6 no longer appear on them, and when run from the palette they ask where to save instead of writing into the install.
