@@ -23,6 +23,7 @@ import { keepEngineAnswers } from './aptEngineAnswers';
 import type { AptLibrary } from './aptLibrary';
 import { resolveMappedImages } from './aptMappedImages';
 import type { AptGameServices, AptMovieImports } from './aptMovieImports';
+import type { AptSelections } from './aptSelections';
 import type { AptScripts } from './aptScripts';
 import { resolveRenderObject } from './aptRenderObjects';
 import { resolveSuggestions } from './aptSuggestions';
@@ -38,6 +39,7 @@ export interface AptPageSession {
   ready(): Promise<void>;
   imports: AptMovieImports;
   library: AptLibrary;
+  selections: AptSelections;
   game: AptGameServices;
   locator: EntryLocator;
   tools: ToolBox;
@@ -233,11 +235,17 @@ const HANDLERS: {
     await answerSoundRequest(message, document.uri, post);
   },
 
-  async openMovie(message, { library }) {
+  async openMovie(message, { library, selections }) {
     const location = await library.locate(String(message.name));
 
     if (!location) {
       throw new Error(`No install holds ${String(message.name)}.apt`);
+    }
+
+    const uri = location.uri.toString();
+
+    if (typeof message.character === 'number') {
+      await selections.request(uri, message.character);
     }
     await vscode.commands.executeCommand(
       'vscode.openWith',

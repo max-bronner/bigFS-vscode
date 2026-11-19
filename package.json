@@ -2,7 +2,7 @@
   "name": "bigfs",
   "displayName": "bigFS",
   "description": "Mod the Battle for Middle-earth games in VS Code: browse and edit BIG archives, INI, STR and WND language support, and previews for W3D models, APT movies, maps, textures and audio.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "max-bronner",
   "icon": "assets/icon.png",
   "galleryBanner": {

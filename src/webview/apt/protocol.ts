@@ -110,7 +110,7 @@ export type FromPage =
   | { kind: 'edit'; edit: AptEdit }
   | { kind: 'scriptEdit'; block: number; text: string }
   | { kind: 'openGeometry'; geometry: number }
-  | { kind: 'openMovie'; name: string }
+  | { kind: 'openMovie'; name: string; character?: number }
   | { kind: 'removeCharacter'; id: number }
   | { kind: 'constEdit'; change: ConstItemChange }
   | { kind: 'manageMovie'; action: 'rename' | 'delete' }

@@ -14,7 +14,9 @@ export interface PlayableAudio {
 }
 
 const FORMAT_PCM = 1;
+const FORMAT_IEEE_FLOAT = 3;
 const FORMAT_IMA_ADPCM = 17;
+const FORMAT_EXTENSIBLE = 0xfffe;
 
 const STEP_TABLE = [
   7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45,
@@ -58,8 +60,13 @@ const readChunks = (
     const end = Math.min(start + size, bytes.length);
 
     if (id === 'fmt ' && end - start >= 16) {
+      const stored = view.getUint16(start, true);
+
       format = {
-        tag: view.getUint16(start, true),
+        tag:
+          stored === FORMAT_EXTENSIBLE && end - start >= 26
+            ? view.getUint16(start + 24, true)
+            : stored,
         channels: view.getUint16(start + 2, true),
         sampleRate: view.getUint32(start + 4, true),
         blockAlign: view.getUint16(start + 12, true),
@@ -143,6 +150,43 @@ const decodeImaAdpcm = (data: Uint8Array, format: WaveFormat): Int16Array => {
   return samples;
 };
 
+const decodeLinear = (data: Uint8Array, format: WaveFormat): Int16Array => {
+  const { channels, bitsPerSample, tag } = format;
+  const isFloat = tag === FORMAT_IEEE_FLOAT;
+  const declared = Math.floor(format.blockAlign / channels);
+  const sampleBytes = declared >= 1 ? declared : Math.ceil(bitsPerSample / 8);
+
+  if (
+    isFloat ? sampleBytes !== 4 && sampleBytes !== 8 : sampleBytes < 1 || sampleBytes > 4
+  ) {
+    throw new Error(
+      `${isFloat ? 'IEEE float' : 'PCM'} of ${bitsPerSample} bits is not supported`,
+    );
+  }
+
+  const frames = Math.floor(data.length / (sampleBytes * channels));
+  const samples = new Int16Array(frames * channels);
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const toInt16 = (value: number) =>
+    Math.max(-32768, Math.min(32767, Math.round(value * 32767)));
+
+  for (let index = 0; index < samples.length; index++) {
+    const at = index * sampleBytes;
+
+    if (isFloat) {
+      samples[index] = toInt16(
+        sampleBytes === 4 ? view.getFloat32(at, true) : view.getFloat64(at, true),
+      );
+    } else if (sampleBytes === 1) {
+      samples[index] = (data[at] - 128) << 8;
+    } else {
+      samples[index] = view.getInt16(at + sampleBytes - 2, true);
+    }
+  }
+
+  return samples;
+};
+
 const encodePcmWav = (
   samples: Int16Array,
   channels: number,
@@ -177,41 +221,36 @@ const encodePcmWav = (
   return wav;
 };
 
+const CODEC_NAMES: Record<number, string> = {
+  [FORMAT_PCM]: 'PCM',
+  [FORMAT_IEEE_FLOAT]: 'IEEE float',
+  [FORMAT_IMA_ADPCM]: 'IMA ADPCM',
+};
+
 export const toPlayableAudio = (bytes: Uint8Array): PlayableAudio => {
   const { format, data } = readChunks(bytes);
   const { channels, sampleRate, bitsPerSample } = format;
+  const codec = CODEC_NAMES[format.tag];
 
-  if (format.tag === FORMAT_PCM) {
-    const frameBytes = Math.max(1, (bitsPerSample / 8) * channels);
-
-    return {
-      wav: bytes,
-      info: {
-        format: 'PCM',
-        channels,
-        sampleRate,
-        bitsPerSample,
-        durationSeconds: data.length / frameBytes / sampleRate,
-      },
-    };
+  if (!codec) {
+    throw new Error(`WAVE codec ${format.tag} is not supported`);
   }
 
-  if (format.tag === FORMAT_IMA_ADPCM) {
-    const samples = decodeImaAdpcm(data, format);
+  const samples =
+    format.tag === FORMAT_IMA_ADPCM
+      ? decodeImaAdpcm(data, format)
+      : decodeLinear(data, format);
 
-    return {
-      wav: encodePcmWav(samples, channels, sampleRate),
-      info: {
-        format: 'IMA ADPCM',
-        channels,
-        sampleRate,
-        bitsPerSample,
-        durationSeconds: samples.length / channels / sampleRate,
-      },
-    };
-  }
-
-  throw new Error(`WAVE codec ${format.tag} is not supported`);
+  return {
+    wav: encodePcmWav(samples, channels, sampleRate),
+    info: {
+      format: codec,
+      channels,
+      sampleRate,
+      bitsPerSample,
+      durationSeconds: samples.length / channels / sampleRate,
+    },
+  };
 };
 
 export const playableAudioTool: Tool<Uint8Array, PlayableAudio> = {

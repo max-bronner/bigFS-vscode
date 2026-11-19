@@ -15,6 +15,7 @@ import { createAptMovieImports } from './aptMovieImports';
 import type { AptGameServices, AptMovieImports } from './aptMovieImports';
 import { renderAptPage } from './aptPage';
 import { AptScripts } from './aptScripts';
+import { AptSelections } from './aptSelections';
 import { AptTextView } from './aptTextView';
 import { checkAptDocument } from './aptWorkspaceCheck';
 import { APT_VIEW_TYPE } from './viewTypes';
@@ -40,6 +41,8 @@ export class AptEditorProvider
     AptDocument,
     { unresolved: string[]; origins: Record<string, string> }
   >();
+
+  private readonly selections = new AptSelections();
 
   private readonly scripts: vscode.Uri;
 
@@ -296,6 +299,10 @@ export class AptEditorProvider
         origins: message.origins,
       });
       await post(message);
+      await this.selections.markDrawn(
+        document.uri.toString(),
+        async (character) => void (await post({ kind: 'select', character })),
+      );
       if (isFirst) {
         say('Checking the movie…');
       }
@@ -339,6 +346,7 @@ export class AptEditorProvider
         },
         imports: this.imports,
         library: this.library,
+        selections: this.selections,
         tools: this.tools,
         game: this.game,
         locator: this.locator,
@@ -355,6 +363,7 @@ export class AptEditorProvider
       this.open.delete(document.uri.toString());
       this.textView.changed(document.uri);
       this.pagesReady.delete(document);
+      this.selections.forget(document.uri.toString());
       this.imported.delete(document);
     });
   }

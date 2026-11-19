@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 (pre-release)
+
+- Fix: the Open button beside an imported character's source movie selects that character in the movie it opens, also when the movie is already open.
+
+- Fix: WAV previews play every PCM file, not only IMA ADPCM ones. 8, 16, 24 and 32-bit PCM, IEEE float and the extensible header are decoded and rewritten as 16-bit PCM like ADPCM already was; before, PCM went to the page as the Buffer it was read into, which arrives there as a plain object and does not play.
+
 ## 0.1.0 (pre-release)
 
 First Marketplace release, published as a pre-release.

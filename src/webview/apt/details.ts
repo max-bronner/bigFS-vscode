@@ -181,7 +181,11 @@ const importSource = (character: Character): HTMLElement[] => {
       ...(target
         ? [
             action('Open', () =>
-              vscode.postMessage({ kind: 'openMovie', name: entry.movie }),
+              vscode.postMessage({
+                kind: 'openMovie',
+                name: entry.movie,
+                character: exported?.character,
+              }),
             ),
           ]
         : []),
