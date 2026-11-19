@@ -19,6 +19,7 @@ const showTexture = createTexturePage(main, regions, {
 });
 let modelPage: ModelPage | undefined;
 let movie: MovieControl | undefined;
+let frameError: HTMLParagraphElement | undefined;
 
 window.addEventListener('message', ({ data }: MessageEvent<ToPreviewPage>) => {
   switch (data.kind) {
@@ -27,18 +28,21 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPreviewPage>) => {
       modelPage.show(data);
       break;
     case 'video':
+      frameError = undefined;
       movie = showMovie(main, data, (message) => vscode.postMessage(message));
       break;
     case 'videoFrame':
+      frameError?.remove();
       movie?.show(data.index, data.pixels);
       break;
     case 'videoError': {
-      const error = document.createElement('p');
-
       movie?.reportFrameError();
-      error.className = 'error';
-      error.textContent = `Cannot decode this frame: ${data.message}`;
-      main.append(error);
+      if (!frameError) {
+        frameError = document.createElement('p');
+        frameError.className = 'error';
+      }
+      frameError.textContent = `Cannot decode this frame: ${data.message}`;
+      main.append(frameError);
       break;
     }
     case 'uses':

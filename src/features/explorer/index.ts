@@ -19,14 +19,17 @@ import { updateAtFirstTarget } from './updateAtFirstTarget';
 
 export const registerExplorer = (
   context: ExtensionContext,
-  { archives, gameView, explorerSelection }: Services,
+  { archives, gameView, explorerSelection, log }: Services,
 ): void => {
   const markScanned = async () => {
     await setContextKey('hasArchives', archives.getArchiveRoots().length > 0);
     await setContextKey('scanned', true);
   };
 
-  archives.whenReady().finally(markScanned);
+  archives
+    .whenReady()
+    .finally(markScanned)
+    .catch((error: unknown) => log.error('Failed to mark the scan done', error));
 
   const fileSystemProvider = new BigFileSystemProvider(archives);
   const treeDataProvider = new BigTreeDataProvider(archives, gameView);
@@ -40,6 +43,7 @@ export const registerExplorer = (
 
   void setContextKey('gameView', isGameViewShown());
   context.subscriptions.push(
+    fileSystemProvider,
     registerCommand('bigfs.showGameView', () => showView(true)),
     registerCommand('bigfs.showArchiveView', () => showView(false)),
     onDidChangeSetting([settings.explorerView], () => {

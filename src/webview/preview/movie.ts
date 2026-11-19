@@ -122,6 +122,10 @@ export const showMovie = (
 
   return {
     show: (index, pixels) => movie.show(index, pixels),
-    reportFrameError: requests.settle,
+    reportFrameError: () => {
+      movie.playing = false;
+      update();
+      requests.settle();
+    },
   };
 };

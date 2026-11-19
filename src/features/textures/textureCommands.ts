@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import type { ArchiveModel } from '../../services/archives/archiveModel';
+import { ReadOnlySourceError } from '../../services/archives/sourceAccess';
 import { toUri } from '../../services/archives/commandTarget';
 import type { CommandTarget } from '../../services/archives/commandTarget';
 import { decodeDds, decodeTga } from '../../formats/texture/textureTools';
@@ -38,10 +40,11 @@ export const encodeLike = (
 };
 
 const pickOutput = async (
+  archives: ArchiveModel,
   source: vscode.Uri,
   name: string,
 ): Promise<vscode.Uri | undefined> => {
-  if (source.scheme === 'file') {
+  if (source.scheme === 'file' && !archives.isReadOnlyUri(source)) {
     return vscode.Uri.joinPath(source, '..', name);
   }
 
@@ -65,6 +68,7 @@ const run = (task: () => Promise<void>) => async () => {
 
 export const registerTextureCommands = (
   context: vscode.ExtensionContext,
+  archives: ArchiveModel,
 ): void => {
   context.subscriptions.push(
     registerCommand(
@@ -82,6 +86,7 @@ export const registerTextureCommands = (
             await vscode.workspace.fs.readFile(source),
           );
           const output = await pickOutput(
+            archives,
             source,
             getFileName(source).replace(/\.[^.]+$/, '.png'),
           );
@@ -105,6 +110,10 @@ export const registerTextureCommands = (
 
           if (!destination) {
             return;
+          }
+
+          if (archives.isReadOnlyUri(destination)) {
+            throw new ReadOnlySourceError('The base game');
           }
 
           const original = decodeTexture(
@@ -205,6 +214,7 @@ export const registerTextureCommands = (
           }
 
           const output = await pickOutput(
+            archives,
             source,
             getFileName(source).replace(/\.png$/i, `.${choice.extension}`),
           );

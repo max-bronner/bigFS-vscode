@@ -32,6 +32,7 @@ const findByPath = (
 
 export class EntryLocator implements Disposable {
   private allNames?: Promise<Set<string>>;
+  private contentRevision = 0;
   private readonly subscriptions: Disposable[];
 
   public constructor(
@@ -39,21 +40,31 @@ export class EntryLocator implements Disposable {
     private readonly gameView: GameViewModel,
   ) {
     const watcher = workspace.createFileSystemWatcher(LOOSE_ASSETS);
-    const forgetLoose = () => {
-      this.allNames = undefined;
-    };
+    const folders = workspace.createFileSystemWatcher('**/*', true, true, false);
+    const forgetLoose = () => this.forgetNames();
 
     this.subscriptions = [
       archiveModel.onDidChangeArchive(({ loaded }) => {
         if (!loaded) {
-          this.allNames = undefined;
+          this.forgetNames();
         }
       }),
       gameView.onDidChange(forgetLoose),
       watcher,
       watcher.onDidCreate(forgetLoose),
       watcher.onDidDelete(forgetLoose),
+      folders,
+      folders.onDidDelete(forgetLoose),
     ];
+  }
+
+  public get revision(): number {
+    return this.contentRevision;
+  }
+
+  private forgetNames(): void {
+    this.allNames = undefined;
+    this.contentRevision++;
   }
 
   public dispose(): void {
@@ -94,7 +105,7 @@ export class EntryLocator implements Disposable {
     );
 
     if (found) {
-      this.allNames = undefined;
+      this.forgetNames();
     }
     return !!found;
   }

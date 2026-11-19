@@ -2,7 +2,7 @@ import type {
   CommandSetMessage,
   EditorSlot,
   FromCommandSetPage,
-} from '../../game/objects/commandSetEdit';
+} from './protocol';
 import { getVsCodeApi } from '../shared/vscodeApi';
 
 const vscode = getVsCodeApi<FromCommandSetPage>();

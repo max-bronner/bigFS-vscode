@@ -216,6 +216,8 @@ export class CahEditorProvider implements vscode.CustomEditorProvider<CahDocumen
     const { index, gameLanguage } = this.services;
     const record = document.snapshot;
 
+    this.parses.clear();
+
     await index.whenReady().catch(() => undefined);
     await gameLanguage.ensure().catch(() => undefined);
 
@@ -343,16 +345,26 @@ export class CahEditorProvider implements vscode.CustomEditorProvider<CahDocumen
     };
     panel.webview.html = renderHtml(panel.webview, extensionUri);
 
+    let isDisposed = false;
+
+    panel.onDidDispose(() => {
+      isDisposed = true;
+    });
+
     const send = async () => {
       const hero: HeroView = {
         kind: "hero",
         ...(await this.buildView(document)),
       };
 
-      await panel.webview.postMessage(hero);
+      if (!isDisposed) {
+        await panel.webview.postMessage(hero);
+      }
     };
 
     panel.webview.onDidReceiveMessage(async (message: PageMessage) => {
+      let failed = false;
+
       try {
         this.handle(document, message);
       } catch (error) {
@@ -361,9 +373,14 @@ export class CahEditorProvider implements vscode.CustomEditorProvider<CahDocumen
           message: describeError(error),
         };
 
-        await panel.webview.postMessage(notice);
+        failed = true;
+        if (!isDisposed) {
+          await panel.webview.postMessage(notice);
+        }
       }
-      await send();
+      if (failed || message.kind === "ready") {
+        await send();
+      }
     });
 
     addSnapshotView(document, panel, send);

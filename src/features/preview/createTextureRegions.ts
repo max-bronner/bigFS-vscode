@@ -25,6 +25,7 @@ export interface TextureRegions extends vscode.Disposable {
 interface TextureState {
   views: Set<RegionView>;
   ids: Set<string>;
+  documentUris?: Set<string>;
   selected?: string;
   search?: vscode.CancellationTokenSource;
   searched: boolean;
@@ -91,6 +92,7 @@ export const createTextureRegions = (
         const added = ids.filter((id) => !state.ids.has(id));
 
         added.forEach((id) => state.ids.add(id));
+        state.documentUris = undefined;
         if (added.length && !source.token.isCancellationRequested) {
           void Promise.all(
             [...state.views].map((view) => send(state, view, added, true)),
@@ -115,13 +117,17 @@ export const createTextureRegions = (
     const changed = event.document.uri.toString();
 
     for (const state of textures.values()) {
-      if (
-        [...state.ids].some(
-          (id) =>
-            kinds.find((kind) => kind.owns(id))?.documentOf(id)?.toString() ===
-            changed,
-        )
-      ) {
+      if (!state.views.size) {
+        continue;
+      }
+      state.documentUris ??= new Set(
+        [...state.ids].flatMap((id) => {
+          const document = kinds.find((kind) => kind.owns(id))?.documentOf(id);
+
+          return document ? [document.toString()] : [];
+        }),
+      );
+      if (state.documentUris.has(changed)) {
         void sendAll(state);
       }
     }
@@ -166,6 +172,7 @@ export const createTextureRegions = (
       const state = stateOf(texture);
 
       state.ids.add(id);
+      state.documentUris = undefined;
       state.selected = id;
       void sendAll(state);
     },

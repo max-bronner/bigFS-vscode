@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import {
   getAvailableName,
   isContainedPath,
+  isDiskPathBelow,
   isPathBelow,
   movePath,
 } from '../../core/paths';
@@ -59,5 +60,13 @@ suite('Path helpers', () => {
     assert.ok(!isContainedPath('\\windows\\system.ini'));
     assert.ok(!isContainedPath('C:\\windows\\system.ini'));
     assert.ok(!isContainedPath(''));
+  });
+
+  test('isDiskPathBelow accepts either separator and ignores case only when asked', () => {
+    assert.ok(isDiskPathBelow('C:\\Games\\BFME2\\a.tga', 'C:/Games/BFME2/', false));
+    assert.ok(isDiskPathBelow('C:\\Games\\BFME2', 'C:\\Games\\BFME2', false));
+    assert.ok(!isDiskPathBelow('C:\\Games\\BFME2x\\a.tga', 'C:\\Games\\BFME2', false));
+    assert.ok(!isDiskPathBelow('c:\\games\\bfme2\\a.tga', 'C:\\Games\\BFME2', false));
+    assert.ok(isDiskPathBelow('c:\\games\\bfme2\\a.tga', 'C:\\Games\\BFME2', true));
   });
 });

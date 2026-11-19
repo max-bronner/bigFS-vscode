@@ -75,7 +75,7 @@ const OUTSIDE_ANY_CHUNK = { start: -1, end: -1 };
 
 const NO_BYTES = new Uint8Array(0);
 
-const concatBytes = (...parts: Uint8Array[]): Uint8Array => {
+const joinBytes = (parts: Uint8Array[]): Uint8Array => {
   const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
   let at = 0;
 
@@ -86,6 +86,8 @@ const concatBytes = (...parts: Uint8Array[]): Uint8Array => {
 
   return out;
 };
+
+const concatBytes = (...parts: Uint8Array[]): Uint8Array => joinBytes(parts);
 
 const u16 = (value: number): Uint8Array =>
   Uint8Array.of(value & 255, (value >>> 8) & 255);
@@ -151,7 +153,13 @@ const internName = (
     throw new Error(`${name} is not a name a map can hold`);
   }
 
-  const index = Math.max(0, ...map.names.keys()) + 1;
+  let highest = 0;
+
+  for (const key of map.names.keys()) {
+    highest = Math.max(highest, key);
+  }
+
+  const index = highest + 1;
 
   if (index >= 1 << 23) {
     throw new Error('The name table is full');
@@ -363,19 +371,19 @@ const setLink = (
 };
 
 const writeAreas = (areas: MapTriggerArea[]): Uint8Array =>
-  concatBytes(
+  joinBytes([
     u32(areas.length),
     ...areas.map((area) =>
-      concatBytes(
+      joinBytes([
         encodeMapString(area.name),
         encodeMapString(area.layerName),
         u32(area.id),
         u32(area.points.length),
         ...area.points.map(([x, y]) => f32s(x, y)),
         u32(area.trailing),
-      ),
+      ]),
     ),
-  );
+  ]);
 
 const setAreas = (map: MapFile, areas: MapTriggerArea[]): MapFile => {
   const span = map.triggerAreaSpan;
@@ -400,7 +408,9 @@ const checkArea = (name: string, points: [number, number][]): void => {
     throw new Error('A trigger area has at least three points');
   }
 
-  requireFinite('A point', ...points.flat());
+  if (!points.every((point) => point.every(Number.isFinite))) {
+    throw new Error('A point must be a number');
+  }
 };
 
 const editArea = (
@@ -412,7 +422,7 @@ const editArea = (
   if (edit.kind === 'areaAdd') {
     checkArea(edit.name, edit.points);
 
-    const id = Math.max(-1, ...areas.map((area) => area.id)) + 1;
+    const id = areas.reduce((highest, area) => Math.max(highest, area.id), -1) + 1;
 
     return setAreas(map, [
       ...areas,

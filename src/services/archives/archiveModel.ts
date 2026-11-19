@@ -14,6 +14,7 @@ import type { ArchiveChange, ArchiveRegistry } from './archiveRegistry';
 import { createArchiveScanner } from './archiveScanner';
 import type { ArchiveScanner } from './archiveScanner';
 import type { ArchiveSource } from './archiveSource';
+import { isInReadOnlySource } from './sourceAccess';
 import type { VirtualNode } from './virtualNode';
 
 export interface ArchiveModelOptions {
@@ -87,6 +88,10 @@ export class ArchiveModel {
   }
 
   public isReadOnlyUri(uri: Uri): boolean {
+    if (uri.scheme === 'file') {
+      return isInReadOnlySource(this.registry.sources, uri.fsPath);
+    }
+
     const resolved = this.registry.resolveUri(uri);
 
     return resolved ? this.isReadOnly(resolved.archive) : false;

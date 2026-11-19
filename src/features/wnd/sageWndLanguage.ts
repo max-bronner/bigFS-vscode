@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { createKeyedDebouncer } from '../../core/debounce';
 import { findOpenDocument } from '../../services/ini/workspaceText';
 import { parseWnd, toBoxes } from '../../formats/wnd/wndLayout';
 import type { WndBox, WndWindow } from '../../formats/wnd/wndLayout';
@@ -192,6 +193,8 @@ const toFoldingRanges = (
     ];
   });
 
+const REFRESH_DELAY_MS = 250;
+
 const createWndPreview = (
   extensionUri: vscode.Uri,
   document: vscode.TextDocument,
@@ -201,6 +204,7 @@ const createWndPreview = (
   const images = new Map<string, Promise<ResolvedImage | null>>();
   const sent = new Set<string>();
   let version = 0;
+  let live = document;
 
   const scripts = vscode.Uri.joinPath(extensionUri, 'dist', 'webview');
   const panel = createSingletonPanel<FromWndPage, ToWndPage>({
@@ -215,9 +219,9 @@ const createWndPreview = (
       if (message.kind === 'ready') {
         void update();
       } else if (message.kind === 'reveal') {
-        const position = document.positionAt(message.offset);
+        const position = live.positionAt(message.offset);
         const editor = await vscode.window.showTextDocument(
-          document,
+          live,
           vscode.ViewColumn.One,
         );
 
@@ -271,13 +275,15 @@ const createWndPreview = (
     };
   };
 
-  const update = async (): Promise<void> => {
+  const update = async (source: vscode.TextDocument = live): Promise<void> => {
     const current = ++version;
+
+    live = source;
     const { index, gameLanguage } = services ?? {};
 
     await gameLanguage?.ensure();
 
-    const boxes = toBoxes(parseWnd(document.getText()).windows, {
+    const boxes = toBoxes(parseWnd(source.getText()).windows, {
       text: (value) => index?.findString(value)?.text,
     });
     const names = new Set<string>();
@@ -345,7 +351,7 @@ const showWndPreview = (
 };
 
 const refreshWndPreview = (document: vscode.TextDocument): void => {
-  void openWndPreviews.get(document.uri.toString())?.update();
+  void openWndPreviews.get(document.uri.toString())?.update(document);
 };
 
 export const renderPreviewHtml = (
@@ -397,18 +403,25 @@ export const registerSageWndLanguage = (
     );
     refreshWndPreview(document);
   };
+  const refreshSoon = createKeyedDebouncer(
+    refresh,
+    REFRESH_DELAY_MS,
+    (document: vscode.TextDocument) => document.uri.toString(),
+  );
 
   vscode.workspace.textDocuments.forEach(refresh);
 
   context.subscriptions.push(
     diagnostics,
+    { dispose: refreshSoon.dispose },
     vscode.workspace.onDidOpenTextDocument(refresh),
     vscode.workspace.onDidChangeTextDocument((event) =>
-      refresh(event.document),
+      refreshSoon.schedule(event.document),
     ),
-    vscode.workspace.onDidCloseTextDocument((document) =>
-      diagnostics.delete(document.uri),
-    ),
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      refreshSoon.cancel(document.uri.toString());
+      diagnostics.delete(document.uri);
+    }),
     vscode.languages.registerDocumentSymbolProvider(selector, {
       provideDocumentSymbols: (document) =>
         toSymbols(document, parseWnd(document.getText()).windows),
@@ -474,7 +487,7 @@ export const registerSageWndLanguage = (
       '+',
       ' ',
     ),
-    registerCommand('bigfs.showWndPreview', (uri?: vscode.Uri) => {
+    registerCommand('bigfs.showWndPreview', async (uri?: vscode.Uri) => {
       const document = uri
         ? findOpenDocument(uri)
         : vscode.window.activeTextEditor?.document;
@@ -482,11 +495,11 @@ export const registerSageWndLanguage = (
       if (document) {
         showWndPreview(context.extensionUri, document, services);
       } else if (uri) {
-        void vscode.workspace
-          .openTextDocument(uri)
-          .then((opened) =>
-            showWndPreview(context.extensionUri, opened, services),
-          );
+        showWndPreview(
+          context.extensionUri,
+          await vscode.workspace.openTextDocument(uri),
+          services,
+        );
       }
     }),
   );

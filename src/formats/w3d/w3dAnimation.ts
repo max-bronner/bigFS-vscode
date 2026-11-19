@@ -99,6 +99,10 @@ const readName = (bytes: Uint8Array, at: number) => {
   return String.fromCharCode(...(end < 0 ? raw : raw.subarray(0, end)));
 };
 
+const MAX_CHANNEL_WIDTH = 4;
+
+const MAX_SAMPLED_VALUES = 50_000_000;
+
 const createChannel = (
   pivot: number,
   kind: ChannelKind,
@@ -211,9 +215,9 @@ const sampleKeys = (
   const steps = new Uint8Array(target.present.length);
 
   target.steps = steps;
-  for (let frame = 0; frame < target.present.length; frame++) {
-    let split = 0;
+  let split = 0;
 
+  for (let frame = 0; frame < target.present.length; frame++) {
     while (split < keys.length && keys[split].frame <= frame) {
       split++;
     }
@@ -486,6 +490,13 @@ export const parseW3dAnimations = (bytes: Uint8Array): W3dAnimation[] =>
         ? view.getUint16(40, true)
         : view.getUint32(40, true);
       const flavor = isCompressed ? view.getUint16(42, true) : 0;
+
+      if (frameCount * children.length * MAX_CHANNEL_WIDTH > MAX_SAMPLED_VALUES) {
+        throw new Error(
+          `The animation's ${frameCount} frames across ${children.length} chunks are too large to sample`,
+        );
+      }
+
       const channels = children.flatMap((child) => {
         const sampled = readChannel(
           child.type,

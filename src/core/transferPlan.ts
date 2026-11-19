@@ -48,6 +48,7 @@ export const planTransfer = <T extends TransferItem>(
   const directories = new Set(Array.from(target.directories, key));
   const taken = new Set([...existingFiles, ...directories]);
   const planned: PlannedTransfer<T>[] = [];
+  const plannedKeys = new Set<string>();
 
   for (const item of items) {
     const itemKey = key(item.path);
@@ -56,7 +57,7 @@ export const planTransfer = <T extends TransferItem>(
       directories.has(itemKey) ||
       (taken.has(itemKey) && !clashesFile) ||
       (clashesFile && choice === 'keepBoth') ||
-      planned.some((each) => key(each.targetPath) === itemKey);
+      plannedKeys.has(itemKey);
 
     if (clashesFile && choice === 'skip') {
       continue;
@@ -66,11 +67,13 @@ export const planTransfer = <T extends TransferItem>(
       const targetPath = getFreePath(item.path, taken);
 
       taken.add(key(targetPath));
+      plannedKeys.add(key(targetPath));
       planned.push({ item, targetPath, replaces: false });
       continue;
     }
 
     taken.add(itemKey);
+    plannedKeys.add(itemKey);
     planned.push({ item, targetPath: item.path, replaces: clashesFile });
   }
 

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { createKeyedDebouncer } from '../../core/debounce';
 import { parseCsf, writeCsf } from '../../formats/csf/csf';
 import { parseStringRecords, quoteStringText } from '../../formats/str/sageStringRecords';
 import {
@@ -6,6 +7,7 @@ import {
   encodeWindows1252,
   findUnencodableCharacters,
 } from '../../core/windows1252';
+import type { ArchiveModel } from '../../services/archives/archiveModel';
 import { toUri } from '../../services/archives/commandTarget';
 import type { CommandTarget } from '../../services/archives/commandTarget';
 import { registerCommand } from '../../platform/commands';
@@ -113,8 +115,11 @@ export const strToCsf = (source: string): Uint8Array =>
     })),
   });
 
+const REFRESH_DELAY_MS = 250;
+
 export const registerSageStrLanguage = (
   context: vscode.ExtensionContext,
+  archives: ArchiveModel,
 ): void => {
   const diagnostics = vscode.languages.createDiagnosticCollection(STR_LANGUAGE);
   const refresh = (document: vscode.TextDocument) => {
@@ -154,13 +159,32 @@ export const registerSageStrLanguage = (
     }
 
     const isCsf = /\.csf$/i.test(source.path);
-    const output = source.with({
+    const sibling = source.with({
       path: source.path.replace(/\.(csf|str)$/i, isCsf ? '.str' : '.csf'),
     });
-    const exists = await vscode.workspace.fs.stat(output).then(
-      () => true,
-      () => false,
-    );
+    const isReadOnly = archives.isReadOnlyUri(source);
+    const output = isReadOnly
+      ? await vscode.window.showSaveDialog({
+          defaultUri: vscode.workspace.workspaceFolders?.[0]
+            ? vscode.Uri.joinPath(
+                vscode.workspace.workspaceFolders[0].uri,
+                sibling.path.slice(sibling.path.lastIndexOf('/') + 1),
+              )
+            : undefined,
+          filters: { 'String tables': [isCsf ? 'str' : 'csf'] },
+        })
+      : sibling;
+
+    if (!output) {
+      return;
+    }
+
+    const exists =
+      !isReadOnly &&
+      (await vscode.workspace.fs.stat(output).then(
+        () => true,
+        () => false,
+      ));
 
     if (
       exists &&
@@ -209,15 +233,23 @@ export const registerSageStrLanguage = (
     await vscode.commands.executeCommand('vscode.open', output);
   };
 
+  const refreshSoon = createKeyedDebouncer(
+    refresh,
+    REFRESH_DELAY_MS,
+    (document: vscode.TextDocument) => document.uri.toString(),
+  );
+
   context.subscriptions.push(
     diagnostics,
+    { dispose: refreshSoon.dispose },
     vscode.workspace.onDidOpenTextDocument(refresh),
     vscode.workspace.onDidChangeTextDocument((event) =>
-      refresh(event.document),
+      refreshSoon.schedule(event.document),
     ),
-    vscode.workspace.onDidCloseTextDocument((document) =>
-      diagnostics.delete(document.uri),
-    ),
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      refreshSoon.cancel(document.uri.toString());
+      diagnostics.delete(document.uri);
+    }),
     vscode.languages.registerDocumentSymbolProvider(selector, {
       provideDocumentSymbols: (document) =>
         parseStringRecords(document.getText()).map((record) => {

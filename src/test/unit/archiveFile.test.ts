@@ -246,4 +246,73 @@ suite('Archive rewrites', () => {
     assert.strictEqual(written.readUInt32LE(4), written.length);
     assert.strictEqual(written.subarray(-16).toString(), 'the last, longer');
   });
+
+  suite('entries sharing an offset', () => {
+    const save = async (
+      files: [Buffer, string][],
+      index: number,
+      text: string,
+    ) => {
+      const archivePath = path.join(directory, 'shared.big');
+
+      await writeFile(archivePath, buildShippedArchive(files));
+
+      const { entries } = await readArchiveIndexTable(archivePath);
+      const fits = await writeEntryInPlace(
+        archivePath,
+        { ...entries[index], storedName: undefined },
+        Buffer.from(text),
+      );
+      const after = await readArchiveIndexTable(archivePath);
+      const read = async (at: number) =>
+        Buffer.from(
+          await readEntryData(archivePath, after.entries[at]),
+        ).toString();
+
+      return { fits, read };
+    };
+
+    test('refuses to fill an empty entry in front of a real one', async () => {
+      const { fits, read } = await save(
+        [
+          [Buffer.from('a.ini'), ''],
+          [Buffer.from('b.ini'), 'REAL'],
+        ],
+        0,
+        'abc',
+      );
+
+      assert.strictEqual(fits, false);
+      assert.strictEqual(await read(1), 'REAL');
+    });
+
+    test('refuses to fill one of two empty entries', async () => {
+      const { fits, read } = await save(
+        [
+          [Buffer.from('a.ini'), ''],
+          [Buffer.from('b.ini'), ''],
+        ],
+        0,
+        'abc',
+      );
+
+      assert.strictEqual(fits, false);
+      assert.strictEqual(await read(1), '');
+    });
+
+    test('writes the entry matching by name when sizes and offsets agree', async () => {
+      const { fits, read } = await save(
+        [
+          [Buffer.from('a.ini'), ''],
+          [Buffer.from('b.ini'), 'REAL'],
+        ],
+        1,
+        'NEW!',
+      );
+
+      assert.ok(fits);
+      assert.strictEqual(await read(1), 'NEW!');
+      assert.strictEqual(await read(0), '');
+    });
+  });
 });

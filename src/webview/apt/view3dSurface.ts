@@ -144,8 +144,12 @@ const drawPicture = (
   if (shows === picture.shows) {
     return;
   }
-  canvas.width = picture.canvas.width = width;
-  canvas.height = picture.canvas.height = height;
+  if (picture.canvas.width !== width || picture.canvas.height !== height) {
+    canvas.width = picture.canvas.width = width;
+    canvas.height = picture.canvas.height = height;
+  } else {
+    picture.canvas.getContext('2d')!.clearRect(0, 0, width, height);
+  }
   gl.viewport(0, 0, width, height);
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);

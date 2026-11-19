@@ -2,7 +2,7 @@
   "name": "bigfs",
   "displayName": "bigFS",
   "description": "Mod the Battle for Middle-earth games in VS Code: browse and edit BIG archives, INI, STR and WND language support, and previews for W3D models, APT movies, maps, textures and audio.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "max-bronner",
   "icon": "assets/icon.png",
   "galleryBanner": {
@@ -482,22 +482,22 @@
         {
           "command": "bigfs.convertStringTable",
           "group": "7_modification@10",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(str|csf)$/i && viewItem != bigFileReadOnly && viewItem != bigFolderReadOnly && viewItem != bigArchiveReadOnly"
+          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(str|csf)$/i && viewItem !~ /ReadOnly$/"
         },
         {
           "command": "bigfs.exportPng",
           "group": "7_modification@11",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(tga|dds)$/i"
+          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(tga|dds)$/i && viewItem != bigLooseFileReadOnly"
         },
         {
           "command": "bigfs.importImage",
           "group": "7_modification@12",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(tga|dds)$/i && viewItem != bigFileReadOnly && viewItem != bigFolderReadOnly && viewItem != bigArchiveReadOnly"
+          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(tga|dds)$/i && viewItem !~ /ReadOnly$/"
         },
         {
           "command": "bigfs.convertPng",
           "group": "7_modification@13",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.png$/i && viewItem != bigFileReadOnly && viewItem != bigFolderReadOnly && viewItem != bigArchiveReadOnly"
+          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.png$/i && viewItem !~ /ReadOnly$/"
         },
         {
           "command": "bigfs.exportCursorPng",
@@ -512,27 +512,27 @@
         {
           "command": "bigfs.newAptMovie",
           "group": "7_modification@14",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Folder|Archive)$/ && viewItem != bigFileReadOnly && viewItem != bigFolderReadOnly && viewItem != bigArchiveReadOnly"
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Folder|Archive)$/ && viewItem !~ /ReadOnly$/"
         },
         {
           "command": "bigfs.convertToVp6",
           "group": "7_modification@15",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(mp4|m4v|mov|webm|ogv|ogg|mkv|avi|wmv|mpg|mpeg|gif)$/i && viewItem != bigFileReadOnly && viewItem != bigFolderReadOnly && viewItem != bigArchiveReadOnly"
+          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(mp4|m4v|mov|webm|ogv|ogg|mkv|avi|wmv|mpg|mpeg|gif)$/i && viewItem !~ /ReadOnly$/"
         },
         {
           "command": "bigfs.renameAptMovie",
           "group": "7_modification@15",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.apt$/i && viewItem != bigFileReadOnly && viewItem != bigFolderReadOnly && viewItem != bigArchiveReadOnly"
+          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.apt$/i && viewItem !~ /ReadOnly$/"
         },
         {
           "command": "bigfs.editW3dAnimation",
           "group": "7_modification@15",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.w3d$/i && viewItem != bigFileReadOnly && viewItem != bigFolderReadOnly && viewItem != bigArchiveReadOnly"
+          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.w3d$/i && viewItem !~ /ReadOnly$/"
         },
         {
           "command": "bigfs.deleteAptMovie",
           "group": "7_modification@16",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.apt$/i && viewItem != bigFileReadOnly && viewItem != bigFolderReadOnly && viewItem != bigArchiveReadOnly"
+          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.apt$/i && viewItem !~ /ReadOnly$/"
         },
         {
           "command": "bigfs.openAptText",
@@ -1164,7 +1164,7 @@
     "@typescript-eslint/parser": "^8.67.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^3.9.2",
+    "@vscode/vsce": "^4.1.1",
     "esbuild": "^0.28.2",
     "eslint": "^10.8.1",
     "madge": "^8.0.0",

@@ -113,8 +113,9 @@ export const parseStringRecords = (source: string): StringRecord[] => {
 
       if (record.text === undefined && trimmed.startsWith('"')) {
         const open = current.start + current.text.indexOf('"');
-        let raw = trimmed.slice(1);
-        let close = findClosingQuote(raw);
+        const parts = [trimmed.slice(1)];
+        let rawLength = parts[0].length;
+        let close = findClosingQuote(parts[0]);
         let closeLine = current;
         let closeOffset = close < 0 ? -1 : open + 1 + close;
 
@@ -122,19 +123,24 @@ export const parseStringRecords = (source: string): StringRecord[] => {
           index += 1;
           closeLine = lines[index];
 
-          const before = raw.length + 1;
+          const before = rawLength + 1;
           const part = closeLine.text.trim();
 
-          raw += ` ${part}`;
-          close = findClosingQuote(raw);
+          parts.push(part);
+          rawLength = before + part.length;
 
-          if (close >= 0) {
+          const inPart = findClosingQuote(part);
+
+          if (inPart >= 0) {
             const lead =
               closeLine.text.length - closeLine.text.trimStart().length;
 
-            closeOffset = closeLine.start + lead + (close - before);
+            close = before + inPart;
+            closeOffset = closeLine.start + lead + inPart;
           }
         }
+
+        const raw = parts.join(' ');
 
         record.isUnclosed = close < 0;
         record.text = finishText(

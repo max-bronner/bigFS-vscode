@@ -120,6 +120,7 @@ export const createArchiveScanner = (
 
     const loaded = registry.archives;
     const found = new Map<string, Archive>();
+    const reloaded: Archive[] = [];
 
     registry.sources = sources;
 
@@ -153,8 +154,8 @@ export const createArchiveScanner = (
         const archive =
           known ?? Archive.create(uri.fsPath, source.id, pathInSource);
 
-        if (known) {
-          await known.reload();
+        if (known && (await known.reload())) {
+          reloaded.push(known);
         }
 
         found.set(archive.rootKey, archive);
@@ -166,6 +167,7 @@ export const createArchiveScanner = (
     }
 
     registry.archives = found;
+    reloaded.forEach((archive) => registry.fireChanged(archive, 'changed'));
 
     const failed = results.filter((result) => result.status === 'rejected');
 
@@ -252,19 +254,21 @@ export const createArchiveScanner = (
     },
   };
 
-  void scanner.scanWorkspace();
+  const scanInBackground = (): void => {
+    scanner
+      .scanWorkspace()
+      .catch((error: unknown) => log.error('Failed to scan archives', error));
+  };
+
+  scanInBackground();
 
   const archiveWatcher = watchArchives();
 
   const sourceWatchers: Disposable[] = [
-    workspace.onDidChangeWorkspaceFolders(() => {
-      void scanner.scanWorkspace();
-    }),
+    workspace.onDidChangeWorkspaceFolders(scanInBackground),
     onDidChangeSetting(
       [settings.baseGameFolder, settings.underlyingGameFolder],
-      () => {
-        void scanner.scanWorkspace();
-      },
+      scanInBackground,
     ),
   ];
 

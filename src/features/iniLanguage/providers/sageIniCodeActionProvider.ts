@@ -59,10 +59,12 @@ export const createSageIniCodeActionProvider = (
       documents.parse(document),
       documents.getSchema(),
     ]);
-    const lines = Array.from(
-      { length: document.lineCount },
-      (_, line) => document.lineAt(line).text,
-    );
+    let allLines: string[] | undefined;
+    const getLines = (): string[] =>
+      (allLines ??= Array.from(
+        { length: document.lineCount },
+        (_, line) => document.lineAt(line).text,
+      ));
     const actions: CodeAction[] = [];
     const fix = (
       title: string,
@@ -85,6 +87,7 @@ export const createSageIniCodeActionProvider = (
       const message = diagnostic.message;
 
       if (message.endsWith('is never closed with End')) {
+        const lines = getLines();
         const at = findMissingEndLine(lines, line);
         const indent = lines[line].slice(
           0,

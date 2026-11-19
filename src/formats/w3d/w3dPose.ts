@@ -147,6 +147,19 @@ export const isMeshShown = (mesh: SceneMesh, pose: Pose): boolean =>
 export const getMeshOpacity = (mesh: SceneMesh, pose: Pose): number =>
   mesh.bone === undefined ? 1 : (pose.opacity[mesh.bone] ?? 1);
 
+const boneMatrices = new WeakMap<Pose, ReturnType<typeof toBoneMatrix>[]>();
+
+const getBoneMatrices = (pose: Pose) => {
+  let matrices = boneMatrices.get(pose);
+
+  if (!matrices) {
+    matrices = pose.world.map((bone) => toBoneMatrix(bone.t, bone.q));
+    boneMatrices.set(pose, matrices);
+  }
+
+  return matrices;
+};
+
 export const skin = (
   mesh: SceneMesh,
   pose: Pose,
@@ -160,7 +173,7 @@ export const skin = (
   if (mesh.local) {
     skinVertices(
       mesh.local,
-      pose.world.map((bone) => toBoneMatrix(bone.t, bone.q)),
+      getBoneMatrices(pose),
       positions,
       normals,
     );

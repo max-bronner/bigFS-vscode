@@ -4,6 +4,7 @@ import type { DatLocation } from './aptGeometry';
 import { parseAptMovie, parseConst, parseSpriteFrames } from './aptMovie';
 import type { AptMovie, Character, ConstFile, Frame } from './aptMovie';
 import { describeError } from '../../core/errors';
+import { decodeWindows1252 } from '../../core/windows1252';
 
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -20,8 +21,6 @@ export interface MovieAccess {
   read(relative: string): Promise<Uint8Array | undefined>;
   list(relative: string): Promise<string[] | undefined>;
 }
-
-const decodeLatin1 = (bytes: Uint8Array) => String.fromCharCode(...bytes);
 
 export const readTgaSize = (
   bytes: Uint8Array,
@@ -80,7 +79,7 @@ export const checkMovie = async (access: MovieAccess): Promise<Problem[]> => {
     }
   } else {
     try {
-      dat = parseDat(decodeLatin1(datBytes));
+      dat = parseDat(decodeWindows1252(datBytes));
     } catch (error) {
       report(
         'error',
@@ -157,7 +156,7 @@ export const checkMovie = async (access: MovieAccess): Promise<Problem[]> => {
           break;
         }
         try {
-          for (const run of parseRu(decodeLatin1(bytes))) {
+          for (const run of parseRu(decodeWindows1252(bytes))) {
             if (
               run.style.kind === 'texture' &&
               !isKind(run.style.character, 'image')

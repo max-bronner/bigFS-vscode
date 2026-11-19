@@ -4,7 +4,7 @@ import { registerVideoCommands } from './videoCommands';
 
 export const registerVideo = (
   context: ExtensionContext,
-  _services: Services,
+  services: Services,
 ): void => {
-  registerVideoCommands(context);
+  registerVideoCommands(context, services.archives);
 };

@@ -271,6 +271,12 @@ export class PreviewEditorProvider
 
     let movie: Vp6Movie | undefined;
     let attached: vscode.Disposable | undefined;
+    let isDisposed = false;
+    const post = async (reply: unknown): Promise<void> => {
+      if (!isDisposed) {
+        await panel.webview.postMessage(reply);
+      }
+    };
     const message = buildMessage(
       document.uri,
       this.tools,
@@ -284,24 +290,28 @@ export class PreviewEditorProvider
         if (received.kind === 'ready') {
           const built = await message;
 
-          await panel.webview.postMessage(built);
+          await post(built);
+
+          if (isDisposed) {
+            return;
+          }
 
           attached?.dispose();
           if (built.kind === 'texture' && built.levels[0]) {
             attached = this.regions.attach(
               document.uri,
               [built.levels[0].width, built.levels[0].height],
-              (regionsMessage) => void panel.webview.postMessage(regionsMessage),
+              (regionsMessage) => void post(regionsMessage),
             );
           }
           if (built.kind === 'model' && built.skeleton) {
-            await panel.webview.postMessage({
+            await post({
               kind: 'animations',
               ...(await this.findAnimations(built.skeleton, document.uri)),
             });
           }
           if (built.kind === 'model') {
-            await panel.webview.postMessage({
+            await post({
               kind: 'uses',
               uses: await vscode.commands
                 .executeCommand<
@@ -334,13 +344,13 @@ export class PreviewEditorProvider
           try {
             const pixels = movie.decodeFrame(index);
 
-            await panel.webview.postMessage({
+            await post({
               kind: 'videoFrame',
               index,
               pixels: new Uint8Array(pixels.buffer),
             });
           } catch (error) {
-            await panel.webview.postMessage({
+            await post({
               kind: 'videoError',
               message: describeError(error),
             });
@@ -375,12 +385,13 @@ export class PreviewEditorProvider
             };
           }
 
-          await panel.webview.postMessage(reply);
+          await post(reply);
         }
       },
     );
 
     panel.onDidDispose(() => {
+      isDisposed = true;
       subscription.dispose();
       attached?.dispose();
     });

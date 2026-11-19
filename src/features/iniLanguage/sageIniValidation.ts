@@ -34,7 +34,7 @@ export const registerSageIniValidation = (
     const results: [Uri, Diagnostic[]][] = [];
     let fileCount = 0;
 
-    await window.withProgress(
+    const completed = await window.withProgress(
       {
         location: ProgressLocation.Notification,
         title: 'Validating INI files',
@@ -43,7 +43,7 @@ export const registerSageIniValidation = (
       async (progress, token) => {
         for (const root of archiveModel.getArchiveRoots()) {
           if (token.isCancellationRequested) {
-            return;
+            return false;
           }
 
           progress.report({ message: root.name });
@@ -82,7 +82,7 @@ export const registerSageIniValidation = (
           '**/node_modules/**',
         )) {
           if (token.isCancellationRequested) {
-            return;
+            return false;
           }
 
           fileCount += 1;
@@ -96,8 +96,14 @@ export const registerSageIniValidation = (
             ),
           ]);
         }
+
+        return !token.isCancellationRequested;
       },
     );
+
+    if (!completed) {
+      return;
+    }
 
     collection.clear();
     collection.set(results.filter(([, diagnostics]) => diagnostics.length));

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { renderWebviewPage } from '../../platform/webview/webviewPage';
 import { createSingletonPanel } from '../../platform/webview/singletonPanel';
+import { describeError } from '../../core/errors';
 import { createDebouncer } from '../../core/debounce';
 import {
   planArmorEdit,
@@ -29,7 +30,11 @@ const createArmorTable = (
   let rows: ArmorRow[] = [];
 
   const scripts = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview');
-  const refreshSoon = createDebouncer(() => void refresh(), REFRESH_DELAY);
+  const refreshSoon = createDebouncer(() => {
+    refresh().catch((error: unknown) => {
+      void vscode.window.showErrorMessage(describeError(error));
+    });
+  }, REFRESH_DELAY);
   const panel = createSingletonPanel<FromArmorPage, ArmorTableMessage>({
     viewType: 'bigfs.armorTable',
     title: 'Armor Table',
@@ -73,7 +78,10 @@ td.high { background: color-mix(in srgb, var(--vscode-charts-red, #f14c4c) 25%, 
         { dispose: refreshSoon.cancel },
       ];
     },
-    onMessage: (message) => receive(message),
+    onMessage: (message) =>
+      receive(message).catch((error: unknown) => {
+        void vscode.window.showErrorMessage(describeError(error));
+      }),
   });
 
   const refresh = async (): Promise<ArmorTableMessage> => {

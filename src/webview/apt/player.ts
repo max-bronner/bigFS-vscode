@@ -60,6 +60,7 @@ export class Player implements StageHost {
       ),
   );
   private clips: Instance[] = [];
+  private disposed = false;
   private readonly pointer = createPointerDispatcher({
     queue: this.queue,
     getVm: () => this.vm,
@@ -84,7 +85,11 @@ export class Player implements StageHost {
     log: (line) => this.options.log?.(line),
     fetchMovie: (name, done) =>
       this.options.fetchMovie
-        ? this.options.fetchMovie(name, done)
+        ? this.options.fetchMovie(name, (found) => {
+            if (!this.disposed) {
+              done(found);
+            }
+          })
         : this.options.log?.(`loadMovie: ${name} cannot be loaded here`),
     createEmpty: (parent, name, depth) => this.createEmpty(parent, name, depth),
     remove: (clip) => this.remove(clip),
@@ -98,6 +103,10 @@ export class Player implements StageHost {
     },
     drainScripts: () => this.idle(),
   });
+
+  public dispose(): void {
+    this.disposed = true;
+  }
 
   public constructor(
     movie: PageMovie,

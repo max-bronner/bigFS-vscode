@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { EASINGS } from '../../core/expression';
 import { parseW3dAnimations } from '../../formats/w3d/w3dAnimation';
 import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
+import type { ArchiveModel } from '../../services/archives/archiveModel';
 import { toUri } from '../../services/archives/commandTarget';
 import {
   MAX_NAME,
@@ -127,7 +128,9 @@ const askEdit = async (
   }
 };
 
-export const registerW3dAnimationCommands = (): vscode.Disposable =>
+export const registerW3dAnimationCommands = (
+  archives: ArchiveModel,
+): vscode.Disposable =>
   registerCommand(
     'bigfs.editW3dAnimation',
     async (target?: unknown, edit?: AnimationEdit, name?: string) => {
@@ -182,11 +185,22 @@ export const registerW3dAnimationCommands = (): vscode.Disposable =>
         }
 
         const result = applyAnimationEdit(animation, change);
-        const file = vscode.Uri.joinPath(
-          uri,
-          '..',
-          `${newName.toLowerCase()}.w3d`,
-        );
+        const fileName = `${newName.toLowerCase()}.w3d`;
+        const file = archives.isReadOnlyUri(uri)
+          ? await vscode.window.showSaveDialog({
+              defaultUri: vscode.workspace.workspaceFolders?.[0]
+                ? vscode.Uri.joinPath(
+                    vscode.workspace.workspaceFolders[0].uri,
+                    fileName,
+                  )
+                : undefined,
+              filters: { 'W3D models': ['w3d'] },
+            })
+          : vscode.Uri.joinPath(uri, '..', fileName);
+
+        if (!file) {
+          return undefined;
+        }
 
         await vscode.workspace.fs.writeFile(
           file,

@@ -1,4 +1,5 @@
 import { pageSoundPlayer } from '../shared/pageSoundPlayer';
+import { showNotice } from '../shared/noticeBar';
 import { onEngineRestart, showEngine } from './enginePanel';
 import { keepAnswers } from './engineState';
 import { setGameText } from './gameText';
@@ -343,14 +344,9 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPage>) => {
     case 'sound':
       void pageSoundPlayer.receive(data);
       break;
-    case 'notice': {
-      const notice = byId('notice');
-
-      notice.textContent = data.message;
-      notice.hidden = false;
-      setTimeout(() => (notice.hidden = true), 6000);
+    case 'notice':
+      showNotice(data.message);
       break;
-    }
     case 'error':
       document.body.innerHTML =
         '<p class="error">Cannot open this movie: ' +

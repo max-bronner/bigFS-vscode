@@ -1,4 +1,5 @@
 import { createScriptTree } from '../shared/scriptTree';
+import { captureFocus } from '../shared/captureFocus';
 import { element } from '../shared/element';
 import type { MapActions } from './actions';
 import { createAreaSection } from './areaPanel';
@@ -19,6 +20,7 @@ export const showInfo = (actions: MapActions): void => {
     ),
   );
   const scroll = info.scrollTop;
+  const restoreFocus = captureFocus(info);
 
   info.replaceChildren();
   queueMicrotask(() => {
@@ -28,6 +30,7 @@ export const showInfo = (actions: MapActions): void => {
       }
     });
     info.scrollTop = scroll;
+    restoreFocus();
   });
   const world = map.worldInfo;
   const title = world.find((entry) => entry.key === 'mapName');

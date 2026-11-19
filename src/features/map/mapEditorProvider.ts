@@ -255,24 +255,30 @@ export class MapEditorProvider implements vscode.CustomEditorProvider<MapDocumen
     };
 
     panel.webview.onDidReceiveMessage((message: FromMapPage) => {
+      let redraw = true;
+
       try {
         if (message?.kind === 'ready') {
           heightsSent = false;
         } else if (message?.kind === 'edit') {
           this.edit(document, message.edit);
         } else if (message?.kind === 'playSound') {
+          redraw = false;
           void answerSoundRequest(message, document.uri, (reply) =>
             panel.webview.postMessage(reply),
           );
         }
       } catch (error) {
+        redraw = true;
         void panel.webview.postMessage({
           kind: 'notice',
           message: describeError(error),
         });
       }
 
-      redrawSnapshotViews(document);
+      if (redraw) {
+        redrawSnapshotViews(document);
+      }
     });
 
     addSnapshotView(document, panel, send);

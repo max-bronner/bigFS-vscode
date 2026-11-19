@@ -7,6 +7,7 @@ import type { ArchiveModel } from '../../services/archives/archiveModel';
 import { findBeside, listBeside, findWorkspaceMovies } from './aptAccess';
 import { toMovieKey } from './aptLibrary';
 import { toUri } from '../../services/archives/commandTarget';
+import { isEditable } from '../../services/ini/archiveText';
 
 export interface MovieHost {
   archiveModel: ArchiveModel;
@@ -178,7 +179,11 @@ export const renameMovie = async (
 
   const folder = vscode.Uri.joinPath(aptUri, '..');
   const files = await listMovieFiles(aptUri);
-  const importers = await findImporters(host, aptUri);
+  const allImporters = await findImporters(host, aptUri);
+  const importers = allImporters.filter((importer) =>
+    isEditable(host.archiveModel, importer.uri),
+  );
+  const skipped = allImporters.filter((importer) => !importers.includes(importer));
 
   for (const file of files) {
     const destination = vscode.Uri.joinPath(folder, file.relative(to));
@@ -236,6 +241,9 @@ export const renameMovie = async (
     `Renamed ${name} to ${to}: ${files.length} file${files.length === 1 ? '' : 's'}` +
       (importers.length
         ? `, and the imports of ${importers.map((each) => getMovieName(each.uri)).join(', ')}`
+        : '') +
+      (skipped.length
+        ? `. Not updated, as they are read-only: ${skipped.map((each) => getMovieName(each.uri)).join(', ')}`
         : ''),
   );
   return vscode.Uri.joinPath(folder, `${to}.apt`);

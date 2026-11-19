@@ -23,7 +23,7 @@ import { diffDefinitions } from '../../game/objects/definitionDiff';
 import type { DefinitionDiff } from '../../game/objects/definitionDiff';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
 import { settings } from '../../platform/settings';
-import { SageIniDocuments } from '../../services/ini/sageIniDocuments';
+import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
 import { registerCommand } from '../../platform/commands';
 import { describeError } from '../../core/errors';
 
@@ -127,12 +127,11 @@ ${groups
 export const registerModDiffCommands = (
   context: vscode.ExtensionContext,
   gameView: GameViewModel,
+  documents: SageIniDocuments,
 ): void => {
   let base: { folder: string; index: BaseIndex } | undefined;
-  const documents = new SageIniDocuments(context.extensionUri);
   const scripts = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview');
 
-  context.subscriptions.push(documents);
   useOutputStore(context.globalState);
 
   const getBaseFolder = async (): Promise<string | undefined> => {

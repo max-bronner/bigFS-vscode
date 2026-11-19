@@ -277,6 +277,7 @@ export const decodeBlock = (
             throw new Error(`A list of ${length} cannot fit in the file`);
           }
 
+          reader.countRecords(length);
           instruction.operand = Array.from({ length }, (_, index) =>
             reader.u32(pointer + index * 4),
           );

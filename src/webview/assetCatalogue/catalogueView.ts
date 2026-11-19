@@ -45,7 +45,20 @@ export const renderCatalogueView = (
   more.id = 'more';
   table.append(head, body);
 
+  let visibleFor: string | undefined;
+  let visibleRows: CatalogueRecordRow[] = [];
+
   const getVisible = (): CatalogueRecordRow[] => {
+    const key = JSON.stringify([filter.value, sortColumn, isDescending]);
+
+    if (key !== visibleFor) {
+      visibleRows = filterAndSort();
+      visibleFor = key;
+    }
+    return visibleRows;
+  };
+
+  const filterAndSort = (): CatalogueRecordRow[] => {
     const query = filter.value.trim().toLowerCase();
     const matching = query
       ? message.records.filter(
@@ -114,10 +127,12 @@ export const renderCatalogueView = (
         row.append(element('td', column.render(record), column.isNumeric ? 'number' : undefined)),
       );
       row.addEventListener('click', () => {
-        if (!open.delete(record.name)) {
+        if (open.delete(record.name)) {
+          row.nextElementSibling?.remove();
+        } else {
           open.add(record.name);
+          row.after(renderEntries(record));
         }
-        render();
       });
       rows.push(row);
       if (open.has(record.name)) {

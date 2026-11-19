@@ -3,8 +3,11 @@ import { composeEffectiveObject, parseTemplateHeader } from '../../services/ini/
 import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
 import { registerCommand } from '../../platform/commands';
+import { createDebouncer } from '../../core/debounce';
 
 const SCHEME = 'bigfs-effective';
+
+const REFRESH_DELAY_MS = 300;
 
 const createEffectiveContentProvider = (
   documents: SageIniDocuments,
@@ -84,6 +87,7 @@ export const registerEffectiveObjects = (
 ): vscode.Disposable[] => {
   const provider = createEffectiveContentProvider(documents, index);
   const watcher = vscode.workspace.createFileSystemWatcher('**/*.ini');
+  const refreshSoon = createDebouncer(provider.refresh, REFRESH_DELAY_MS);
 
   return [
     vscode.workspace.registerTextDocumentContentProvider(SCHEME, provider),
@@ -92,6 +96,7 @@ export const registerEffectiveObjects = (
       createEffectiveLensProvider(),
     ),
     watcher,
+    { dispose: refreshSoon.cancel },
     watcher.onDidChange(() => provider.refresh()),
     watcher.onDidCreate(() => provider.refresh()),
     vscode.workspace.onDidChangeTextDocument((event) => {
@@ -99,7 +104,7 @@ export const registerEffectiveObjects = (
         event.document.uri.scheme !== SCHEME &&
         event.document.languageId === 'sage-ini'
       ) {
-        provider.refresh();
+        refreshSoon.schedule();
       }
     }),
     registerCommand(

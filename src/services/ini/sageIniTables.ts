@@ -155,6 +155,7 @@ export const createSageIniTables = (): SageIniTables => {
   const definitions = new Map<string, Map<string, SageDefinition[]>>();
   const references = new Map<string, Map<string, SageReference[]>>();
   const macros = new Map<string, SageMacro>();
+  const macroDefinitions = new Map<string, SageMacro[]>();
   const constantUses = new Map<string, SageReference[]>();
   const bodyTokens = new Map<string, SageBodyToken[]>();
   const strings = new Map<string, SageStringPlace[]>();
@@ -193,9 +194,16 @@ export const createSageIniTables = (): SageIniTables => {
     );
 
     for (const key of dropped.flatMap((each) => [...each.macros])) {
-      const macro = macros.get(key);
+      const kept = (macroDefinitions.get(key) ?? []).filter(
+        (macro) => !isDropped(macro),
+      );
+      const last = kept[kept.length - 1];
 
-      if (macro && isDropped(macro)) {
+      if (last) {
+        macroDefinitions.set(key, kept);
+        macros.set(key, last);
+      } else {
+        macroDefinitions.delete(key);
         macros.delete(key);
       }
     }
@@ -231,6 +239,7 @@ export const createSageIniTables = (): SageIniTables => {
       [definitions, references, macros, constantUses, bodyTokens, strings].forEach(
         (table) => table.clear(),
       );
+      macroDefinitions.clear();
       contributions.clear();
     },
 
@@ -243,7 +252,10 @@ export const createSageIniTables = (): SageIniTables => {
       for (const macro of entries.macros) {
         const key = macro.name.toLowerCase();
 
-        macros.set(key, { ...macro, uri });
+        const defined = { ...macro, uri };
+
+        macros.set(key, defined);
+        pushTo(macroDefinitions, key, defined);
         written.macros.add(key);
       }
 

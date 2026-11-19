@@ -11,6 +11,7 @@ import {
   getMovieName,
   getSoundEvent,
 } from '../../webview/apt/avm/movieLoad';
+import { MAX_INTERVALS, toIntervalTicks } from '../../webview/apt/avm/vm';
 import { Player } from '../../webview/apt/player';
 import type { PageMovie } from '../../webview/apt/protocol';
 
@@ -250,5 +251,32 @@ suite('APT loading movies and playing movie sounds', () => {
     engine.playMovieSounds = true;
     engine.call('FSCommand:PlaySound', ['Gui_Other']);
     assert.deepStrictEqual(played, ['Gui_Other']);
+  });
+
+  test('a movie that arrives for a disposed player is dropped', () => {
+    const host = movieWith('Host', ['slot'], 'slot.loadMovie("art/Child.apt");');
+    let arrive: (movie: PageMovie | string) => void = () => {};
+    const { player } = start(host, (_name, done) => {
+      arrive = done;
+    });
+
+    player.dispose();
+    arrive(child);
+    assert.strictEqual(player.find('/1')!.movie.name, 'Host');
+  });
+
+  test('setInterval rounds to ticks, reads no number as one tick and stops at a cap', () => {
+    const { player } = start(movieWith('Host', []), library([]));
+    const vm = player.vm!;
+    const nothing = undefined as never;
+
+    assert.strictEqual(toIntervalTicks(1000), 30);
+    assert.strictEqual(toIntervalTicks(0), 1);
+    assert.strictEqual(toIntervalTicks(Number.NaN), 1);
+    assert.strictEqual(toIntervalTicks(Infinity), 1);
+    for (let count = 0; count < MAX_INTERVALS; count++) {
+      assert.notStrictEqual(vm.interval(nothing, nothing, 100, []), 0);
+    }
+    assert.strictEqual(vm.interval(nothing, nothing, 100, []), 0);
   });
 });

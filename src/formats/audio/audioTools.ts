@@ -187,6 +187,8 @@ const decodeLinear = (data: Uint8Array, format: WaveFormat): Int16Array => {
   return samples;
 };
 
+const IS_LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+
 const encodePcmWav = (
   samples: Int16Array,
   channels: number,
@@ -214,9 +216,17 @@ const encodePcmWav = (
   view.setUint16(34, 16, true);
   writeTag(36, 'data');
   view.setUint32(40, dataBytes, true);
-  samples.forEach((sample, index) =>
-    view.setInt16(44 + index * 2, sample, true),
-  );
+
+  if (IS_LITTLE_ENDIAN) {
+    wav.set(
+      new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength),
+      44,
+    );
+  } else {
+    samples.forEach((sample, index) =>
+      view.setInt16(44 + index * 2, sample, true),
+    );
+  }
 
   return wav;
 };

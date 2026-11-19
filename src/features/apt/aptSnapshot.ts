@@ -63,3 +63,8 @@ export const unpackSnapshot = (bytes: Uint8Array): AptSnapshot => {
 
   return { apt, constBytes, files };
 };
+
+export const pathsToRevert = (
+  touched: ReadonlySet<string>,
+  files: ReadonlyMap<string, Uint8Array>,
+): string[] => [...touched].filter((path) => !files.has(path));

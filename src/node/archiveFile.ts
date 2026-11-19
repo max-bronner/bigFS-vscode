@@ -260,6 +260,7 @@ export const writeEntryInPlace = async (
       const isEntry =
         candidate.offset === entry.offset &&
         candidate.size === entry.size &&
+        candidate.name.toLowerCase() === entry.name.toLowerCase() &&
         (entry.storedName === undefined ||
           candidate.storedName === entry.storedName);
 
@@ -275,12 +276,17 @@ export const writeEntryInPlace = async (
       return false;
     }
 
-    const nextOffset = Math.min(
-      ...entries
-        .filter((candidate) => candidate.offset > record.offset)
-        .map((candidate) => candidate.offset),
+    const followers = entries.filter(
+      (candidate) =>
+        candidate !== record &&
+        (candidate.offset > record.offset ||
+          (candidate.offset === record.offset &&
+            (candidate.size > 0 || record.size === 0))),
     );
-    const isLast = !Number.isFinite(nextOffset);
+    const nextOffset = Math.min(
+      ...followers.map((candidate) => candidate.offset),
+    );
+    const isLast = followers.length === 0;
 
     if (!isLast && record.offset + data.length > nextOffset) {
       return false;

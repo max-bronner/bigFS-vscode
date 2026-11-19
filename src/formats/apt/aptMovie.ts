@@ -9,11 +9,19 @@ const CONST_MAGIC = 'Apt constant file\x1a\0\0';
 
 export class AptReader {
   private readonly cursor: ByteReader;
+  private recordsCounted = 0;
 
   public constructor(public readonly bytes: Uint8Array) {
     this.cursor = createByteReader(bytes, true, {
       describeOverrun: outsideTheFile,
     });
+  }
+
+  public countRecords(count: number): void {
+    this.recordsCounted += count;
+    if (this.recordsCounted > 16 * this.bytes.length + 1e6) {
+      throw new Error('The file refers to more records than it can hold');
+    }
   }
 
   private at<T>(offset: number, length: number, read: (cursor: ByteReader) => T): T {
@@ -315,6 +323,7 @@ const checkCount = (reader: AptReader, count: number, stride: number): void => {
   if (count * stride > reader.bytes.length) {
     throw new Error(`A count of ${count} cannot fit in the file`);
   }
+  reader.countRecords(count);
 };
 
 const parseTextRecord = (reader: AptReader, at: number): TextRecord => {

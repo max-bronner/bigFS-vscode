@@ -5,7 +5,6 @@ export const editCell = (
   value: string,
   multiline: boolean,
   commit: (value: string) => void,
-  leave: () => void,
 ): void => {
   const input: HTMLInputElement | HTMLTextAreaElement = multiline
     ? document.createElement('textarea')
@@ -25,7 +24,7 @@ export const editCell = (
     if (save && isEdited(value, input.value)) {
       commit(input.value);
     } else {
-      leave();
+      cell.textContent = value;
     }
   };
 

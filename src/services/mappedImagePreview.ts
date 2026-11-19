@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { decodeIniText } from '../core/windows1252';
 import type { EntryLocator } from './entryLocator';
 import { isRotated, parseMappedImage } from '../formats/mappedImage/mappedImage';
 import type { MappedImage } from '../formats/mappedImage/mappedImage';
@@ -7,15 +6,16 @@ import { encodePng } from '../node/png';
 import { decodeDds, decodeTga } from '../formats/texture/textureTools';
 import type { RgbaImage } from '../formats/texture/textureTools';
 import type { SageDefinition } from './ini/sageIniTables';
+import { findOpenDocument, readWorkspaceText } from './ini/workspaceText';
+
+const MAX_CACHED = 200;
 
 const MAX_SIDE = 256;
 
 export const readMappedImage = async (
   definition: SageDefinition,
 ): Promise<MappedImage> => {
-  const text = decodeIniText(
-    await vscode.workspace.fs.readFile(definition.uri),
-  ).split(/\r?\n/);
+  const text = (await readWorkspaceText(definition.uri)).split(/\r?\n/);
 
   return parseMappedImage(
     definition.name,
@@ -75,6 +75,7 @@ export const crop = (
 
 export const createMappedImagePreview = (locator: EntryLocator) => {
   const cache = new Map<string, Promise<string | undefined>>();
+  let cachedRevision = locator.revision;
 
   const build = async (
     definition: SageDefinition,
@@ -123,7 +124,13 @@ export const createMappedImagePreview = (locator: EntryLocator) => {
   };
 
   return (definition: SageDefinition): Promise<string | undefined> => {
-    const key = `${definition.uri.toString()}#${definition.line}`;
+    if (cachedRevision !== locator.revision || cache.size > MAX_CACHED) {
+      cache.clear();
+      cachedRevision = locator.revision;
+    }
+
+    const version = findOpenDocument(definition.uri)?.version;
+    const key = `${definition.uri.toString()}#${definition.name}#${definition.line}-${definition.endLine}@${version}`;
     let entry = cache.get(key);
 
     if (!entry) {

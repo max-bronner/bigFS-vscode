@@ -16,7 +16,7 @@ const manifest = JSON.parse(
 const evaluate = (when: string, context: Record<string, unknown>): boolean =>
   when.split('&&').every((atom) => {
     const text = atom.trim();
-    const match = /^(\S+)\s*(==|!=|=~)\s*(.+)$/.exec(text);
+    const match = /^(\S+)\s*(==|!=|=~|!~)\s*(.+)$/.exec(text);
 
     if (!match) {
       return text.startsWith('!') ? !context[text.slice(1)] : Boolean(context[text]);
@@ -25,10 +25,10 @@ const evaluate = (when: string, context: Record<string, unknown>): boolean =>
     const [, key, operator, operand] = match;
     const value = String(context[key] ?? '');
 
-    if (operator === '=~') {
+    if (operator === '=~' || operator === '!~') {
       const [, pattern, flags] = /^\/(.*)\/([a-z]*)$/.exec(operand) ?? [];
 
-      return new RegExp(pattern, flags).test(value);
+      return new RegExp(pattern, flags).test(value) === (operator === '=~');
     }
 
     return (value === operand) === (operator === '==');
@@ -127,6 +127,14 @@ suite('Explorer menus', () => {
   test('a read-only row still hides the converters that write', () => {
     hasNone(menuFor('file', true, '.png'), ['bigfs.convertPng']);
     hasAll(menuFor('file', false, '.png'), ['bigfs.convertPng']);
+  });
+
+  test('a read-only loose file offers no converter or exporter that writes', () => {
+    hasNone(menuFor('looseFile', true, '.tga'), ['bigfs.exportPng', 'bigfs.importImage']);
+    hasNone(menuFor('looseFile', true, '.w3d'), ['bigfs.editW3dAnimation']);
+    hasNone(menuFor('looseFile', true, '.str'), ['bigfs.convertStringTable']);
+    hasNone(menuFor('looseFile', true, '.mp4'), ['bigfs.convertToVp6']);
+    hasAll(menuFor('looseFile', false, '.tga'), ['bigfs.exportPng', 'bigfs.importImage']);
   });
 
   test('every command a menu names is contributed', () => {

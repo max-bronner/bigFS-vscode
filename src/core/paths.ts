@@ -15,6 +15,20 @@ export const splitPath = (nodePath: string): string[] =>
 export const isPathBelow = (nodePath: string, ancestorPath: string): boolean =>
   nodePath === ancestorPath || nodePath.startsWith(`${ancestorPath}/`);
 
+export const isDiskPathBelow = (
+  diskPath: string,
+  directoryPath: string,
+  ignoreCase = process.platform === 'win32',
+): boolean => {
+  const normalize = (value: string): string => {
+    const slashed = value.replace(/\\/g, '/').replace(/\/+$/, '');
+
+    return ignoreCase ? slashed.toLowerCase() : slashed;
+  };
+
+  return isPathBelow(normalize(diskPath), normalize(directoryPath));
+};
+
 export const isContainedPath = (entryPath: string): boolean => {
   const segments = entryPath.split(/[\\/]/);
 

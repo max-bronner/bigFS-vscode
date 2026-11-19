@@ -1,4 +1,5 @@
 import type { Character } from '../../formats/apt/aptMovie';
+import type { RuRun } from '../../formats/apt/aptGeometry';
 import { localise } from './gameText';
 import { UNRESOLVED, getLocalBounds, getImageTexture } from './scene';
 import type { Leaf } from './scene';
@@ -163,6 +164,24 @@ const leafArea = (leaf: Leaf): Path2D => {
 
 const areas = new WeakMap<Leaf[], Path2D>();
 
+const runPaths = new WeakMap<RuRun, Path2D>();
+
+const getRunPath = (run: RuRun): Path2D => {
+  let path = runPaths.get(run);
+
+  if (!path) {
+    path = new Path2D();
+    for (let i = 0; i < run.triangles.length; i += 6) {
+      path.moveTo(run.triangles[i], run.triangles[i + 1]);
+      path.lineTo(run.triangles[i + 2], run.triangles[i + 3]);
+      path.lineTo(run.triangles[i + 4], run.triangles[i + 5]);
+      path.closePath();
+    }
+    runPaths.set(run, path);
+  }
+  return path;
+};
+
 export const buildMaskArea = (mask: Leaf[]): Path2D => {
   let area = areas.get(mask);
 
@@ -194,15 +213,7 @@ export const paintLeaf = (ctx: CanvasRenderingContext2D, leaf: Leaf): void => {
   switch (character.type) {
     case 'shape':
       for (const run of movie.shapes[leaf.id] ?? []) {
-        const path = new Path2D();
-
-        for (let i = 0; i < run.triangles.length; i += 6) {
-          path.moveTo(run.triangles[i], run.triangles[i + 1]);
-          path.lineTo(run.triangles[i + 2], run.triangles[i + 3]);
-          path.lineTo(run.triangles[i + 4], run.triangles[i + 5]);
-          path.closePath();
-        }
-
+        const path = getRunPath(run);
         const { style } = run;
 
         if (style.kind === 'solid') {

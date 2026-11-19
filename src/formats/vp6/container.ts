@@ -59,6 +59,10 @@ export const parseVp6 = (
   const hasAlpha = readTag(bytes, 0) === 'AVP6';
 
   if (hasAlpha) {
+    if (bytes.length < 8) {
+      throw new Error('The file is too short to be a movie');
+    }
+
     at = view.getUint32(4, true);
   }
 
@@ -152,6 +156,8 @@ export const toRgba = (
   return out;
 };
 
+const MAX_SIDE = 4080;
+
 export class Vp6Movie {
   public readonly header: Vp6Header;
   public readonly hasAlpha: boolean;
@@ -165,6 +171,14 @@ export class Vp6Movie {
 
   public constructor(bytes: Uint8Array) {
     const parsed = parseVp6(bytes);
+
+    const { width, height } = parsed.header;
+
+    if (!width || !height || width > MAX_SIDE || height > MAX_SIDE) {
+      throw new Error(
+        `Movie size ${width}x${height} is outside 1 to ${MAX_SIDE}`,
+      );
+    }
 
     this.header = parsed.header;
     this.hasAlpha = parsed.hasAlpha;
@@ -184,6 +198,10 @@ export class Vp6Movie {
   }
 
   public decodeFrame(index: number): Uint8ClampedArray {
+    if (!this.frames.length) {
+      throw new Error('The movie has no frames');
+    }
+
     const target = Math.max(0, Math.min(this.frames.length - 1, index));
 
     const restart = planSeek(this.frames, this.hasAlpha, this.next, target);

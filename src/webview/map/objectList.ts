@@ -19,6 +19,8 @@ export const showObjects = (actions: MapActions): void => {
         `object${state.selected === object.index ? ' selected' : ''}`,
       );
 
+      row.dataset.index = String(object.index);
+
       row.append(element('span', object.template), element('span', getObjectName(object), 'muted'));
       row.onclick = () => actions.select(object.index);
       return row;
@@ -27,4 +29,14 @@ export const showObjects = (actions: MapActions): void => {
   if (matches.length > MAX_LISTED) {
     objectList.append(element('p', 'Showing 500; filter to narrow.', 'muted'));
   }
+};
+
+export const markSelectedObject = (previous: number | undefined): void => {
+  const rowOf = (index: number | undefined) =>
+    index === undefined
+      ? null
+      : objectList.querySelector<HTMLElement>(`[data-index="${index}"]`);
+
+  rowOf(previous)?.classList.remove('selected');
+  rowOf(state.selected)?.classList.add('selected');
 };

@@ -275,11 +275,20 @@ export const createArchiveRegistry = (
     },
 
     async readFiles(items, onFile) {
-      for (const [archive, group] of registry.groupByArchive(
-        items.map((item) => item.node),
-      )) {
-        const groupItems = items.filter((item) => group.includes(item.node));
+      const grouped = registry.groupByArchive(items.map((item) => item.node));
+      const archiveOf = new Map<VirtualNode, Archive>();
+      const itemsOf = new Map<Archive, (typeof items)[number][]>();
 
+      for (const [archive, group] of grouped) {
+        group.forEach((node) => archiveOf.set(node, archive));
+        itemsOf.set(archive, []);
+      }
+
+      for (const item of items) {
+        itemsOf.get(archiveOf.get(item.node)!)!.push(item);
+      }
+
+      for (const [archive, groupItems] of itemsOf) {
         await archive.readFileNodes(groupItems, onFile);
       }
     },

@@ -12,14 +12,14 @@ import { registerCommand } from '../../platform/commands';
 
 export const registerStrings = (
   context: ExtensionContext,
-  { gameLanguage }: Services,
+  { gameLanguage, archives }: Services,
 ): void => {
   context.subscriptions.push(
     registerCommand('bigfs.chooseLanguage', () =>
       gameLanguage.choose(),
     ),
   );
-  registerSageStrLanguage(context);
+  registerSageStrLanguage(context, archives);
   context.subscriptions.push(
     window.registerCustomEditorProvider(
       STR_TABLE_VIEW_TYPE,
