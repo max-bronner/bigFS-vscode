@@ -15,6 +15,12 @@ import { findSceneFocus, readObjectScene } from '../../game/objects/objectScene'
 import { readCreatedSubObjects } from '../../game/objects/subObjectScripts';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
 import type { SageDocument } from '../../formats/ini/sageIniParser';
+import type { SageIniSchema } from '../../formats/ini/sageIniSchema';
+import { composeObject } from '../../game/objects/objectComposition';
+import type {
+  ComposableObject,
+  ObjectComposition,
+} from '../../game/objects/objectComposition';
 import { renderParticlePage } from './particlePreview';
 import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
@@ -24,6 +30,9 @@ import { registerCommand } from '../../platform/commands';
 import { describeError } from '../../core/errors';
 
 const TEMPLATE = /^(object|childobject|objectreskin)$/i;
+const TEMPLATE_KEYWORDS = ['Object', 'ChildObject', 'ObjectReskin'];
+
+const toModelFile = (name: string) => `${name.replace(/\.w3d$/i, '')}.w3d`;
 const STATE =
   /^\s*(Default)?(Model)?ConditionState\b|^\s*(Idle)?AnimationState\b|^\s*TransitionState\b/i;
 const MAX_EFFECT_REFERENCES = 512;
@@ -64,6 +73,7 @@ const createObjectPreview = (
   const scripts = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview');
   let focusOffset = 0;
   let isReady = false;
+  let compositionGeneration = 0;
 
   const redrawSoon = createDebouncer(() => {
     send().catch((error: unknown) => panel.post(toNotice(error)));
@@ -112,8 +122,66 @@ const createObjectPreview = (
         await sendModel(message.name);
         break;
       case 'loadAnimation':
-        await sendAnimation(message.name);
+        await panel.post({
+          kind: 'animation',
+          ...(await readAnimation(message.name)),
+        });
         break;
+      case 'loadPartModel':
+        await panel.post({
+          kind: 'partModel',
+          name: message.name,
+          scene: await readModel(message.name),
+        });
+        break;
+      case 'loadPartAnimation':
+        await panel.post({
+          kind: 'partAnimation',
+          ...(await readAnimation(message.name)),
+        });
+        break;
+    }
+  };
+
+  const readComposable = async (
+    schema: SageIniSchema,
+    objectName: string,
+  ): Promise<ComposableObject | undefined> => {
+    const place = TEMPLATE_KEYWORDS.map(
+      (keyword) => index.findDefinitions(keyword, objectName)[0],
+    ).find(Boolean);
+    const text =
+      place &&
+      (await composeEffectiveObject(documents, index, place.uri, place.line));
+
+    if (!text) {
+      return undefined;
+    }
+
+    const lines = text.split('\n');
+    const parsed = parseSageIni(lines, schema);
+    const scene = readObjectScene(parsed, schema, () => false, () => false, lines);
+
+    return scene && { name: scene.name, parsed, scene };
+  };
+
+  const sendComposition = async (
+    schema: SageIniSchema,
+    object: ComposableObject,
+  ): Promise<void> => {
+    const generation = ++compositionGeneration;
+    const composition = await composeObject(object, {
+      readObject: (objectName) => readComposable(schema, objectName),
+      resolveMacro: (macro) => index.findMacro(macro)?.value,
+    }).catch(
+      (error: unknown): ObjectComposition => ({
+        parts: [],
+        notes: [`The composition could not be read: ${describeError(error)}`],
+      }),
+    );
+
+    if (generation === compositionGeneration) {
+      await panel.post({ kind: 'composition', composition });
     }
   };
 
@@ -202,31 +270,38 @@ const createObjectPreview = (
       object: scene,
       focus: findSceneFocus(source, header + focusOffset, scene),
     });
+    void sendComposition(schema, {
+      name: scene.name,
+      parsed: parseSageIni(composed.split('\n'), schema),
+      scene,
+    });
   };
 
-  const sendModel = async (name: string): Promise<void> => {
-    const file = `${name.replace(/\.w3d$/i, '')}.w3d`;
-    const bytes = await locator?.read(file, uri);
+  const readModel = async (name: string) => {
+    const bytes = await locator?.read(toModelFile(name), uri);
 
-    if (!bytes) {
-      await panel.post({ kind: 'notice', message: `${file} was not found` });
-      return;
-    }
-    await panel.post({
-      kind: 'model',
-      model: {
-        name: file,
-        scene: await buildW3dScene(
+    return bytes
+      ? buildW3dScene(
           bytes,
           (fileName) => locator!.read(fileName, uri),
           tools,
           decodePng,
-        ),
-      },
-    });
+        )
+      : undefined;
   };
 
-  const sendAnimation = async (clipName: string): Promise<void> => {
+  const sendModel = async (name: string): Promise<void> => {
+    const file = toModelFile(name);
+    const scene = await readModel(name);
+
+    if (!scene) {
+      await panel.post({ kind: 'notice', message: `${file} was not found` });
+      return;
+    }
+    await panel.post({ kind: 'model', model: { name: file, scene } });
+  };
+
+  const readAnimation = async (clipName: string) => {
     const clip = clipName.slice(clipName.lastIndexOf('.') + 1);
     const bytes = await locator?.read(`${clip}.w3d`, uri);
     const animation = findAnimation(
@@ -234,8 +309,7 @@ const createObjectPreview = (
       clipName,
     );
 
-    await panel.post({
-      kind: 'animation',
+    return {
       name: clipName,
       animation,
       skeleton:
@@ -245,7 +319,7 @@ const createObjectPreview = (
           (fileName) => locator!.read(fileName, uri),
           tools,
         )),
-    });
+    };
   };
 
   const show = async (offset: number): Promise<void> => {

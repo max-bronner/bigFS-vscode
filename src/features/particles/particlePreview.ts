@@ -497,6 +497,7 @@ kbd { font-size: 10px; opacity: 0.7; }
   <div id="object" hidden>
     <div class="row">State <select id="objectState"></select></div>
     <div id="objectElements"></div>
+    <div id="objectComposition" hidden></div>
     <div id="objectVoices" hidden></div>
     <div id="objectNotice" class="muted"></div>
     <div id="objectParts" class="muted"></div>

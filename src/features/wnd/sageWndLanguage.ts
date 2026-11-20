@@ -281,6 +281,7 @@ const createWndPreview = (
     live = source;
     const { index, gameLanguage } = services ?? {};
 
+    await index?.whenReady().catch(() => undefined);
     await gameLanguage?.ensure();
 
     const boxes = toBoxes(parseWnd(source.getText()).windows, {
@@ -414,6 +415,13 @@ export const registerSageWndLanguage = (
   context.subscriptions.push(
     diagnostics,
     { dispose: refreshSoon.dispose },
+    ...(services?.gameLanguage
+      ? [
+          services.gameLanguage.onDidChange(() =>
+            openWndPreviews.forEach((preview) => void preview.update()),
+          ),
+        ]
+      : []),
     vscode.workspace.onDidOpenTextDocument(refresh),
     vscode.workspace.onDidChangeTextDocument((event) =>
       refreshSoon.schedule(event.document),

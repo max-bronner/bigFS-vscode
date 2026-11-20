@@ -38,7 +38,13 @@ import { createSageIniRenameProvider } from './providers/sageIniRenameProvider';
 
 export const registerIniLanguage = (
   context: ExtensionContext,
-  { archives, iniDocuments: documents, iniIndex: index, locator }: Services,
+  {
+    archives,
+    iniDocuments: documents,
+    iniIndex: index,
+    gameLanguage,
+    locator,
+  }: Services,
 ): void => {
   const selector = { language: SAGE_INI_LANGUAGE };
   const mappedImagePreview = createMappedImagePreview(locator);
@@ -60,7 +66,7 @@ export const registerIniLanguage = (
     ),
     ...registerDuplicateDefinition(selector, documents, index),
     watchSageIniDialect(),
-    watchSageIniDiagnostics(documents, index, locator),
+    watchSageIniDiagnostics(documents, index, gameLanguage, locator),
     ...registerSageIniValidation(documents, archives, locator),
     languages.registerFoldingRangeProvider(
       selector,

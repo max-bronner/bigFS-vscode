@@ -383,6 +383,11 @@ export class CahEditorProvider implements vscode.CustomEditorProvider<CahDocumen
       }
     });
 
+    const languageChange = this.services.gameLanguage.onDidChange(
+      () => void send(),
+    );
+
+    panel.onDidDispose(() => languageChange.dispose());
     addSnapshotView(document, panel, send);
   }
 

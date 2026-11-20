@@ -5,6 +5,7 @@ import type { ParticleDef } from '../../formats/particles/particleDef';
 import type { KeyKind, KeyValue } from '../../formats/particles/particleKeys';
 import type { ModelScene, SceneSkeleton } from '../../formats/w3d/w3dScene';
 import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
+import type { ObjectComposition } from '../../game/objects/objectComposition';
 import type { ObjectScene, SceneFocus } from '../../game/objects/objectScene';
 
 export interface SceneMessage {
@@ -27,6 +28,14 @@ export type ToPage =
   | { kind: 'notice'; message: string }
   | { kind: 'model'; model?: { name: string; scene: ModelScene } }
   | { kind: 'object'; object: ObjectScene; focus: SceneFocus }
+  | { kind: 'composition'; composition: ObjectComposition }
+  | { kind: 'partModel'; name: string; scene?: ModelScene }
+  | {
+      kind: 'partAnimation';
+      name: string;
+      animation?: W3dAnimation;
+      skeleton?: SceneSkeleton;
+    }
   | {
       kind: 'animation';
       name: string;
@@ -44,6 +53,8 @@ export type FromPage =
   | { kind: 'pickModel' }
   | { kind: 'loadModel'; name: string }
   | { kind: 'loadAnimation'; name: string }
+  | { kind: 'loadPartModel'; name: string }
+  | { kind: 'loadPartAnimation'; name: string }
   | { kind: 'reset' }
   | { kind: 'apply' }
   | { kind: 'keys'; keyKind: KeyKind; keys: KeyValue[] }

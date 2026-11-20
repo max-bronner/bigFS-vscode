@@ -5,7 +5,7 @@ import { registerCommandSetEditor } from './commandSetEditor';
 
 export const registerCommandSet = (
   context: ExtensionContext,
-  { iniDocuments, iniIndex, locator }: Services,
+  { iniDocuments, iniIndex, gameLanguage, locator }: Services,
 ): void => {
   context.subscriptions.push(
     ...registerCommandSetEditor(
@@ -13,6 +13,7 @@ export const registerCommandSet = (
       { language: SAGE_INI_LANGUAGE },
       iniDocuments,
       iniIndex,
+      gameLanguage,
       locator,
     ),
   );
