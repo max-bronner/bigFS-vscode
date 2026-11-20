@@ -21,6 +21,7 @@ import type {
 } from '../../game/objects/commandSetEdit';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
 import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
+import type { GameLanguage } from '../../services/ini/gameLanguage';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
 import { readWorkspaceText } from '../../services/ini/workspaceText';
 import { registerCommand } from '../../platform/commands';
@@ -35,6 +36,7 @@ const createCommandSetEditor = (
   context: vscode.ExtensionContext,
   documents: SageIniDocuments,
   index: SageIniIndex,
+  gameLanguage: GameLanguage,
   locator: EntryLocator | undefined,
   uri: vscode.Uri,
   name: string,
@@ -85,6 +87,7 @@ body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vsco
         body: '<p class="muted">Drag a button to another slot to move it (it swaps with what is there); click an empty slot to add one; click a name to open it.</p><div id="grid"></div>',
       });
       return [
+        gameLanguage.onDidChange(refreshSoon.schedule),
         vscode.workspace.onDidChangeTextDocument((event) => {
           if (event.document.uri.toString() === uri.toString()) {
             refreshSoon.schedule();
@@ -294,6 +297,7 @@ export const registerCommandSetEditor = (
   selector: vscode.DocumentSelector,
   documents: SageIniDocuments,
   index: SageIniIndex,
+  gameLanguage: GameLanguage,
   locator: EntryLocator | undefined,
 ): vscode.Disposable[] => {
   const open = new Map<string, ReturnType<typeof createCommandSetEditor>>();
@@ -307,6 +311,7 @@ export const registerCommandSetEditor = (
         context,
         documents,
         index,
+        gameLanguage,
         locator,
         uri,
         name,

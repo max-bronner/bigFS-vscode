@@ -24,6 +24,11 @@ import {
   setLoadedAnimation,
   showObject,
 } from './objectPanel';
+import {
+  receivePartAnimation,
+  receivePartModel,
+  showComposition,
+} from './composedParts';
 import { poseAt } from '../../formats/w3d/w3dPose';
 import type { Pose, Vec3 } from '../../formats/w3d/w3dPose';
 import type { ViewerCamera } from '../shared/viewer/createViewer';
@@ -337,6 +342,18 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPage>) => {
   }
   if (data.kind === 'object') {
     showObject(data.object, data.focus);
+    return;
+  }
+  if (data.kind === 'composition') {
+    showComposition(data.composition);
+    return;
+  }
+  if (data.kind === 'partModel') {
+    receivePartModel(data.name, data.scene);
+    return;
+  }
+  if (data.kind === 'partAnimation') {
+    receivePartAnimation(data.name, data.animation, data.skeleton);
     return;
   }
   if (data.kind === 'animation') {

@@ -12,6 +12,7 @@ import {
   listSubObjectRules,
 } from '../../game/objects/subObjectRules';
 import { createSoundButton } from '../shared/createSoundButton';
+import { setShownDraw } from './composedParts';
 import { $, post, viewer } from './page';
 
 export interface Effect {
@@ -205,6 +206,7 @@ const pickState = (focus: SceneFocus) => {
       : scene.states.find((each) => /idle/i.test(each.label))?.animations[0]);
 
   objectView.state = shown;
+  setShownDraw(shown?.draw);
   viewer.setSubObjectRules(listSubObjectRules(scene, shown));
   objectView.elements = listElements(scene, state ?? shown, focus);
   viewer.setClips({

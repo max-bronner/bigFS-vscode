@@ -234,6 +234,14 @@ your mod's archives.
   animation or effect on the model. Toggles for model, bones and every
   effect, and pickers for state and animation. A `ChildObject` shows what it
   inherits.
+- **new** **Composition** draws what the game draws with the object: its
+  other draw modules (at an `AttachToBoneInAnotherModule` bone; a
+  `StartHidden` one listed off), the `InitialCrew` and `InitialPayload`
+  objects a contain module seats on its `PassengerBonePrefix` bones (a
+  battering ram's crew, riders on a mumak), and a horde's members in their
+  `RankInfo` slots, each composed in turn and playing its own animation. Each
+  part has a checkbox naming the module and object it comes from, and one
+  checkbox shows or hides them all; their models load only when first drawn.
 - **Voices** lists every sound field of the object with a **▶** button each;
   nothing plays unless clicked.
 - Model, animation and texture names in an INI file are links (Ctrl+click) to

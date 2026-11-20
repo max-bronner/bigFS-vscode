@@ -14,6 +14,7 @@ import { findGameTextLabels, formatMissingTextMessage } from '../../game/text/ga
 import type { SageProblem } from '../../formats/ini/sageIniProblems';
 import type { SageDocument } from '../../formats/ini/sageIniParser';
 import type { SageIniSchema } from '../../formats/ini/sageIniSchema';
+import type { GameLanguage } from '../../services/ini/gameLanguage';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
 import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
 import { includeExists, resolveIncludeUri } from '../../services/ini/sageIniInclude';
@@ -129,6 +130,7 @@ const getIncludeDiagnostics = async (
 export const watchSageIniDiagnostics = (
   documents: SageIniDocuments,
   index: SageIniIndex,
+  gameLanguage: GameLanguage,
   locator?: EntryLocator,
 ): Disposable => {
   const collection = languages.createDiagnosticCollection(SAGE_INI_LANGUAGE);
@@ -216,6 +218,7 @@ export const watchSageIniDiagnostics = (
       collection.delete(document.uri),
     ),
     documents.onDidChangeSchema(checkAll),
+    gameLanguage.onDidChange(checkAll),
     onDidChangeSetting(
       [
         settings.iniCheckReferences,

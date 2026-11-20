@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- Fix: the WND preview, the Create-a-Hero editor, the CommandSet editor and the INI missing-text problems follow a change of game language without reopening, and a WND preview opened right after start waits for the index so it shows text.
+
+- New: the object preview draws what the game draws with the object: its other draw modules, the crew and passengers its contain module seats on passenger bones (a battering ram's crew, a mumak's archers), and a horde's members in their ranks, each with a checkbox naming the module it comes from.
+
 ## 0.2.1
 
 - Fix: APT movies show the game's text in the chosen language even when opened before the INI index finished reading, follow a change of game language without reopening, and resolve `$KEY` strings their scripts push themselves instead of showing `MISSING`.
