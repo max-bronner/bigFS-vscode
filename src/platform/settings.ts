@@ -2,7 +2,9 @@ import { workspace } from 'vscode';
 import type { Disposable } from 'vscode';
 import { createSettings } from './createSettings';
 
-export const settings = createSettings(() => workspace.getConfiguration());
+export const settings = createSettings((scope) =>
+  workspace.getConfiguration(undefined, scope),
+);
 
 export const onDidChangeSetting = (
   changed: ReadonlyArray<{ readonly key: string }>,

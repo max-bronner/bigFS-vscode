@@ -52,7 +52,7 @@ export class EffectLibrary {
       return local;
     }
     for (const keyword of keywords) {
-      for (const place of this.index.findDefinitions(keyword, name)) {
+      for (const place of this.index.findDefinitions(keyword, name, this.near)) {
         const found = (
           await parseOnce(place.uri.toString(), () =>
             readWorkspaceText(place.uri),

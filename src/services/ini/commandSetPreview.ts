@@ -1,3 +1,4 @@
+import type { Uri } from 'vscode';
 import { readWorkspaceText } from './workspaceText';
 import type { SageIniIndex } from './sageIniIndex';
 import type { SageDefinition } from './sageIniTables';
@@ -67,10 +68,11 @@ export const resolveSlots = async (
   index: SageIniIndex,
   slots: CommandSetSlot[],
   linesOf: (place: SageDefinition) => Promise<string[]>,
+  from?: Uri,
 ): Promise<ResolvedSlot[]> =>
   Promise.all(
     slots.map(async (slot) => {
-      const [place] = index.findDefinitions('CommandButton', slot.button);
+      const [place] = index.findDefinitions('CommandButton', slot.button, from);
 
       if (!place) {
         return { ...slot, defined: false };
@@ -78,7 +80,7 @@ export const resolveSlots = async (
 
       const fields = readFields(await linesOf(place));
       const label = fields.get('textlabel');
-      const text = label ? index.findString(label)?.text : undefined;
+      const text = label ? index.findString(label, from)?.text : undefined;
 
       const gated = /\bNEED_UPGRADE\b/i.test(fields.get('options') ?? '');
 
@@ -111,6 +113,7 @@ export const createCommandSetPreview = (
       index,
       readCommandSetSlots(await linesOf(definition)),
       linesOf,
+      definition.uri,
     );
     const clashes = findHotkeyClashes(slots);
     const cells = await Promise.all(
@@ -120,7 +123,7 @@ export const createCommandSetPreview = (
         }
 
         const [image] = slot.imageName
-          ? index.findDefinitions('MappedImage', slot.imageName)
+          ? index.findDefinitions('MappedImage', slot.imageName, definition.uri)
           : [];
         const picture = image && previewImage && (await previewImage(image));
         const uri =

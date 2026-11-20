@@ -111,6 +111,26 @@ export const listPassengerBones = (names: readonly string[], prefix: string): nu
   return found;
 };
 
+const passengerBones = new WeakMap<SceneSkeleton, Map<string, number[]>>();
+
+const getPassengerBones = (skeleton: SceneSkeleton, prefix: string) => {
+  let byPrefix = passengerBones.get(skeleton);
+
+  if (!byPrefix) {
+    byPrefix = new Map();
+    passengerBones.set(skeleton, byPrefix);
+  }
+
+  const key = prefix.toLowerCase();
+  let bones = byPrefix.get(key);
+
+  if (!bones) {
+    bones = listPassengerBones(skeleton.names, prefix);
+    byPrefix.set(key, bones);
+  }
+  return bones;
+};
+
 export const placePart = (
   placement: PartPlacement,
   owner: PlacedModel,
@@ -133,7 +153,7 @@ export const placePart = (
     }
     case 'passengerBone': {
       const skeleton = owner.skeleton;
-      const bones = skeleton ? listPassengerBones(skeleton.names, placement.prefix) : [];
+      const bones = skeleton ? getPassengerBones(skeleton, placement.prefix) : [];
 
       if (!skeleton || !bones.length) {
         return undefined;

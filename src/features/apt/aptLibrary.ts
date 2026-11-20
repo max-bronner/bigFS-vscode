@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
-import { getArchiveOrderKey } from '../../game/install/gameView';
+import type { ArchiveSource } from '../../services/archives/archiveSource';
+import { compareArchivePaths } from '../../game/install/gameView';
 import { getNodeUri } from '../../services/archives/nodeAddress';
 import { findChild } from '../../services/archives/virtualTree';
 
@@ -52,21 +53,28 @@ export class AptLibrary implements vscode.Disposable {
     this.onDidChangeEmitter.fire();
   }
 
-  public locate(name: string): Promise<MovieLocation | undefined> {
-    const key = toMovieKey(name);
+  public async locate(
+    name: string,
+    from: vscode.Uri,
+  ): Promise<MovieLocation | undefined> {
+    await this.archiveModel.whenReady();
+
+    const { loadOrder } = this.archiveModel;
+    const key = `${loadOrder.getStackKey(from)}/${toMovieKey(name)}`;
     let location = this.locations.get(key);
 
     if (!location) {
-      location = this.search(`${key}.apt`);
+      location = this.search(`${toMovieKey(name)}.apt`, loadOrder.getStack(from));
       this.locations.set(key, location);
     }
     return location;
   }
 
-  private async search(fileName: string): Promise<MovieLocation | undefined> {
-    await this.archiveModel.whenReady();
-
-    for (const source of this.archiveModel.getSources()) {
+  private async search(
+    fileName: string,
+    stack: readonly ArchiveSource[],
+  ): Promise<MovieLocation | undefined> {
+    for (const source of stack) {
       const loose = await findLoose(source.baseUri, fileName);
 
       if (loose) {
@@ -74,10 +82,7 @@ export class AptLibrary implements vscode.Disposable {
       }
 
       const archives = [...this.archiveModel.getArchivesOf(source.id)].sort(
-        (a, b) =>
-          getArchiveOrderKey(a.pathInSource) < getArchiveOrderKey(b.pathInSource)
-            ? -1
-            : 1,
+        (a, b) => compareArchivePaths(a.pathInSource, b.pathInSource),
       );
 
       for (const archive of archives) {

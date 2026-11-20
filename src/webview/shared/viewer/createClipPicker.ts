@@ -53,6 +53,9 @@ export const createClipPicker = (
     },
     show: (id) => {
       select.value = id ?? '';
+      if (select.value !== (id ?? '')) {
+        select.value = '';
+      }
     },
     setHasSkeleton: (hasSkeleton) => {
       hasBones = hasSkeleton;

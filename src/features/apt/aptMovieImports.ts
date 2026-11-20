@@ -46,6 +46,7 @@ interface ImportWalk {
   origins: Record<string, string>;
   sentTextures: Set<string>;
   sentMovies: Map<string, string>;
+  from: vscode.Uri;
   status?: (text: string) => void;
 }
 
@@ -82,6 +83,7 @@ export interface AptMovieImports {
     name: string,
     sentTextures: Set<string>,
     sentMovies: Map<string, string>,
+    from: vscode.Uri,
   ): Promise<MovieLoadedMessage>;
   forget(): void;
 }
@@ -95,6 +97,8 @@ export const createAptMovieImports = ({
   const loaded = new Map<string, Promise<AptDocument | undefined>>();
 
   const built = new Map<string, { stamp: string; movie: Promise<BuiltMovie> }>();
+
+  const sentPages = new WeakMap<Map<string, string>, Map<string, PageMovie>>();
 
   let generation = 0;
 
@@ -120,6 +124,7 @@ export const createAptMovieImports = ({
   const createWalk = (
     sentTextures: Set<string>,
     sentMovies: Map<string, string>,
+    from: vscode.Uri,
   ): ImportWalk => ({
     movies: new Map(),
     library: {},
@@ -128,6 +133,7 @@ export const createAptMovieImports = ({
     origins: {},
     sentTextures,
     sentMovies,
+    from,
   });
 
   const takeUnsentTextures = (
@@ -166,8 +172,9 @@ export const createAptMovieImports = ({
 
   const readImported = async (
     name: string,
+    from: vscode.Uri,
   ): Promise<FetchedMovie | undefined> => {
-    const location = await library.locate(name);
+    const location = await library.locate(name, from);
     const source = location && (await getImportedMovie(location));
 
     return location && source ? buildImported(location, source) : undefined;
@@ -185,6 +192,10 @@ export const createAptMovieImports = ({
       walk.library[key] = page;
       walk.sentMovies.set(key, stamp);
     }
+    if (!sentPages.has(walk.sentMovies)) {
+      sentPages.set(walk.sentMovies, new Map());
+    }
+    sentPages.get(walk.sentMovies)!.set(key, page);
     return page;
   };
 
@@ -223,7 +234,7 @@ export const createAptMovieImports = ({
       const fetched = new Map(
         await Promise.all(
           reads.map(
-            async ([key, name]) => [key, await readImported(name)] as const,
+            async ([key, name]) => [key, await readImported(name, walk.from)] as const,
           ),
         ),
       );
@@ -256,6 +267,7 @@ export const createAptMovieImports = ({
 
   const resolveTexts = async (
     movies: readonly PageMovie[],
+    from: vscode.Uri,
   ): Promise<Record<string, string> | undefined> => {
     await Promise.all([game.index.whenReady(), game.gameLanguage.ensure()]);
 
@@ -276,7 +288,7 @@ export const createAptMovieImports = ({
     return Object.fromEntries(
       keys.map((key) => [
         key.toLowerCase(),
-        resolveAptText(key, (label) => game.index.findString(label)?.text),
+        resolveAptText(key, (label) => game.index.findString(label, from)?.text),
       ]),
     );
   };
@@ -285,13 +297,14 @@ export const createAptMovieImports = ({
     name: string,
     sentTextures: Set<string>,
     sentMovies: Map<string, string>,
+    from: vscode.Uri,
   ): Promise<MovieLoadedMessage> => {
     const key = toMovieKey(name);
     const failed = (error: string) =>
       ({ kind: 'movieLoaded', name: key, error }) as const;
 
     try {
-      const location = await library.locate(key);
+      const location = await library.locate(key, from);
 
       if (!location) {
         return failed(`no install holds ${key}.apt`);
@@ -303,7 +316,7 @@ export const createAptMovieImports = ({
         return failed(`${key}.apt at ${location.origin} does not read`);
       }
 
-      const walk = createWalk(sentTextures, sentMovies);
+      const walk = createWalk(sentTextures, sentMovies, from);
       const movie = takeMovie(
         walk,
         key,
@@ -319,7 +332,7 @@ export const createAptMovieImports = ({
         textures: walk.textures,
         unresolved: walk.unresolved,
         origins: walk.origins,
-        texts: await resolveTexts([...walk.movies.values()]),
+        texts: await resolveTexts([...walk.movies.values()], from),
       };
     } catch (error) {
       return failed(describeError(error));
@@ -335,7 +348,7 @@ export const createAptMovieImports = ({
     progress?.status(`Reading ${document.name}…`);
 
     const root = await document.build();
-    const walk = createWalk(sentTextures, sentMovies);
+    const walk = createWalk(sentTextures, sentMovies, document.uri);
     const answers = readEngineAnswers(game.state)[toMovieKey(document.name)];
     let early: Promise<void> | undefined;
 
@@ -352,7 +365,7 @@ export const createAptMovieImports = ({
         library: {},
         unresolved: [],
         origins: {},
-        texts: await resolveTexts([root.movie]),
+        texts: await resolveTexts([root.movie], document.uri),
         answers,
       });
       early.catch(() => undefined);
@@ -379,7 +392,10 @@ export const createAptMovieImports = ({
       library: sent,
       unresolved,
       origins,
-      texts: await resolveTexts([...movies.values()]),
+      texts: await resolveTexts(
+        [...movies.values(), ...(sentPages.get(sentMovies)?.values() ?? [])],
+        document.uri,
+      ),
       answers,
     };
   };

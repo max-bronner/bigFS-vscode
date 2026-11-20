@@ -14,6 +14,7 @@ import type { ArchiveChange, ArchiveRegistry } from './archiveRegistry';
 import { createArchiveScanner } from './archiveScanner';
 import type { ArchiveScanner } from './archiveScanner';
 import type { ArchiveSource } from './archiveSource';
+import { LoadOrder } from './loadOrder';
 import { isInReadOnlySource } from './sourceAccess';
 import type { VirtualNode } from './virtualNode';
 
@@ -30,6 +31,8 @@ export class ArchiveModel {
   public readonly onDidChangeArchive: Event<ArchiveChange>;
 
   public readonly onDidScan: Event<void>;
+
+  public readonly loadOrder: LoadOrder = new LoadOrder(this);
 
   constructor(log: LogOutputChannel, options: ArchiveModelOptions = {}) {
     this.registry = createArchiveRegistry(log, {

@@ -73,14 +73,19 @@ your mod's archives.
   index tables alone, recent files come first, and a path several archives hold
   is listed once per archive with the copy the game loads marked. The button on
   a row reveals it in the archive tree.
-- **Load order** follows the game: a loose file beats every archive of its
-  install, archives go by their path below it (`___a.big` before `b.big`, the
-  first holding a file wins), and installs are layered by the marker file in
-  their folder: a mod, then ROTWK (`lotrbfme2ep1.exe`), then BFME II
-  (`lotrbfme2.exe`). `bigfs.baseGameFolder` (with `bigfs.underlyingGameFolder`
-  beneath it, found from the registry on Windows when empty) is the lowest
-  layer, so a mod-only workspace still resolves the base game's files. Folders
-  of one kind, such as two mods, keep their workspace folder order.
+- **Load order** follows the game, per workspace folder: a loose file beats
+  every archive of its install, archives go by their path below it
+  (`___a.big` before `b.big`, the first holding a file wins), and each folder
+  resolves against its own game's installs. A BFME II install (`lotrbfme2.exe`)
+  sees itself alone, a ROTWK install (`lotrbfme2ep1.exe`) sees itself then
+  BFME II, a mod folder sees itself then its game's installs; other workspace
+  folders never change what a folder sees, so a BFME II folder never shows a
+  ROTWK file, definition or string. **new** `bigfs.folderGame` states which
+  game a mod folder is for (`auto`: ROTWK when a ROTWK install is known, else
+  BFME II). `bigfs.baseGameFolder` (with `bigfs.underlyingGameFolder` beneath
+  it, found from the registry on Windows when empty) supplies the installs a
+  mod-only workspace resolves against. The explorer's game view shows the load
+  order of the highest folder: a mod, else ROTWK, else BFME II.
 - **Compare with Base Game** lists what the workspace adds and changes
   against an untouched install (`bigfs.baseGameFolder`), each side after
   the game's load order, with a diff for every changed text file, and
@@ -637,6 +642,7 @@ row, file or editor they act on.
 | `bigfs.language` | `auto` | Game text language |
 | `bigfs.explorer.view` | `archives` | `archives` or `game` view |
 | `bigfs.baseGameFolder`, `bigfs.underlyingGameFolder` | empty | Untouched installs, the lowest load-order layers |
+| `bigfs.folderGame` | `auto` | Per workspace folder: whether a mod folder is for `bfme2` or `rotwk`, which decides the installs beneath it |
 | `bigfs.game.executable`, `bigfs.game.arguments` | empty | What Launch Game with Mod starts |
 | `bigfs.ffmpegPath`, `bigfs.vp6.keyFrameSeconds` | empty, `2` | VP6 conversion |
 

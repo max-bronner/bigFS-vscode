@@ -108,6 +108,7 @@ const createObjectPreview = (
       receive(message).catch((error: unknown) => panel.post(toNotice(error))),
     onDispose: () => {
       isReady = false;
+      compositionGeneration++;
       onClose();
     },
   });
@@ -131,13 +132,15 @@ const createObjectPreview = (
         await panel.post({
           kind: 'partModel',
           name: message.name,
-          scene: await readModel(message.name),
+          scene: await readModel(message.name).catch(() => undefined),
         });
         break;
       case 'loadPartAnimation':
         await panel.post({
           kind: 'partAnimation',
-          ...(await readAnimation(message.name)),
+          ...(await readAnimation(message.name).catch(() => ({
+            name: message.name,
+          }))),
         });
         break;
     }
@@ -148,7 +151,7 @@ const createObjectPreview = (
     objectName: string,
   ): Promise<ComposableObject | undefined> => {
     const place = TEMPLATE_KEYWORDS.map(
-      (keyword) => index.findDefinitions(keyword, objectName)[0],
+      (keyword) => index.findDefinitions(keyword, objectName, uri)[0],
     ).find(Boolean);
     const text =
       place &&
@@ -171,8 +174,11 @@ const createObjectPreview = (
   ): Promise<void> => {
     const generation = ++compositionGeneration;
     const composition = await composeObject(object, {
-      readObject: (objectName) => readComposable(schema, objectName),
-      resolveMacro: (macro) => index.findMacro(macro)?.value,
+      readObject: (objectName) =>
+        generation === compositionGeneration
+          ? readComposable(schema, objectName)
+          : Promise.resolve(undefined),
+      resolveMacro: (macro) => index.findMacro(macro, uri)?.value,
     }).catch(
       (error: unknown): ObjectComposition => ({
         parts: [],

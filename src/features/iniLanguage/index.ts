@@ -54,7 +54,7 @@ export const registerIniLanguage = (
     ...registerAssetLinks(selector, documents, locator),
     ...registerFileUses(documents, index),
     ...registerUnusedDefinitions(index),
-    watchHotkeyClashes(documents, index),
+    watchHotkeyClashes(documents, index, gameLanguage),
     registerMappedImageLens(selector),
     languages.registerCallHierarchyProvider(
       selector,
@@ -89,7 +89,7 @@ export const registerIniLanguage = (
         mappedImagePreview,
         createCommandSetPreview(index, mappedImagePreview),
         (parsed, line, token, uri) =>
-          describeSound(soundLookup, parsed, line, token, uri),
+          describeSound((name) => soundLookup(name, uri), parsed, line, token, uri),
       ),
     ),
     languages.registerDefinitionProvider(

@@ -24,6 +24,7 @@ export interface ModelPage {
     skeleton?: SceneSkeleton;
   }): void;
   showNotice(text: string): void;
+  showModelError(text: string): void;
   setUses(uses: FileUse[]): void;
   setRelated(openedFile: string, files: RelatedModel[]): void;
 }
@@ -114,6 +115,9 @@ export const createModelPage = (
         next.animation && next.skeleton
           ? [{ id: OWN, label: `${next.animation.name} (this file)` }]
           : [];
+      if (!isFirst) {
+        viewer.clearClip();
+      }
       if (thisFile.length || !isFirst) {
         viewer.setClips({ own: thisFile });
       }
@@ -134,6 +138,11 @@ export const createModelPage = (
       }
     },
     showNotice: viewer.showStatus,
+    showModelError: (text) => {
+      pendingClip = undefined;
+      related.show(message?.relatedFile);
+      viewer.showStatus(text);
+    },
     setRelated: (opened, files) => {
       openedFile = opened;
       related.setList(opened, files);

@@ -33,6 +33,12 @@ const queryBfme2Folder = (): Promise<string | undefined> =>
     );
   });
 
+export const findRegisteredBfme2 = async (): Promise<string | undefined> => {
+  const found = await queryBfme2Folder();
+
+  return found && (await hasFile(found, 'lotrbfme2.exe')) ? found : undefined;
+};
+
 export const findBaseGameFolders = async (): Promise<string[]> => {
   const base = settings.baseGameFolder.get().trim();
   const named = settings.underlyingGameFolder.get().trim();
@@ -48,9 +54,9 @@ export const findBaseGameFolders = async (): Promise<string[]> => {
     base &&
     detectInstallKind(await readdir(base).catch(() => [])) === 'rotwk'
   ) {
-    const found = await queryBfme2Folder();
+    const found = await findRegisteredBfme2();
 
-    if (found && (await hasFile(found, 'lotrbfme2.exe'))) {
+    if (found) {
       folders.push(found);
     }
   }

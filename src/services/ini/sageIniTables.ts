@@ -54,6 +54,7 @@ export interface SageIniTables {
   readonly definitions: Map<string, Map<string, SageDefinition[]>>;
   readonly references: Map<string, Map<string, SageReference[]>>;
   readonly macros: Map<string, SageMacro>;
+  readonly macroDefinitions: Map<string, SageMacro[]>;
   readonly constantUses: Map<string, SageReference[]>;
   readonly bodyTokens: Map<string, SageBodyToken[]>;
   readonly strings: Map<string, SageStringPlace[]>;
@@ -229,6 +230,7 @@ export const createSageIniTables = (): SageIniTables => {
     definitions,
     references,
     macros,
+    macroDefinitions,
     constantUses,
     bodyTokens,
     strings,

@@ -60,7 +60,7 @@ export const composeEffectiveObject = async (
   const find = async (name: string) => {
     await index.whenReady();
     for (const keyword of TEMPLATES) {
-      const [place] = index.findDefinitions(keyword, name);
+      const [place] = index.findDefinitions(keyword, name, source);
 
       if (place) {
         return place;

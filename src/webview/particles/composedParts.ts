@@ -1,5 +1,5 @@
 import { poseAt } from '../../formats/w3d/w3dPose';
-import type { Vec3 } from '../../formats/w3d/w3dPose';
+import type { Pose, Vec3 } from '../../formats/w3d/w3dPose';
 import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
 import type { ModelScene, SceneSkeleton } from '../../formats/w3d/w3dScene';
 import { describePartSource } from '../../game/objects/objectComposition';
@@ -16,6 +16,7 @@ import {
 import type { Matrix4, PlacedModel } from '../../game/objects/placeComposedParts';
 import { createModelRenderer } from '../shared/modelRenderer';
 import type { ModelRenderer } from '../shared/modelRenderer';
+import { getClipFrame } from '../shared/viewer/clipTiming';
 import type { ViewerCamera } from '../shared/viewer/createViewer';
 import { getModelOrigin } from './emitterOrigin';
 import { $, post, viewer } from './page';
@@ -44,6 +45,16 @@ const element = <K extends keyof HTMLElementTagNameMap>(
 const models = new Map<string, Loaded<ModelScene>>();
 const animations = new Map<string, Loaded<PartAnimation>>();
 const renderers = new Map<string, ModelRenderer>();
+
+interface PosedPart {
+  frame: number;
+  skeleton: SceneSkeleton | undefined;
+  pose: Pose | undefined;
+}
+
+const NO_CLIP = -1;
+const posedParts = new Map<string, PosedPart>();
+const skinnedFrames = new Map<string, number>();
 
 const isPartOn = (part: ComposedPart) =>
   composition.switched.get(part.id) ?? part.isShown;
@@ -102,11 +113,36 @@ const getRenderer = (key: string, scene: ModelScene) => {
 };
 
 const getFrame = (animation: W3dAnimation, seconds: number) => {
-  const frames = Math.max(1, animation.frameCount);
-  const frame = (seconds * animation.frameRate) % frames;
+  const frame = getClipFrame(animation, seconds);
 
   return animation.playsWholeFrames ? Math.floor(frame) : frame;
 };
+
+const getPosedPart = (
+  key: string,
+  skeleton: SceneSkeleton | undefined,
+  clip: PartAnimation | undefined,
+  seconds: number,
+): PosedPart => {
+  const frame = clip ? getFrame(clip.animation, seconds) : NO_CLIP;
+  const cached = posedParts.get(key);
+
+  if (cached && cached.frame === frame && cached.skeleton === skeleton) {
+    return cached;
+  }
+
+  const posed = {
+    frame,
+    skeleton,
+    pose: skeleton && clip ? poseAt(skeleton, clip.animation, frame) : undefined,
+  };
+
+  posedParts.set(key, posed);
+  return posed;
+};
+
+const isAnimationLoading = (part: ComposedPart) =>
+  !!part.animation && animations.get(part.animation.toLowerCase()) === 'loading';
 
 const toLocalDirection = (inverse: Matrix4, [x, y, z]: Vec3): Vec3 => {
   const local: Vec3 = [
@@ -155,7 +191,6 @@ const drawParts = ({ matrix, basis }: ViewerCamera) => {
     pose: viewer.getPose(),
   };
   const placed = new Map<string | undefined, PlacedModel>([[undefined, root]]);
-  const posed = new Set<string>();
   const seconds = viewer.getTime();
   const light = basis.forward.map((axis) => -axis) as Vec3;
 
@@ -174,21 +209,20 @@ const drawParts = ({ matrix, basis }: ViewerCamera) => {
     }
 
     const skeleton = scene?.skeleton;
-    const pose =
-      skeleton && (clip ? poseAt(skeleton, clip.animation, getFrame(clip.animation, seconds)) : undefined);
+    const key = `${part.model ?? ''}|${clip ? part.animation : ''}`.toLowerCase();
+    const { frame, pose } = getPosedPart(key, skeleton, clip, seconds);
 
     placed.set(part.id, { matrix: at, skeleton, pose });
 
-    const key = `${part.model ?? ''}|${clip ? part.animation : ''}`.toLowerCase();
-    const renderer = scene && getRenderer(key, scene);
+    const renderer = scene && !isAnimationLoading(part) && getRenderer(key, scene);
     const inverse = invertAffine(at);
 
     if (!renderer || !inverse) {
       continue;
     }
-    if (!posed.has(key)) {
+    if (skinnedFrames.get(key) !== frame) {
       renderer.setPose(pose);
-      posed.add(key);
+      skinnedFrames.set(key, frame);
     }
     renderer.draw(multiplyMatrices(Array.from(matrix), at), {
       light: toLocalDirection(inverse, light),
@@ -255,7 +289,47 @@ const renderComposition = () => {
   );
 };
 
+const releaseUnused = (parts: readonly ComposedPart[]): void => {
+  const modelNames = new Set(parts.flatMap((part) => (part.model ? [part.model.toLowerCase()] : [])));
+  const animationNames = new Set(
+    parts.flatMap((part) => (part.animation ? [part.animation.toLowerCase()] : [])),
+  );
+  const keys = new Set(
+    parts.flatMap((part) => {
+      const model = part.model?.toLowerCase() ?? '';
+      const animation = part.animation?.toLowerCase() ?? '';
+
+      return [`${model}|${animation}`, `${model}|`];
+    }),
+  );
+
+  for (const [key, renderer] of renderers) {
+    if (!keys.has(key)) {
+      renderer.setModel(undefined);
+      renderers.delete(key);
+    }
+  }
+  for (const key of [...posedParts.keys(), ...skinnedFrames.keys()]) {
+    if (!keys.has(key)) {
+      posedParts.delete(key);
+      skinnedFrames.delete(key);
+    }
+  }
+  for (const [name, loaded] of models) {
+    if (loaded !== 'loading' && !modelNames.has(name)) {
+      models.delete(name);
+    }
+  }
+  for (const [name, loaded] of animations) {
+    if (loaded !== 'loading' && !animationNames.has(name)) {
+      animations.delete(name);
+    }
+  }
+};
+
 export const showComposition = (next: ObjectComposition): void => {
+  releaseUnused(next.parts);
+
   const isSameObject =
     next.parts.length === composition.parts.length &&
     next.parts.every((part, at) => part.id === composition.parts[at].id);

@@ -229,6 +229,7 @@ const createParticlePreview = (
     const names = await locator.findNames(
       (name) => name.endsWith('.w3d') && !name.endsWith('_skl.w3d'),
       '**/*.w3d',
+      uri,
     );
     const picked = await vscode.window.showQuickPick(
       [

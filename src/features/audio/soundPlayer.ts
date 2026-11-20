@@ -131,10 +131,12 @@ export const registerSoundPlayer = (
     lastNear = near;
     await index.whenReady();
 
+    const audioLookup = createAudioLookup(index, documents);
+
     try {
       const file = await findSoundFile(
         name,
-        createAudioLookup(index, documents),
+        (lookupName) => audioLookup(lookupName, near),
         async (candidate) => !!(await locator.findUri(candidate, near)),
       );
 

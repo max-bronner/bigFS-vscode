@@ -140,7 +140,8 @@ export const createSageIniHoverProvider = (
       documents.parse(document),
       documents.getSchema(),
     ]);
-    const lookupMacro = (name: string) => index.findMacro(name)?.value;
+    const lookupMacro = (name: string) =>
+      index.findMacro(name, document.uri)?.value;
 
     const call = parsed.calls.find(
       ({ line, start, end }) =>
@@ -215,7 +216,7 @@ export const createSageIniHoverProvider = (
 
     await index.whenReady();
 
-    const macro = index.findMacro(token.text);
+    const macro = index.findMacro(token.text, document.uri);
 
     if (macro) {
       const text = new MarkdownString();
@@ -236,7 +237,7 @@ export const createSageIniHoverProvider = (
       return new Hover(text, range);
     }
 
-    const string = index.findString(token.text);
+    const string = index.findString(token.text, document.uri);
 
     if (string) {
       const text = new MarkdownString();
@@ -248,7 +249,7 @@ export const createSageIniHoverProvider = (
     }
 
     const [commandSet] = previewCommandSet
-      ? index.findDefinitions('CommandSet', token.text)
+      ? index.findDefinitions('CommandSet', token.text, document.uri)
       : [];
 
     if (commandSet && previewCommandSet) {
@@ -270,7 +271,7 @@ export const createSageIniHoverProvider = (
       return new Hover(contents ? [contents, sound] : sound, range);
     }
     const [image] = previewImage
-      ? index.findDefinitions('MappedImage', token.text)
+      ? index.findDefinitions('MappedImage', token.text, document.uri)
       : [];
     const picture =
       image && previewImage ? await previewImage(image) : undefined;

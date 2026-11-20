@@ -1,4 +1,5 @@
 import { FileType, ProgressLocation, Uri, window, workspace } from "vscode";
+import type { LoadOrder } from "../archives/loadOrder";
 import type { Disposable, LogOutputChannel, TextDocument } from "vscode";
 import type { ArchiveModel } from "../archives/archiveModel";
 import type { VirtualNode } from "../archives/virtualNode";
@@ -41,7 +42,7 @@ export class SageIniIndex implements Disposable {
 
   private readonly pendingOpen = new Map<string, NodeJS.Timeout>();
 
-  private activeStrings?: Map<string, SageStringPlace>;
+  private readonly activeStrings = new Map<string, Map<string, SageStringPlace>>();
   private language?: string;
 
   private indexed = new Set<string>();
@@ -88,6 +89,7 @@ export class SageIniIndex implements Disposable {
       ),
       archiveModel.onDidScan(() => {
         this.needsBuild = true;
+        this.activeStrings.clear();
       }),
       watcher,
       folders,
@@ -123,17 +125,30 @@ export class SageIniIndex implements Disposable {
   public reset(): void {
     this.tables.clear();
     this.openVersions.clear();
-    this.activeStrings = undefined;
+    this.activeStrings.clear();
     this.indexed.clear();
     this.needsBuild = true;
   }
 
-  public findMacro(name: string): SageMacro | undefined {
-    return this.tables.macros.get(name.toLowerCase());
+  private get loadOrder(): LoadOrder | undefined {
+    return (this.archiveModel as Partial<ArchiveModel> | undefined)?.loadOrder;
   }
 
-  public findString(value: string): SageStringPlace | undefined {
-    return findString(this.getActiveStringTable(), value) as SageStringPlace | undefined;
+  private order<T extends { uri: Uri }>(places: readonly T[], from?: Uri): readonly T[] {
+    return this.loadOrder?.orderPlaces(places, from) ?? places;
+  }
+
+  public findMacro(name: string, from?: Uri): SageMacro | undefined {
+    const key = name.toLowerCase();
+
+    if (!this.loadOrder) {
+      return this.tables.macros.get(key);
+    }
+    return this.order(this.tables.macroDefinitions.get(key) ?? [], from)[0];
+  }
+
+  public findString(value: string, from?: Uri): SageStringPlace | undefined {
+    return findString(this.getActiveStringTable(from), value) as SageStringPlace | undefined;
   }
 
   public get stringCount(): number {
@@ -143,48 +158,59 @@ export class SageIniIndex implements Disposable {
   public setLanguage(language: string | undefined): void {
     if (language !== this.language) {
       this.language = language;
-      this.activeStrings = undefined;
+      this.activeStrings.clear();
     }
   }
 
-  private getActiveStringTable(): Map<string, SageStringPlace> {
-    if (!this.activeStrings) {
-      const table = new Map<string, SageStringPlace>();
+  private getActiveStringTable(from?: Uri): Map<string, SageStringPlace> {
+    const key = from ? `/${this.loadOrder?.getStackKey(from) ?? ""}` : "";
+    let table = this.activeStrings.get(key);
 
-      for (const [key, places] of this.tables.strings) {
-        const usable = places.filter(
+    if (!table) {
+      table = new Map<string, SageStringPlace>();
+
+      for (const [label, places] of this.tables.strings) {
+        const usable = this.order(places, from).filter(
           (place) => !place.language || place.language === this.language,
         );
         const chosen =
           usable.find((place) => !isMapStringTable(place.uri)) ?? usable[0];
 
         if (chosen) {
-          table.set(key, chosen);
+          table.set(label, chosen);
         }
       }
-      this.activeStrings = table;
+      this.activeStrings.set(key, table);
     }
-    return this.activeStrings;
+    return table;
   }
 
   public findMacroUses(name: string): readonly SageReference[] {
     return this.tables.constantUses.get(name.toLowerCase()) ?? [];
   }
 
-  public getMacros(): SageMacro[] {
-    return [...this.tables.macros.values()].sort((a, b) =>
-      a.name.localeCompare(b.name),
-    );
+  public getMacros(from?: Uri): SageMacro[] {
+    const macros = this.loadOrder
+      ? [...this.tables.macros.keys()].flatMap((key) => {
+          const found = this.findMacro(key, from);
+
+          return found ? [found] : [];
+        })
+      : [...this.tables.macros.values()];
+
+    return macros.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   public findDefinitions(
     namespace: string,
     name: string,
+    from?: Uri,
   ): readonly SageDefinition[] {
-    return (
+    return this.order(
       this.tables.definitions
         .get(toCanonicalNamespace(namespace).toLowerCase())
-        ?.get(name.toLowerCase()) ?? []
+        ?.get(name.toLowerCase()) ?? [],
+      from,
     );
   }
 
@@ -350,7 +376,7 @@ export class SageIniIndex implements Disposable {
 
   private purge(rootKey: string): void {
     this.tables.purge(rootKey);
-    this.activeStrings = undefined;
+    this.activeStrings.clear();
   }
 
   private isOpenIni(document: TextDocument): boolean {
@@ -500,7 +526,7 @@ export class SageIniIndex implements Disposable {
 
   private indexStrings(uri: Uri, text: string, language?: string): void {
     this.tables.replaceStrings(uri, parseStringTable(text), language);
-    this.activeStrings = undefined;
+    this.activeStrings.clear();
   }
 
   private indexContent(

@@ -1,3 +1,4 @@
+import type { Uri } from 'vscode';
 import { createParseCache } from './workspaceText';
 import { readAudioDefinition } from '../../game/audio/sageAudioResolve';
 import type { AudioLookup } from '../../game/audio/sageAudioResolve';
@@ -23,17 +24,17 @@ const PARSE_REUSE_MS = 5000;
 export const createAudioLookup = (
   index: SageIniIndex,
   documents: SageIniDocuments,
-): AudioLookup => {
+): ((name: string, from?: Uri) => ReturnType<AudioLookup>) => {
   const cache = createParseCache(documents);
   let cachedAt = Date.now();
 
-  return async (name) => {
+  return async (name, from) => {
     if (Date.now() - cachedAt > PARSE_REUSE_MS) {
       cache.clear();
       cachedAt = Date.now();
     }
     for (const keyword of [...AUDIO_KEYWORDS, VIDEO_KEYWORD]) {
-      const [place] = index.findDefinitions(keyword, name);
+      const [place] = index.findDefinitions(keyword, name, from);
       const parsed = place && (await cache.get(place.uri));
 
       if (!place || !parsed) {

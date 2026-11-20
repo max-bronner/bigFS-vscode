@@ -69,6 +69,16 @@ export const compareArchivePaths = (a: string, b: string): number => {
   return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
 };
 
+export interface LoadPosition {
+  layer: number;
+  archive?: string;
+}
+
+export const compareLoadPositions = (a: LoadPosition, b: LoadPosition): number =>
+  a.layer - b.layer ||
+  (a.archive === undefined ? 0 : 1) - (b.archive === undefined ? 0 : 1) ||
+  compareArchivePaths(a.archive ?? '', b.archive ?? '');
+
 export interface InstallFiles<T> {
   loose: GameFile<T>[];
   archives: { pathInInstall: string; files: GameFile<T>[] }[];

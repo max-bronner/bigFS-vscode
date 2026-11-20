@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.3
+
+- Fix: after the game language changes, hotkey clash warnings on CommandSets are checked again in the new language, and the `$KEY` text of APT movies a script loaded follows the new language too instead of keeping the old one.
+
+- Fix: the published .vsix no longer contains the repository's release workflow file.
+
+- Fix: every workspace folder resolves files and INI data against its own load order, so a BFME II folder never sees ROTWK's copies when ROTWK is open beside it or named as the base game. The BFME II main menu now draws BFME II's buttons instead of ROTWK's, and hovers, go to definition, diagnostics, APT text, sounds and previews take the definition, string or macro the folder's own game loads.
+
+- Fix: when several places define one INI name, the winner follows the game's load order (loose files before archives, `___a.big` before `b.big`, a mod before its game) instead of the order the files were read in, so a saved file no longer drops behind the copies it overrides.
+
+- New: the `bigfs.folderGame` setting states per workspace folder whether a mod folder is for BFME II or ROTWK (`auto` picks ROTWK when a ROTWK install is known). A ROTWK folder with no BFME II open finds BFME II from the registry, as the game does.
+
 ## 0.2.2
 
 - Fix: the WND preview, the Create-a-Hero editor, the CommandSet editor and the INI missing-text problems follow a change of game language without reopening, and a WND preview opened right after start waits for the index so it shows text.

@@ -60,7 +60,7 @@ export const createSageIniDefinitionProvider = (
 
     await index.whenReady();
 
-    const macro = index.findMacro(symbol.name);
+    const macro = index.findMacro(symbol.name, document.uri);
 
     if (macro) {
       return [
@@ -83,7 +83,7 @@ export const createSageIniDefinitionProvider = (
     }
 
     const found = symbol.namespaces.flatMap((namespace) =>
-      index.findDefinitions(namespace, symbol.name),
+      index.findDefinitions(namespace, symbol.name, document.uri),
     );
 
     const places = found.filter(
@@ -102,7 +102,7 @@ export const createSageIniDefinitionProvider = (
 
     const string =
       !places.length && !symbol.isDeclaration
-        ? index.findString(symbol.name)
+        ? index.findString(symbol.name, document.uri)
         : undefined;
 
     if (string) {
