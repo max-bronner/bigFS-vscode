@@ -57,6 +57,9 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPreviewPage>) => {
     case 'animation':
       modelPage?.play(data);
       break;
+    case 'modelError':
+      modelPage?.showModelError(data.message);
+      break;
     case 'animationError':
       modelPage?.showNotice(data.message);
       break;

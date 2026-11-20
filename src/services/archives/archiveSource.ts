@@ -5,8 +5,9 @@ import {
   isInsideSource,
   orderLayers,
 } from '../../game/install/installLayers';
-import type { InstallKind } from '../../game/install/installLayers';
-import { findBaseGameFolders } from './baseGameFolders';
+import type { GameId, InstallKind } from '../../game/install/installLayers';
+import { settings } from '../../platform/settings';
+import { findBaseGameFolders, findRegisteredBfme2 } from './baseGameFolders';
 
 export interface ArchiveSource {
   readonly id: string;
@@ -14,6 +15,7 @@ export interface ArchiveSource {
   readonly baseUri: Uri;
   readonly kind: InstallKind;
   readonly base: boolean;
+  readonly game?: GameId;
   readonly external: boolean;
 }
 
@@ -45,6 +47,12 @@ const detectKind = async (folder: Uri): Promise<InstallKind> => {
   }
 };
 
+const readFolderGame = (folder: Uri): GameId | undefined => {
+  const game = settings.folderGame.getFor(folder);
+
+  return game === 'bfme2' || game === 'rotwk' ? game : undefined;
+};
+
 export const createSources = async (): Promise<ArchiveSource[]> => {
   const taken = new Set<string>();
   const workspaceFolders = workspace.workspaceFolders ?? [];
@@ -71,7 +79,26 @@ export const createSources = async (): Promise<ArchiveSource[]> => {
       kind: await detectKind(folder.uri),
       base: baseFolders.some((base) => sameFolder(base, folder.uri)),
       external: false,
+      game: readFolderGame(folder.uri),
     });
+  }
+
+  const baseKinds = await Promise.all(baseFolders.map(detectKind));
+  const isForRotwk =
+    baseKinds.includes('rotwk') ||
+    sources.some((source) => source.kind === 'rotwk' || source.game === 'rotwk');
+
+  if (
+    isForRotwk &&
+    !baseKinds.includes('bfme2') &&
+    !sources.some((source) => source.kind === 'bfme2') &&
+    !settings.underlyingGameFolder.get().trim()
+  ) {
+    const registered = await findRegisteredBfme2();
+
+    if (registered) {
+      baseFolders.push(Uri.file(registered));
+    }
   }
 
   for (const folder of baseFolders) {

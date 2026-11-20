@@ -5,6 +5,7 @@ import {
   commands,
   window,
 } from 'vscode';
+import type { Uri } from 'vscode';
 import type { EntryLocator } from '../entryLocator';
 import { settings } from '../../platform/settings';
 import { decideAssetCheck } from '../../game/ini-tools/assetCheckPolicy';
@@ -145,12 +146,13 @@ export const getAssetDiagnostics = (
 
 export const getAssetNamesToCheck = async (
   locator: EntryLocator | undefined,
+  from?: Uri,
 ): Promise<Set<string> | undefined> => {
   if (!locator) {
     return undefined;
   }
 
-  const names = await locator.getFileNames();
+  const names = await locator.getFileNames(from);
 
   return shouldCheckAssets(names) ? names : undefined;
 };
@@ -159,8 +161,9 @@ export const getCheckedAssetDiagnostics = async (
   parsed: SageDocument,
   locator: EntryLocator | undefined,
   source: string,
+  from?: Uri,
 ): Promise<Diagnostic[]> => {
-  let names = await getAssetNamesToCheck(locator);
+  let names = await getAssetNamesToCheck(locator, from);
 
   if (!names) {
     return [];
@@ -175,7 +178,7 @@ export const getCheckedAssetDiagnostics = async (
     first.length &&
     (await locator!.recheck(first.flatMap((reference) => reference.candidates)))
   ) {
-    names = await locator!.getFileNames();
+    names = await locator!.getFileNames(from);
   }
   return getAssetDiagnostics(parsed, names, source, references);
 };

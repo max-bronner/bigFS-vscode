@@ -94,6 +94,7 @@ export type ToPreviewPage =
       skeleton?: SceneSkeleton;
     }
   | { kind: 'animationError'; message: string }
+  | { kind: 'modelError'; file: string; message: string }
   | { kind: 'videoFrame'; index: number; pixels: Uint8Array }
   | { kind: 'videoError'; message: string };
 

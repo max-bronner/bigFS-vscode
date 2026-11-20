@@ -280,6 +280,7 @@ class Composer {
   readonly notes: string[] = [];
   private readonly read = new Map<string, Promise<ComposableObject | undefined>>();
   private isOverBudget = false;
+  private readonly idRepeats = new Map<string, number>();
 
   constructor(private readonly sources: CompositionSources) {}
 
@@ -294,16 +295,47 @@ class Composer {
     return found;
   }
 
+  private isFull(): boolean {
+    if (this.parts.length < MAX_COMPOSED_PARTS) {
+      return false;
+    }
+    if (!this.isOverBudget) {
+      this.notes.push(`Stopped at ${MAX_COMPOSED_PARTS} parts; the rest are left out`);
+      this.isOverBudget = true;
+    }
+    return true;
+  }
+
   private add(part: Omit<ComposedPart, 'id'>): ComposedPart | undefined {
-    if (this.parts.length >= MAX_COMPOSED_PARTS) {
-      if (!this.isOverBudget) {
-        this.notes.push(`Stopped at ${MAX_COMPOSED_PARTS} parts; the rest are left out`);
-        this.isOverBudget = true;
-      }
+    if (this.isFull()) {
       return undefined;
     }
 
-    const added = { id: `part${this.parts.length + 1}`, ...part };
+    const { placement, source } = part;
+    const where =
+      placement.kind === 'passengerBone'
+        ? `${placement.prefix}${placement.slot}`
+        : placement.kind === 'slot'
+          ? `${placement.x},${placement.y}`
+          : placement.kind === 'attachBone'
+            ? placement.bone
+            : '';
+    const base = [
+      part.parent ?? '',
+      source.owner,
+      source.moduleTag ?? source.moduleType,
+      source.field,
+      part.draw ?? part.object ?? '',
+      placement.kind,
+      where,
+    ]
+      .join('|')
+      .toLowerCase();
+    const repeats = this.idRepeats.get(base) ?? 0;
+
+    this.idRepeats.set(base, repeats + 1);
+
+    const added = { id: repeats ? `${base}#${repeats}` : base, ...part };
 
     this.parts.push(added);
     return added;
@@ -437,15 +469,16 @@ class Composer {
       moduleTag: module.moduleTag,
       field,
     });
-    const seatOrHold = async (occupant: ComposableObject, field: string) => {
+    const findSeat = (occupant: ComposableObject) => {
       const kinds = readKindOf(occupant.parsed);
-      const seat = seats.find((each) => !each.kind || kinds.includes(each.kind));
 
-      if (!seat) {
-        inside.set(occupant.name, (inside.get(occupant.name) ?? 0) + 1);
-        return;
-      }
-
+      return seats.find((each) => !each.kind || kinds.includes(each.kind));
+    };
+    const seatOn = async (
+      occupant: ComposableObject,
+      seat: (typeof seats)[number],
+      field: string,
+    ) => {
       const slot = seat.taken++;
 
       await this.addObject(
@@ -482,13 +515,19 @@ class Composer {
         horde &&
         (await this.readMember(horde.memberName, [...chain, lower(occupant.name)], occupant.name));
 
-      for (let at = 0; at < count && this.parts.length < MAX_COMPOSED_PARTS; at++) {
-        if (!horde) {
-          await seatOrHold(occupant, field);
-        } else if (member) {
-          for (let each = 0; each < horde.slots.length; each++) {
-            await seatOrHold(member, field);
-          }
+      const seated = horde ? member : occupant;
+      const perRound = horde ? horde.slots.length : 1;
+      const seat = seated && findSeat(seated);
+
+      if (seated && !seat) {
+        if (this.parts.length < MAX_COMPOSED_PARTS) {
+          inside.set(seated.name, (inside.get(seated.name) ?? 0) + count * perRound);
+        }
+        continue;
+      }
+      for (let at = 0; seated && seat && at < count && this.parts.length < MAX_COMPOSED_PARTS; at++) {
+        for (let each = 0; each < perRound && !this.isFull(); each++) {
+          await seatOn(seated, seat, field);
         }
       }
     }
@@ -562,6 +601,9 @@ class Composer {
     const member = horde && (await this.readMember(horde.memberName, chain, object.name));
 
     for (const slot of member ? horde.slots : []) {
+      if (this.isFull()) {
+        break;
+      }
       await this.addObject(
         member!,
         {

@@ -24,8 +24,9 @@ interface FoundImage {
 const findImage = async (
   name: string,
   index: SageIniIndex,
+  from: Uri,
 ): Promise<{ found?: FoundImage; near?: Uri }> => {
-  const definition = index.findDefinitions('MappedImage', name)[0];
+  const definition = index.findDefinitions('MappedImage', name, from)[0];
 
   if (definition) {
     const mapped = await readMappedImage(definition);
@@ -50,7 +51,7 @@ export const resolveMappedImages = async (
   for (const name of names.slice(0, MAX_NAMES)) {
     answer.images[name] = null;
     try {
-      const { found, near: beside = near } = await findImage(name, index);
+      const { found, near: beside = near } = await findImage(name, index, near);
 
       if (!found) {
         continue;

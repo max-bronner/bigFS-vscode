@@ -2,6 +2,7 @@ import { EventEmitter, FileType, Uri } from 'vscode';
 import type { Disposable } from 'vscode';
 import { createDebouncer } from '../../core/debounce';
 import type { ArchiveModel } from './archiveModel';
+import type { ArchiveSource } from './archiveSource';
 import { getFileNodes } from './virtualTree';
 import type { VirtualNode } from './virtualNode';
 import { buildGameTree, indexByName, orderInstallFiles } from '../../game/install/gameView';
@@ -20,8 +21,8 @@ export type GameViewNode = GameNode<GameFileRef>;
 export const REBUILD_DELAY = 250;
 
 export class GameViewModel implements Disposable {
-  private tree?: Promise<GameViewNode>;
-  private names?: Promise<Map<string, GameViewNode>>;
+  private readonly trees = new Map<string, Promise<GameViewNode>>();
+  private readonly names = new Map<string, Promise<Map<string, GameViewNode>>>();
   private readonly onDidChangeEmitter = new EventEmitter<void>();
   private isStale = false;
   private readonly announce = createDebouncer(() => {
@@ -54,42 +55,56 @@ export class GameViewModel implements Disposable {
   public invalidate(): void {
     this.announce.cancel();
     this.isStale = false;
-    this.names = undefined;
+    this.names.clear();
 
-    if (this.tree) {
-      this.tree = undefined;
+    if (this.trees.size) {
+      this.trees.clear();
       this.onDidChangeEmitter.fire();
     }
   }
 
   private forget(): void {
-    this.names = undefined;
+    this.names.clear();
 
-    if (this.tree) {
-      this.tree = undefined;
+    if (this.trees.size) {
+      this.trees.clear();
       this.isStale = true;
       this.announce.schedule();
     }
   }
 
-  public getRoot(): Promise<GameViewNode> {
-    this.tree ??= this.build();
-
-    return this.tree;
-  }
-
-  public getNames(): Promise<Map<string, GameViewNode>> {
-    this.names ??= this.getRoot().then(indexByName);
-
-    return this.names;
-  }
-
-  private async build(): Promise<GameViewNode> {
+  public async getRoot(from?: Uri): Promise<GameViewNode> {
     await this.archiveModel.whenReady();
 
+    const { loadOrder } = this.archiveModel;
+    const key = loadOrder.getStackKey(from);
+    let tree = this.trees.get(key);
+
+    if (!tree) {
+      tree = this.build(loadOrder.getStack(from));
+      this.trees.set(key, tree);
+    }
+    return tree;
+  }
+
+  public async getNames(from?: Uri): Promise<Map<string, GameViewNode>> {
+    await this.archiveModel.whenReady();
+
+    const key = this.archiveModel.loadOrder.getStackKey(from);
+    let names = this.names.get(key);
+
+    if (!names) {
+      names = this.getRoot(from).then(indexByName);
+      this.names.set(key, names);
+    }
+    return names;
+  }
+
+  private async build(
+    sources: readonly ArchiveSource[],
+  ): Promise<GameViewNode> {
     const installs: InstallFiles<GameFileRef>[] = [];
     const topFolders = new Set(GAME_FOLDERS);
-    const sources = this.archiveModel.getSources();
 
     for (const source of sources) {
       const archives: InstallFiles<GameFileRef>['archives'] = [];

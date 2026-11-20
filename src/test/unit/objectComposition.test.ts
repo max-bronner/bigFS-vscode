@@ -313,4 +313,88 @@ suite('Composed part placement', () => {
       [4, -2, 0],
     );
   });
+
+  test('occupants no seat admits are counted without work per slot', async () => {
+    const barracks = [
+      'Object TestBarracks',
+      '  Draw = W3DModelDraw ModuleTag_Draw',
+      '    DefaultModelConditionState',
+      '      Model = TB_SKN',
+      '    End',
+      '  End',
+      '  Behavior = OpenContain ModuleTag_Contain',
+      '    PassengerBonePrefix = PassengerBone:SEAT KindOf:HERO',
+      '    InitialCrew = TestWideHorde 64',
+      '  End',
+      'End',
+    ];
+    const wideHorde = [
+      'Object TestWideHorde',
+      '  Behavior = HordeContain ModuleTag_Horde',
+      `    RankInfo = RankNumber:1 UnitType:TestStowaway ${Array.from({ length: 1024 }, (_, at) => `Position:X:${at} Y:0`).join(' ')}`,
+      '  End',
+      'End',
+    ];
+    const stowaway = toObject(STOWAWAY);
+    let reads = 0;
+    const counted = {
+      name: stowaway.name,
+      scene: stowaway.scene,
+      get parsed() {
+        reads++;
+        return stowaway.parsed;
+      },
+    };
+    const sources = createSources({ TestWideHorde: wideHorde });
+    const composition = await composeObject(toObject(barracks), {
+      ...sources,
+      readObject: (name) =>
+        name === 'TestStowaway' ? Promise.resolve(counted) : sources.readObject(name),
+    });
+
+    assert.ok(reads <= 1024 + 8, `read the occupant ${reads} times`);
+    assert.ok(!composition.parts.some((part) => part.object === 'TestStowaway'));
+    assert.ok(composition.notes.some((note) => note.startsWith('65536 × TestStowaway')));
+  });
+
+  test('part ids come from where a part is, so an edit elsewhere keeps them', async () => {
+    const sources = createSources({ TestCrew: CREW, TestStowaway: STOWAWAY });
+    const before = await composeObject(toObject(RAM), sources);
+    const extra = [
+      '  Draw = W3DModelDraw ModuleTag_Added',
+      '    DefaultModelConditionState',
+      '      Model = TR_ADDED',
+      '    End',
+      '  End',
+    ];
+    const edited = [...RAM.slice(0, 2), ...extra, ...RAM.slice(2)];
+    const after = await composeObject(toObject(edited), sources);
+    const crewIds = (parts: { id: string; object?: string }[]) =>
+      parts.filter((part) => part.object === 'TestCrew').map((part) => part.id);
+
+    assert.strictEqual(new Set(after.parts.map((part) => part.id)).size, after.parts.length);
+    assert.deepStrictEqual(crewIds(after.parts), crewIds(before.parts));
+    assert.ok(crewIds(before.parts).length === 2);
+  });
+
+  test('passenger bones are listed once per skeleton and prefix', () => {
+    let searches = 0;
+    const names = Object.assign([...bones.names], {
+      findIndex(...args: Parameters<string[]['findIndex']>) {
+        searches++;
+        return Array.prototype.findIndex.apply(this, args);
+      },
+    });
+    const owner = { matrix: IDENTITY, skeleton: { ...bones, names } };
+    const seat = { kind: 'passengerBone', prefix: 'CREWBONE', slot: 0 } as const;
+
+    placePart(seat, owner);
+
+    const first = searches;
+
+    placePart({ ...seat, slot: 1 }, owner);
+    placePart(seat, owner);
+    assert.ok(first > 0);
+    assert.strictEqual(searches, first);
+  });
 });

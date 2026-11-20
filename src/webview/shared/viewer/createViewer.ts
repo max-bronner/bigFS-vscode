@@ -418,7 +418,10 @@ export const createViewer = (
     setModel,
     getModel: () => model,
     getPose: () => pose,
-    setClips: (list) => picker.setList(list),
+    setClips: (list) => {
+      picker.setList(list);
+      picker.show(clip?.id);
+    },
     playClip: (next) => {
       clip = next;
       picker.show(next.id);

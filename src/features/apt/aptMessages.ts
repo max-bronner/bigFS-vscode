@@ -177,9 +177,14 @@ const HANDLERS: {
     });
   },
 
-  async loadMovie(message, { post, imports, sentTextures, sentMovies }) {
+  async loadMovie(message, { document, post, imports, sentTextures, sentMovies }) {
     await post(
-      await imports.buildLoadedMovieMessage(String(message.name), sentTextures, sentMovies),
+      await imports.buildLoadedMovieMessage(
+        String(message.name),
+        sentTextures,
+        sentMovies,
+        document.uri,
+      ),
     );
   },
 
@@ -235,8 +240,8 @@ const HANDLERS: {
     await answerSoundRequest(message, document.uri, post);
   },
 
-  async openMovie(message, { library, selections }) {
-    const location = await library.locate(String(message.name));
+  async openMovie(message, { document, library, selections }) {
+    const location = await library.locate(String(message.name), document.uri);
 
     if (!location) {
       throw new Error(`No install holds ${String(message.name)}.apt`);

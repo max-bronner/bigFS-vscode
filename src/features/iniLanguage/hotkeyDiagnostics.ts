@@ -4,12 +4,14 @@ import { createLineReader, resolveSlots } from '../../services/ini/commandSetPre
 import { findHotkeyClashes } from '../../game/ini-tools/hotkeys';
 import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
+import type { GameLanguage } from '../../services/ini/gameLanguage';
 
 const DELAY_MS = 500;
 
 export const watchHotkeyClashes = (
   documents: SageIniDocuments,
   index: SageIniIndex,
+  gameLanguage: GameLanguage,
 ): vscode.Disposable => {
   const collection =
     vscode.languages.createDiagnosticCollection('sage-ini-hotkeys');
@@ -50,7 +52,7 @@ export const watchHotkeyClashes = (
           token: statement.values[0],
           line: statement.line,
         }));
-      const resolved = await resolveSlots(index, slots, linesOf);
+      const resolved = await resolveSlots(index, slots, linesOf, document.uri);
       const clashes = findHotkeyClashes(resolved);
 
       resolved.forEach((slot, place) => {
@@ -102,6 +104,9 @@ export const watchHotkeyClashes = (
     vscode.workspace.onDidOpenTextDocument(checkSoon),
     vscode.workspace.onDidChangeTextDocument(({ document }) =>
       checkSoon(document),
+    ),
+    gameLanguage.onDidChange(() =>
+      vscode.workspace.textDocuments.forEach(checkSoon),
     ),
     vscode.workspace.onDidCloseTextDocument((document) =>
       collection.delete(document.uri),

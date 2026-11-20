@@ -127,7 +127,7 @@ body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vsco
     const own = readCommandSetSlots(
       found.lines.slice(found.block.startLine + 1, found.block.endLine),
     );
-    const resolved = await resolveSlots(index, own, linesOf);
+    const resolved = await resolveSlots(index, own, linesOf, uri);
     const clashes = findHotkeyClashes(resolved);
 
     slots = new Map(own.map(({ slot, button }) => [slot, button]));
@@ -138,7 +138,7 @@ body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vsco
       slots: await Promise.all(
         resolved.map(async (slot) => {
           const [image] = slot.imageName
-            ? index.findDefinitions('MappedImage', slot.imageName)
+            ? index.findDefinitions('MappedImage', slot.imageName, uri)
             : [];
           const picture = image && icon && (await icon(image));
 
@@ -252,7 +252,7 @@ body { color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vsco
       case 'reveal': {
         const button = slots.get(message.slot);
         const [place] = button
-          ? index.findDefinitions('CommandButton', button)
+          ? index.findDefinitions('CommandButton', button, uri)
           : [];
 
         if (place) {

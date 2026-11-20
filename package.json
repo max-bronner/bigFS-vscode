@@ -2,7 +2,7 @@
   "name": "bigfs",
   "displayName": "bigFS",
   "description": "Mod the Battle for Middle-earth games in VS Code: browse and edit BIG archives, INI, STR and WND language support, and previews for W3D models, APT movies, maps, textures and audio.",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "publisher": "max-bronner",
   "icon": "assets/icon.png",
   "galleryBanner": {
@@ -893,13 +893,29 @@
           "type": "string",
           "default": "",
           "scope": "machine",
-          "markdownDescription": "Install folder of the unmodded game, the lowest layer of the game view: a mod-only or ROTWK-only workspace resolves the base files from it, and **BIG: Compare with Base Game** compares against it. Asked for on first use. Layers are ordered by the marker files they hold (`lotrbfme2ep1.exe` = ROTWK, `lotrbfme2.exe` = BFME II): a mod first, then ROTWK, then BFME II; folders of one kind keep their workspace folder order."
+          "markdownDescription": "Install folder of the unmodded game, the lowest layer of the game view: a mod-only or ROTWK-only workspace resolves the base files from it, and **BIG: Compare with Base Game** compares against it. Asked for on first use. Each workspace folder resolves against its own game's installs, told by their marker files (`lotrbfme2ep1.exe` = ROTWK, `lotrbfme2.exe` = BFME II) or, for a mod folder, by `#bigfs.folderGame#`: a BFME II folder never sees ROTWK files."
         },
         "bigfs.underlyingGameFolder": {
           "type": "string",
           "default": "",
           "scope": "machine",
           "markdownDescription": "Install folder of the game beneath `#bigfs.baseGameFolder#`, such as BFME II when that is ROTWK, which keeps only what it adds. On Windows, empty finds BFME II from the registry as the game does."
+        },
+        "bigfs.folderGame": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "bfme2",
+            "rotwk"
+          ],
+          "enumDescriptions": [
+            "ROTWK when a ROTWK install is open or named by the settings, otherwise BFME II.",
+            "A BFME II mod: its files resolve against this folder, then BFME II.",
+            "A ROTWK mod: its files resolve against this folder, then ROTWK, then BFME II."
+          ],
+          "default": "auto",
+          "scope": "resource",
+          "markdownDescription": "Which game a mod folder is for, set per workspace folder. It decides the load order the folder's files resolve against: the folder first, then that game's installs (`#bigfs.baseGameFolder#`, `#bigfs.underlyingGameFolder#` or install folders of the workspace). Install folders are told by their marker files (`lotrbfme2ep1.exe` = ROTWK, `lotrbfme2.exe` = BFME II) and ignore this setting: a BFME II install resolves against itself alone, a ROTWK install against itself, then BFME II. Other workspace folders never affect a folder's load order."
         },
         "bigfs.game.executable": {
           "type": "string",

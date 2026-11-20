@@ -31,7 +31,7 @@ const findByPath = (
 };
 
 export class EntryLocator implements Disposable {
-  private allNames?: Promise<Set<string>>;
+  private readonly allNames = new Map<string, Promise<Set<string>>>();
   private contentRevision = 0;
   private readonly subscriptions: Disposable[];
 
@@ -63,7 +63,7 @@ export class EntryLocator implements Disposable {
   }
 
   private forgetNames(): void {
-    this.allNames = undefined;
+    this.allNames.clear();
     this.contentRevision++;
   }
 
@@ -71,24 +71,31 @@ export class EntryLocator implements Disposable {
     this.subscriptions.forEach((subscription) => subscription.dispose());
   }
 
-  public getFileNames(): Promise<Set<string>> {
-    this.allNames ??= (async () => {
-      const uris = await workspace.findFiles(
-        LOOSE_ASSETS,
-        '**/node_modules/**',
-        200_000,
-      );
-      const archived = await this.gameView.getNames();
+  public async getFileNames(from?: Uri): Promise<Set<string>> {
+    await this.archiveModel.whenReady();
 
-      return new Set([
-        ...archived.keys(),
-        ...uris.map((uri) =>
-          uri.path.slice(uri.path.lastIndexOf('/') + 1).toLowerCase(),
-        ),
-      ]);
-    })();
+    const key = this.archiveModel.loadOrder.getStackKey(from);
+    let names = this.allNames.get(key);
 
-    return this.allNames;
+    if (!names) {
+      names = (async () => {
+        const uris = await workspace.findFiles(
+          LOOSE_ASSETS,
+          '**/node_modules/**',
+          200_000,
+        );
+        const archived = await this.gameView.getNames(from);
+
+        return new Set([
+          ...archived.keys(),
+          ...uris.map((uri) =>
+            uri.path.slice(uri.path.lastIndexOf('/') + 1).toLowerCase(),
+          ),
+        ]);
+      })();
+      this.allNames.set(key, names);
+    }
+    return names;
   }
 
   public async recheck(fileNames: string[]): Promise<boolean> {
@@ -138,10 +145,10 @@ export class EntryLocator implements Disposable {
     nearUri: Uri,
   ): Promise<{ uri: Uri } | { node: VirtualNode } | undefined> {
     const name = getBaseName(fileName);
-    const root = await this.gameView.getRoot();
+    const root = await this.gameView.getRoot(nearUri);
     const held =
       (/[\\/]/.test(fileName) ? findByPath(root, fileName) : undefined) ??
-      (await this.gameView.getNames()).get(name.toLowerCase());
+      (await this.gameView.getNames(nearUri)).get(name.toLowerCase());
     const winner = held?.winner?.ref;
 
     if (winner) {
@@ -164,9 +171,10 @@ export class EntryLocator implements Disposable {
   public async findNames(
     matches: (lowerName: string) => boolean,
     loosePattern: string,
+    from?: Uri,
   ): Promise<string[]> {
     const names = new Set(
-      [...(await this.gameView.getNames()).keys()].filter((name) =>
+      [...(await this.gameView.getNames(from)).keys()].filter((name) =>
         matches(name),
       ),
     );

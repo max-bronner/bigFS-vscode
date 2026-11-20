@@ -6,7 +6,7 @@ import {
   languages,
   workspace,
 } from 'vscode';
-import type { Disposable, TextDocument } from 'vscode';
+import type { Disposable, TextDocument, Uri } from 'vscode';
 import { SAGE_INI_LANGUAGE } from '../../constants';
 import { findUnresolvedReferences } from '../../formats/ini/sageIniReferenceCheck';
 import { findSageIniProblems } from '../../formats/ini/sageIniProblems';
@@ -47,6 +47,7 @@ const getReferenceDiagnostics = async (
   parsed: SageDocument,
   schema: SageIniSchema,
   index: SageIniIndex,
+  from: Uri,
 ): Promise<Diagnostic[]> => {
   const mode = settings.iniCheckReferences.get();
 
@@ -56,7 +57,14 @@ const getReferenceDiagnostics = async (
 
   await index.whenReady();
 
-  return findUnresolvedReferences(parsed, schema, index, mode === 'on').map(
+  const lookup = {
+    findMacro: (name: string) => index.findMacro(name, from),
+    findDefinitions: (namespace: string, name: string) =>
+      index.findDefinitions(namespace, name, from),
+    countDefinitions: (namespace: string) => index.countDefinitions(namespace),
+  };
+
+  return findUnresolvedReferences(parsed, schema, lookup, mode === 'on').map(
     ({ name, line, start, end, namespaces }) => {
       const diagnostic = new Diagnostic(
         new Range(line, start, line, end),
@@ -76,6 +84,7 @@ const AUTO_MINIMUM_STRINGS = 1000;
 const getStringDiagnostics = async (
   parsed: SageDocument,
   index: SageIniIndex,
+  from: Uri,
 ): Promise<Diagnostic[]> => {
   const mode = settings.iniCheckStrings.get();
 
@@ -88,7 +97,7 @@ const getStringDiagnostics = async (
   }
 
   return findGameTextLabels(parsed)
-    .filter((label) => !index.findString(label.text))
+    .filter((label) => !index.findString(label.text, from))
     .map((label) => {
       const diagnostic = new Diagnostic(
         new Range(label.line, label.start, label.line, label.end),
@@ -155,9 +164,9 @@ export const watchSageIniDiagnostics = (
         toDiagnostic(document, problem),
       ),
       ...(await getIncludeDiagnostics(document, parsed)),
-      ...(await getReferenceDiagnostics(parsed, schema, index)),
-      ...(await getStringDiagnostics(parsed, index)),
-      ...(await getCheckedAssetDiagnostics(parsed, locator, SOURCE).catch(
+      ...(await getReferenceDiagnostics(parsed, schema, index, document.uri)),
+      ...(await getStringDiagnostics(parsed, index, document.uri)),
+      ...(await getCheckedAssetDiagnostics(parsed, locator, SOURCE, document.uri).catch(
         () => [],
       )),
       ...(scripts.length

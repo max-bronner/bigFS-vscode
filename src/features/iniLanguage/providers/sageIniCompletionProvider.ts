@@ -129,7 +129,7 @@ export const createSageIniCompletionProvider = (
           toItem(value, CompletionItemKind.EnumMember, keyword, range),
         ),
       ...index
-        .getMacros()
+        .getMacros(document.uri)
         .map(({ name, value }) =>
           toItem(name, CompletionItemKind.Constant, `= ${value}`, range),
         ),

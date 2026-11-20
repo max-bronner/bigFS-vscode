@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { createRequestSequence } from './createRequestSequence';
+import { createRevisionCache } from './createRevisionCache';
 import { PREVIEW_VIEW_TYPE } from '../../constants';
 import type { ToolBox } from '../../core/toolRegistry';
 import {
@@ -101,6 +103,7 @@ const buildMessage = async (
               locator.findNames(
                 (name) => name.endsWith('.w3d'),
                 '**/*.{w3d,W3D}',
+                uri,
               ),
             loadFile,
             tools,
@@ -249,6 +252,7 @@ export class PreviewEditorProvider
         each.endsWith('.w3d') &&
         each !== `${name}.w3d`,
       '**/*.{w3d,W3D}',
+      uri,
     );
 
     return sortClipsBySkeleton(
@@ -259,15 +263,6 @@ export class PreviewEditorProvider
     );
   }
 
-  private async listAnimations(
-    skeleton: SceneSkeleton | undefined,
-    uri: vscode.Uri,
-  ): Promise<SkeletonClips> {
-    return skeleton
-      ? this.findAnimations(skeleton, uri)
-      : { own: [], foreign: [] };
-  }
-
   private async buildRelatedModel(
     file: string,
     uri: vscode.Uri,
@@ -276,7 +271,11 @@ export class PreviewEditorProvider
       const read = await this.locator.read(file, uri);
 
       if (!read) {
-        return { kind: 'animationError', message: `${file} is not in any archive or folder` };
+        return {
+          kind: 'modelError',
+          file,
+          message: `${file} is not in any archive or folder`,
+        };
       }
 
       const scene = await buildW3dScene(
@@ -288,7 +287,7 @@ export class PreviewEditorProvider
 
       return { kind: 'model', ...scene, relatedFile: file };
     } catch (error) {
-      return { kind: 'animationError', message: describeError(error) };
+      return { kind: 'modelError', file, message: describeError(error) };
     }
   }
 
@@ -314,6 +313,10 @@ export class PreviewEditorProvider
     let movie: Vp6Movie | undefined;
     let attached: vscode.Disposable | undefined;
     let isDisposed = false;
+    const modelRequests = createRequestSequence();
+    const clipLists = createRevisionCache<Promise<SkeletonClips>>(
+      () => this.locator.revision,
+    );
     const post = async (reply: unknown): Promise<void> => {
       if (!isDisposed) {
         await panel.webview.postMessage(reply);
@@ -330,6 +333,7 @@ export class PreviewEditorProvider
     const subscription = panel.webview.onDidReceiveMessage(
       async (received: FromPreviewPage) => {
         if (received.kind === 'ready') {
+          const isCurrent = modelRequests.begin();
           const built = await message;
 
           await post(built);
@@ -352,10 +356,14 @@ export class PreviewEditorProvider
             );
           }
           if (built.kind === 'model' && built.skeleton) {
-            await post({
-              kind: 'animations',
-              ...(await this.findAnimations(built.skeleton, document.uri)),
-            });
+            const clips = await clipLists.get(
+              built.skeleton.name.toLowerCase(),
+              () => this.findAnimations(built.skeleton!, document.uri),
+            );
+
+            if (isCurrent()) {
+              await post({ kind: 'animations', ...clips });
+            }
           }
           if (built.kind === 'model') {
             await post({
@@ -371,16 +379,26 @@ export class PreviewEditorProvider
             });
           }
         } else if (received.kind === 'showModel') {
+          const isCurrent = modelRequests.begin();
           const shown = received.file
             ? await this.buildRelatedModel(received.file, document.uri)
             : await message;
 
+          if (!isCurrent()) {
+            return;
+          }
           await post(shown);
           if (shown.kind === 'model') {
-            await post({
-              kind: 'animations',
-              ...(await this.listAnimations(shown.skeleton, document.uri)),
-            });
+            const skeleton = shown.skeleton;
+            const clips = skeleton
+              ? await clipLists.get(skeleton.name.toLowerCase(), () =>
+                  this.findAnimations(skeleton, document.uri),
+                )
+              : { own: [], foreign: [] };
+
+            if (isCurrent()) {
+              await post({ kind: 'animations', ...clips });
+            }
           }
         } else if (received.kind === 'popOut') {
           if (!panel.active) {
