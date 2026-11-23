@@ -1,5 +1,4 @@
 import * as assert from 'assert';
-import Module from 'module';
 import type { Uri } from 'vscode';
 import type { PageMovie, TexturePixels } from '../../webview/apt/protocol';
 import type { AptDocument, BuiltMovie } from '../../features/apt/aptDocument';
@@ -8,25 +7,10 @@ import type {
   AptGameServices,
   MovieProgress,
 } from '../../features/apt/aptMovieImports';
+import { requireWithVscode } from './requireWithVscode';
 
-type Loader = (request: string, ...rest: unknown[]) => unknown;
-
-const internals = Module as unknown as { _load: Loader };
-const original = internals._load;
-
-internals._load = (request, ...rest) =>
-  request === 'vscode'
-    ? { FileType: { File: 1, Directory: 2 }, EventEmitter: class {} }
-    : original.call(Module, request, ...rest);
-
-let imports: typeof import('../../features/apt/aptMovieImports');
-
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  imports = require('../../features/apt/aptMovieImports');
-} finally {
-  internals._load = original;
-}
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const imports = requireWithVscode({ FileType: { File: 1, Directory: 2 }, EventEmitter: class {} }, () => require('../../features/apt/aptMovieImports') as typeof import('../../features/apt/aptMovieImports'));
 
 const pixels = (): TexturePixels => ({
   width: 1,

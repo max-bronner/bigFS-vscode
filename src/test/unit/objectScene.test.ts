@@ -1,18 +1,9 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
 import { findSceneFocus, readObjectScene } from '../../game/objects/objectScene';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+const schema = loadSageIniSchema();
 
 const TEXT = [
   'Object TestHero',
@@ -77,7 +68,15 @@ suite('Object scene', () => {
         ],
       ],
     );
-    assert.deepStrictEqual(scene.fx, [{ field: 'FX', name: 'FX_Fall' }]);
+    assert.deepStrictEqual(scene.fx, [
+      {
+        field: 'FX',
+        name: 'FX_Fall',
+        module: 'SlowDeathBehavior',
+        phase: 'INITIAL',
+        when: ['DYING'],
+      },
+    ]);
   });
 
   test('a line opens the preview on its state and what it names', () => {
@@ -103,6 +102,9 @@ suite('Object scene', () => {
         '  VoicePriority = 5',
         '  SoundOnDamaged = TestHeroHurt',
         '  EvaEventDieOwner = TestHeroLost',
+        '  Behavior = SlowDeathBehavior ModuleTag_Death',
+        '    Sound = INITIAL TestHeroDie',
+        '  End',
         '  Draw = W3DModelDraw ModuleTag_Draw',
         '    DefaultModelConditionState',
         '      Model = TH_SKN',
@@ -124,6 +126,7 @@ suite('Object scene', () => {
       { field: 'VoiceMove', name: 'TestHeroVoiceMove' },
       { field: 'SoundOnDamaged', name: 'TestHeroHurt' },
       { field: 'EvaEventDieOwner', name: 'TestHeroLost' },
+      { field: 'Sound', name: 'TestHeroDie', module: 'SlowDeathBehavior' },
     ]);
   });
 });

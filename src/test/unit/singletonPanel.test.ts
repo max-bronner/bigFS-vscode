@@ -1,7 +1,5 @@
 import * as assert from 'assert';
-import Module from 'module';
-
-type Loader = (request: string, ...rest: unknown[]) => unknown;
+import { requireWithVscode } from './requireWithVscode';
 
 interface FakePanel {
   viewType: string;
@@ -69,22 +67,8 @@ const createFakePanel = (
   return panel;
 };
 
-const internals = Module as unknown as { _load: Loader };
-const original = internals._load;
-
-internals._load = (request, ...rest) =>
-  request === 'vscode'
-    ? { window: { createWebviewPanel: createFakePanel } }
-    : original.call(Module, request, ...rest);
-
-let singleton: typeof import('../../platform/webview/singletonPanel');
-
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  singleton = require('../../platform/webview/singletonPanel');
-} finally {
-  internals._load = original;
-}
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const singleton = requireWithVscode({ window: { createWebviewPanel: createFakePanel } }, () => require('../../platform/webview/singletonPanel') as typeof import('../../platform/webview/singletonPanel'));
 
 const options = { enableScripts: true, retainContextWhenHidden: true };
 

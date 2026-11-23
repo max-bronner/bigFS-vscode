@@ -132,4 +132,10 @@ export default [{
         "no-throw-literal": "warn",
         semi: "warn",
     },
+}, {
+    files: ["tools/**/*.cjs"],
+    languageOptions: { sourceType: "commonjs" },
+    rules: {
+        "@typescript-eslint/no-require-imports": "off",
+    },
 }, ...layerRules];

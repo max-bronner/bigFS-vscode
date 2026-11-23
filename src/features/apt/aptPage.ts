@@ -1,22 +1,57 @@
 import type * as vscode from 'vscode';
-import { SPEEDS } from '../../webview/apt/protocol';
+import { SPEEDS, ZOOMS } from '../../webview/apt/protocol';
 import { renderWebviewPage } from '../../platform/webview/webviewPage';
 
 const STYLE = `
-  body { margin: 0; color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vscode-font-family); display: grid; grid-template-columns: 240px 1fr minmax(360px, 42%); height: 100vh; }
-  aside, section { overflow: auto; }
+  body { margin: 0; color: var(--vscode-foreground); font: var(--vscode-font-size) var(--vscode-font-family); display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(320px, 30%); height: 100vh; }
+  aside, #side { overflow: auto; }
   aside { border-right: 1px solid var(--vscode-panel-border); display: flex; flex-direction: column; }
-  #filter { margin: 6px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); }
+  #filter { margin: 6px 6px 4px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); }
+  #kinds { display: flex; flex-wrap: wrap; gap: 3px; padding: 0 6px 6px; border-bottom: 1px solid var(--vscode-panel-border); }
+  #kinds .chip { color: var(--vscode-foreground); background: transparent; border: 1px solid var(--vscode-button-border, var(--vscode-panel-border)); border-radius: 10px; padding: 0 7px; font-size: 0.92em; opacity: 0.8; }
+  #kinds .chip[aria-pressed=true] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); border-color: transparent; opacity: 1; }
+  .chip .count { opacity: 0.75; margin-left: 3px; }
   #list { overflow: auto; flex: 1; }
-  .row { padding: 2px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .group { margin: 8px 8px 2px; font-size: 0.8em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.7; }
+  .row { display: flex; gap: 6px; align-items: baseline; padding: 1px 8px 1px 4px; cursor: pointer; white-space: nowrap; }
+  .row-id { flex: none; min-width: 2.6em; text-align: right; opacity: 0.6; font-variant-numeric: tabular-nums; }
+  .row-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .row-detail { flex: 1 1 0; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; opacity: 0.6; font-size: 0.9em; }
   .row:hover { background: var(--vscode-list-hoverBackground); }
   .row.selected { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
-  main { overflow: auto; scrollbar-gutter: stable; padding: 8px 12px; }
-  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  main { overflow: auto; scrollbar-gutter: stable; padding: 6px 12px 8px; }
+  .toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  #stage-bar { margin-bottom: 2px; }
+  #stage-bar .divider { width: 1px; align-self: stretch; margin: 2px; background: var(--vscode-panel-border); }
+  #frame { flex: 1 1 80px; min-width: 60px; max-width: 240px; }
+  #play-from { max-width: 130px; }
+  .segmented { display: inline-flex; border: 1px solid var(--vscode-button-border, var(--vscode-panel-border)); border-radius: 3px; overflow: hidden; }
+  .segmented button { border-radius: 0; background: transparent; color: var(--vscode-foreground); }
+  .segmented button[aria-pressed=true], button.toggle[aria-pressed=true] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+  .menu-button::after { content: '▾'; margin-left: 5px; opacity: 0.75; }
+  #frame-label { margin: 0 0 6px; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .menu { position: fixed; z-index: 20; min-width: 190px; max-height: calc(100vh - 8px); overflow: auto; padding: 4px 0; color: var(--vscode-menu-foreground, var(--vscode-foreground)); background: var(--vscode-menu-background, var(--vscode-editorWidget-background, Canvas)); border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, var(--vscode-panel-border))); border-radius: 5px; box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.35)); outline: none; }
+  .menu .menu-item { display: grid; grid-template-columns: 16px 1fr auto; gap: 4px; align-items: center; width: 100%; padding: 3px 12px 3px 6px; color: inherit; background: transparent; border-radius: 0; text-align: left; white-space: nowrap; }
+  .menu .menu-item:hover:not(:disabled), .menu .menu-item:focus { color: var(--vscode-menu-selectionForeground, inherit); background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground)); outline: none; }
+  .menu .menu-item:disabled { opacity: 0.45; cursor: default; }
+  .menu-check { text-align: center; }
+  .menu-key { margin-left: 24px; opacity: 0.7; }
+  .menu-separator { height: 1px; margin: 4px 0; background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border)); }
+  .menu-heading { padding: 4px 12px 1px 26px; font-size: 0.85em; opacity: 0.65; }
   #stage { background: repeating-conic-gradient(#808080 0 25%, #a0a0a0 0 50%) 0 0 / 16px 16px; }
-  #side { border-left: 1px solid var(--vscode-panel-border); padding: 0 10px; }
+  #side { border-left: 1px solid var(--vscode-panel-border); display: flex; flex-direction: column; overflow: hidden; }
+  .tabs { display: flex; flex: none; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--vscode-panel-border); }
+  .tabs [role=tab] { padding: 6px 8px 5px; color: var(--vscode-panelTitle-inactiveForeground, var(--vscode-foreground)); background: transparent; border-radius: 0; border-bottom: 1px solid transparent; font-size: 11px; text-transform: uppercase; opacity: 0.8; }
+  .tabs [role=tab][aria-selected=true] { color: var(--vscode-panelTitle-activeForeground, var(--vscode-foreground)); border-bottom-color: var(--vscode-panelTitle-activeBorder, var(--vscode-focusBorder)); opacity: 1; }
+  .tabs [role=tab]:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+  .badge { display: inline-block; min-width: 8px; margin-left: 5px; padding: 0 5px; border-radius: 9px; font-size: 10px; text-align: center; color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); }
+  .badge:empty { display: none; }
+  .tab-panel { flex: 1; min-height: 0; overflow: auto; padding: 0 10px; }
+  .tab-panel[hidden] { display: none; }
+  #inspect-hint { margin: 10px 0; }
   #inspector:not(:empty) { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 6px; }
-  #atlas:not(:empty) { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 6px; }
+  #inspector:not(:empty) + #inspect-hint { display: none; }
+  #atlas:not(:empty) { padding-bottom: 6px; }
   canvas.atlas { display: block; max-width: 100%; background: repeating-conic-gradient(#808080 0 25%, #a0a0a0 0 50%) 0 0 / 12px 12px; }
   #integrity .problem { cursor: default; margin: 1px 0; }
   #integrity .problem[data-character] { cursor: pointer; }
@@ -49,7 +84,11 @@ const STYLE = `
   .muted, #summary { opacity: 0.75; }
   .error { color: var(--vscode-errorForeground); padding: 12px; }
   #notice { position: fixed; bottom: 8px; left: 250px; right: 12px; z-index: 2; padding: 6px 10px; color: var(--vscode-inputValidation-errorForeground, inherit); background: var(--vscode-inputValidation-errorBackground); border: 1px solid var(--vscode-inputValidation-errorBorder); }
-  #engine summary { cursor: pointer; font-weight: 600; margin: 6px 0; }
+  #engine-summary { display: block; margin: 8px 0 0; }
+  .engine-call { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; gap: 4px; align-items: center; margin: 3px 0; }
+  .engine-call .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family, monospace); opacity: 0.85; }
+  .engine-call .arguments { display: flex; gap: 4px; min-width: 0; }
+  .engine-call .arguments input { flex: 1 1 0; min-width: 0; width: auto; }
   #engine .field label { min-width: 0; margin-right: 4px; font-family: var(--vscode-editor-font-family, monospace); }
   .field { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 3px 0; }
   .field label { min-width: 84px; opacity: 0.8; }
@@ -71,36 +110,43 @@ export const renderAptPage = (
 ): string =>
   renderWebviewPage({
     style: STYLE,
-    body: `<aside><input id="filter" placeholder="Filter characters, exports, text"><div id="list"></div></aside>
+    body: `<aside><input id="filter" placeholder="Filter characters, exports, text"><div id="kinds" role="toolbar" aria-label="Kinds of character"></div><div id="list"></div></aside>
 <main>
   <p id="progress" class="muted">Opening the movie…</p>
-  <div class="toolbar">
-    <select id="zoom"><option value="fit">Fit</option><option value="0.5">50%</option><option value="1">100%</option><option value="2">200%</option></select>
+  <div class="toolbar" id="stage-bar">
+    <div class="segmented" role="group" aria-label="Mode">
+      <button id="mode-inspect" aria-pressed="true" title="Inspect: pick, move and edit what is drawn (I)">Inspect</button>
+      <button id="mode-interact" aria-pressed="false" title="Interact: run everything as the game does and let the pointer drive buttons (I)">Interact</button>
+    </div>
+    <span class="divider"></span>
     <button id="play" title="Play or pause (Space)">▶</button>
     <button id="back" title="Previous frame (, or ← with nothing selected)">‹</button>
-    <input id="frame" type="range" min="0" max="0" value="0">
+    <input id="frame" type="range" min="0" max="0" value="0" aria-label="Frame">
     <button id="forward" title="Next frame (. or → with nothing selected)">›</button>
     <select id="speed" title="Playback speed; 1× is the game's 30 frames a second ([ and ] to change)">${SPEEDS.map((speed) => `<option value="${speed}"${speed === 1 ? ' selected' : ''}>${speed}×</option>`).join('')}</select>
-    <span id="frame-label"></span>
-    <button id="toggleTextView" title="Show the whole movie as text">Text view</button>
-  </div>
-  <div class="toolbar">
-    <label title="O"><input type="checkbox" id="show-origin" checked> Origin</label>
-    <label title="B"><input type="checkbox" id="show-boxes" checked> Boxes</label>
-    <label title="M: draw everything, what a clip mask hides faintly, with the masks outlined; off draws the masks applied, as the game does"><input type="checkbox" id="show-masks"> Show masks</label>
     <select id="play-from" title="Play from a labelled frame, with its scripts run from there"></select>
-    <label title="S: play every frame in order, as if no frame script stopped or jumped; off, stop() stops and gotoAndPlay jumps, as in the game"><input type="checkbox" id="scripts"> Ignore action scripts</label>
-    <label title="I: run everything as the game does and let the pointer drive buttons"><input type="checkbox" id="interact"> Interact</label>
-    <label title="W: draw the triangles of what is picked; a shape's vertices can then be dragged"><input type="checkbox" id="wireframe"> Wireframe</label>
-    <span id="mode" class="muted"></span>
+    <span class="divider"></span>
+    <button id="scripts" class="toggle" aria-pressed="false" title="Ignore action scripts (S): play every frame in order, as if no frame script stopped or jumped; off, stop() stops and gotoAndPlay jumps, as in the game">Ignore scripts</button>
+    <button id="overlays" title="What the stage draws over the movie">Overlays</button>
+    <select id="zoom" title="Zoom">${ZOOMS.map((zoom) => `<option value="${zoom}">${zoom === 'fit' ? 'Fit' : `${Number(zoom) * 100}%`}</option>`).join('')}</select>
   </div>
+  <div id="frame-label" class="muted"></div>
   <canvas id="stage"></canvas>
   <div id="timeline"></div>
   <p id="summary"></p>
   <div id="integrity"></div>
   <div id="log"></div>
 </main>
-<section id="side"><div id="engine"></div><div id="inspector"></div><div id="atlas"></div><div id="details"></div></section>
+<section id="side">
+  <div class="tabs" role="tablist" aria-label="Details">
+    <button role="tab" id="tab-details" aria-controls="details" aria-selected="true" title="The selected character's record, frames and scripts">Character</button>
+    <button role="tab" id="tab-inspector" aria-controls="inspect" aria-selected="false" tabindex="-1" title="What is picked on the stage, and the texture it is drawn from">Inspector</button>
+    <button role="tab" id="tab-engine" aria-controls="engine" aria-selected="false" tabindex="-1">Engine<span id="engine-count" class="badge"></span></button>
+  </div>
+  <div id="details" class="tab-panel" role="tabpanel" aria-labelledby="tab-details"></div>
+  <div id="inspect" class="tab-panel" role="tabpanel" aria-labelledby="tab-inspector" hidden><div id="inspector"></div><p id="inspect-hint" class="muted">Click something on the stage to inspect it.</p><div id="atlas"></div></div>
+  <div id="engine" class="tab-panel" role="tabpanel" aria-labelledby="tab-engine" hidden></div>
+</section>
 <div id="notice" hidden></div>`,
     allow: { img: 'blob: data:', script: webview.cspSource },
     styleSources: `${webview.cspSource} 'unsafe-inline'`,

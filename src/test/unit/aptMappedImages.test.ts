@@ -1,27 +1,11 @@
 import * as assert from 'assert';
-import Module from 'module';
 import type { Uri } from 'vscode';
 import type { EntryLocator } from '../../services/entryLocator';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
+import { requireWithVscode } from './requireWithVscode';
 
-type Loader = (request: string, ...rest: unknown[]) => unknown;
-
-const internals = Module as unknown as { _load: Loader };
-const original = internals._load;
-
-internals._load = (request, ...rest) =>
-  request === 'vscode'
-    ? { FileType: { File: 1, Directory: 2 }, EventEmitter: class {} }
-    : original.call(Module, request, ...rest);
-
-let mapped: typeof import('../../features/apt/aptMappedImages');
-
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  mapped = require('../../features/apt/aptMappedImages');
-} finally {
-  internals._load = original;
-}
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const mapped = requireWithVscode({ FileType: { File: 1, Directory: 2 }, EventEmitter: class {} }, () => require('../../features/apt/aptMappedImages') as typeof import('../../features/apt/aptMappedImages'));
 
 const jpeg = (): Buffer =>
   Buffer.from([

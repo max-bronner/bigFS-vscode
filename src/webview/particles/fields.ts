@@ -70,11 +70,16 @@ const createFieldRow = (field: NumericField, scene: SceneMessage): HTMLElement =
 
 export const renderFields = (scene: SceneMessage): void => {
   const container = $('fields');
-  const changed = Object.keys(scene.values).length > 0;
+  const pending = Object.keys(scene.values).length;
+  const changed = pending > 0;
   const groups = new Map<string, NumericField[]>();
 
   $<HTMLButtonElement>('apply').disabled = !changed;
   $<HTMLButtonElement>('reset').disabled = !changed;
+  $('apply').textContent = changed ? `Apply ${pending} to INI` : 'Apply to INI';
+  $('pendingCount').textContent = changed
+    ? `${pending} value${pending === 1 ? '' : 's'} changed, previewed only`
+    : 'No change yet';
   for (const field of scene.fields) {
     const group = field.module || scene.root?.name || '';
 

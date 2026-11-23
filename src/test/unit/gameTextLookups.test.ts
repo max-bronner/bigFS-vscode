@@ -1,17 +1,13 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import Module from 'module';
-import { join } from 'path';
 import type { LocationLink, MarkdownString, Position, TextDocument } from 'vscode';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
 import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
 import type { SageStringPlace } from '../../services/ini/sageIniTables';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
 import { localise, mergeGameText, setGameText } from '../../webview/apt/gameText';
-
-type Loader = (request: string, ...rest: unknown[]) => unknown;
+import { loadSageIniSchema } from './loadSageIniSchema';
+import { requireWithVscode } from './requireWithVscode';
 
 class StubPosition {
   public constructor(
@@ -94,31 +90,15 @@ const vscodeStub = {
   },
 };
 
-const internals = Module as unknown as { _load: Loader };
-const original = internals._load;
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { hovers, definitions, languages } = requireWithVscode(vscodeStub, () => ({
+  hovers: require('../../features/iniLanguage/providers/sageIniHoverProvider') as typeof import('../../features/iniLanguage/providers/sageIniHoverProvider'),
+  definitions: require('../../features/iniLanguage/providers/sageIniDefinitionProvider') as typeof import('../../features/iniLanguage/providers/sageIniDefinitionProvider'),
+  languages: require('../../services/ini/gameLanguage') as typeof import('../../services/ini/gameLanguage'),
+}));
+/* eslint-enable @typescript-eslint/no-require-imports */
 
-internals._load = (request, ...rest) =>
-  request === 'vscode' ? vscodeStub : original.call(Module, request, ...rest);
-
-let hovers: typeof import('../../features/iniLanguage/providers/sageIniHoverProvider');
-let definitions: typeof import('../../features/iniLanguage/providers/sageIniDefinitionProvider');
-let languages: typeof import('../../services/ini/gameLanguage');
-
-try {
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  hovers = require('../../features/iniLanguage/providers/sageIniHoverProvider');
-  definitions = require('../../features/iniLanguage/providers/sageIniDefinitionProvider');
-  languages = require('../../services/ini/gameLanguage');
-  /* eslint-enable @typescript-eslint/no-require-imports */
-} finally {
-  internals._load = original;
-}
-
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'), 'utf8'),
-  ),
-);
+const schema = loadSageIniSchema();
 
 const TABLE_URI = { toString: () => 'bigfs:/lang/English.big/data/lotr.str' };
 

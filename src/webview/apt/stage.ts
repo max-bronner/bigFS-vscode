@@ -34,10 +34,10 @@ const LOG_LINES = 8;
 const FRAME_RATE = 30;
 
 export const view = {
-  origin: true,
+  origin: false,
   wireframe: false,
   onion: 0,
-  boxes: true,
+  boxes: false,
   masks: true,
   scripts: true,
   interact: false,
@@ -49,7 +49,6 @@ const stage = byId<HTMLCanvasElement>("stage");
 const zoomSelect = byId<HTMLSelectElement>("zoom");
 const frameInput = byId<HTMLInputElement>("frame");
 const frameLabel = byId("frame-label");
-const modeLabel = byId("mode");
 const logList = byId("log");
 
 let onInspect: () => void = () => {};
@@ -223,21 +222,6 @@ const measure = (): Rect => {
 const round = (value: number) => Math.round(value * 10) / 10;
 const formatRect = ([left, top, right, bottom]: Rect) =>
   `${round(right - left)}×${round(bottom - top)} at (${round(left)}, ${round(top)})`;
-
-export const showMode = (): void => {
-  modeLabel.textContent = [
-    view.interact ? "interact" : "inspect",
-    view.playing
-      ? `playing at ${view.speed}× (${Math.round(FRAME_RATE * view.speed * 10) / 10} frames/s)`
-      : `paused at ${view.speed}×`,
-    `origin ${view.origin ? "on" : "off"}`,
-    `boxes ${view.boxes ? "on" : "off"}`,
-    `masks ${view.masks ? "applied" : "shown"}`,
-    `action scripts ${view.scripts ? "respected" : "ignored"}`,
-    `wireframe ${view.wireframe ? "on" : "off"}`,
-    `onion ${view.onion ? `±${view.onion}` : "off"}`,
-  ].join(" · ");
-};
 
 export const getSceneLeaves = (): Leaf[] => scene.leaves;
 
@@ -605,7 +589,6 @@ export const play = (playing: boolean): void => {
   view.playing = playing;
   owed = 0;
   byId("play").textContent = playing ? "⏸" : "▶";
-  showMode();
   if (playing) {
     scheduleLoop();
   }

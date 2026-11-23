@@ -46,6 +46,18 @@ const setup = (running = true) => {
 };
 
 suite('sound player', () => {
+  test('a sound the browser blocked plays again by a press of the same name, which unlocks audio', async () => {
+    const { player, post, sent, log } = setup(false);
+
+    await player.receive(reply('Gui_Click', player.begin('Gui_Click')));
+    assert.strictEqual(player.state().phase, 'blocked');
+
+    player.press('Gui_Click', plain, post);
+    assert.deepStrictEqual(log, ['unlock']);
+    assert.strictEqual(sent[0].name, 'Gui_Click');
+    assert.strictEqual(player.state().phase, 'loading');
+  });
+
   test('a press asks for the name, unlocks audio, and plays the reply', async () => {
     const { player, post, sent, log } = setup();
 

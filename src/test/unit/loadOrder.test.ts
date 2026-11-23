@@ -4,7 +4,6 @@ import { tmpdir } from 'os';
 import * as path from 'path';
 import { writeArchiveFile } from '../../node/archiveFile';
 import type { BigFileEntry } from '../../formats/big/bigFormat';
-import { createDebouncer } from '../../core/debounce';
 import { buildGameTree, getGameFiles, indexByName } from '../../game/install/gameView';
 import {
   detectInstallKind,
@@ -333,29 +332,5 @@ suite('Install layers', () => {
       parseRegistryPath('    Path    REG_DWORD    0x1'),
       undefined,
     );
-  });
-});
-
-suite('Debouncer', () => {
-  test('a burst of calls runs once, after the last', async () => {
-    let runs = 0;
-    const debouncer = createDebouncer(() => (runs += 1), 20);
-
-    debouncer.schedule();
-    debouncer.schedule();
-    debouncer.schedule();
-    assert.strictEqual(runs, 0);
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    assert.strictEqual(runs, 1);
-  });
-
-  test('a cancelled run does not happen', async () => {
-    let runs = 0;
-    const debouncer = createDebouncer(() => (runs += 1), 10);
-
-    debouncer.schedule();
-    debouncer.cancel();
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    assert.strictEqual(runs, 0);
   });
 });

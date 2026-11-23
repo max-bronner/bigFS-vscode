@@ -76,6 +76,7 @@ export const poseAt = (
   skeleton: SceneSkeleton,
   animation?: W3dAnimation,
   frame = 0,
+  turns?: ReadonlyMap<number, number>,
 ): Pose => {
   const count = skeleton.parents.length;
   const byBone = new Map<number, SampledChannel[]>();
@@ -134,8 +135,15 @@ export const poseAt = (
     const placed =
       parent >= 0 && parent < bone ? compose(world[parent], bind) : bind;
 
-    world.push(compose(placed, delta));
-    visible.push(shown);
+    const turn = turns?.get(bone);
+    const posed = compose(placed, delta);
+
+    world.push(
+      turn === undefined
+        ? posed
+        : compose(posed, { t: [0, 0, 0], q: [0, Math.sin(turn / 2), 0, Math.cos(turn / 2)] }),
+    );
+    visible.push(shown || turn !== undefined);
     opacity.push(opaqueness);
   }
 

@@ -8,10 +8,11 @@ import type { W3dAnimation } from '../../../formats/w3d/w3dAnimation';
 import { isSurfaceAnimated } from '../../../formats/w3d/isSurfaceAnimated';
 import type {
   SceneSkeleton,
-  SubObjectRule,
+  SceneMesh, SubObjectRule,
 } from '../../../formats/w3d/w3dScene';
 import { element } from '../element';
 import { createModelRenderer } from '../modelRenderer';
+import type { DrawOptions } from '../modelRenderer';
 import { createOrbit } from '../orbit';
 import type { Orbit } from '../orbit';
 import type { CameraBasis } from '../orbitBasis';
@@ -27,8 +28,10 @@ import { createBoneLabels } from './createBoneLabels';
 import { createViewControls } from './createViewControls';
 import type { SkyMemory } from './createViewControls';
 import { describeDetailLevels, describeModel } from './describeModel';
+import { isFieldKey } from './isFieldKey';
 import type { ViewerModel } from './describeModel';
 import { adoptViewerStyle } from './viewerStyle';
+import { getVsCodeApi } from '../vscodeApi';
 
 export interface ViewerCamera {
   basis: CameraBasis;
@@ -46,6 +49,7 @@ export interface ViewerLayer {
   onAdvance?(time: number): void;
   onSeek?(time: number): void;
   onRestart?(): void;
+  drawUnder?(camera: ViewerCamera): void;
   onFrame?(now: number): void;
   prepareFrame?(): FrameAdjustment;
   draw?(camera: ViewerCamera): void;
@@ -56,15 +60,25 @@ export interface ViewerClip {
   id: string;
   animation: W3dAnimation;
   skeleton?: SceneSkeleton;
+  startsAt?: number;
+  playsOnce?: boolean;
+}
+
+export interface SettingsMemory {
+  initial?: boolean;
+  onChange?(isOpen: boolean): void;
 }
 
 export interface ViewerOptions {
   onPickClip(id: string): void;
   partsHint?: string;
   sky?: SkyMemory;
+  settings?: SettingsMemory;
   target?: Vec3;
   radius?: number;
 }
+
+export type PartListener = (mesh: SceneMesh, on: boolean, othersShown: SceneMesh[]) => void;
 
 export interface Viewer {
   canvas: HTMLCanvasElement;
@@ -72,28 +86,43 @@ export interface Viewer {
   stage: HTMLElement;
   side: HTMLElement;
   bar: HTMLElement;
+  toggles: HTMLElement;
+  viewBar: HTMLElement;
+  modelSection: HTMLDetailsElement;
   orbit: Orbit;
   drawLines: DrawLines;
   addLayer(layer: ViewerLayer): void;
-  setModel(model: ViewerModel | undefined): void;
+  setModel(model: ViewerModel | undefined, showsBareSkeleton?: boolean): void;
   getModel(): ViewerModel | undefined;
   getPose(): Pose | undefined;
   setClips(list: ClipList): void;
   playClip(clip: ViewerClip): void;
+  switchClip(clip: ViewerClip): void;
   clearClip(notice?: string): void;
   showClipChoice(id: string | undefined): void;
-  setSubObjectRules(rules: SubObjectRule[]): void;
+  getDrawLook(): Pick<DrawOptions, 'showTextures' | 'houseColour'>;
+  addSection(title: string, content: Node[], isOpen?: boolean): HTMLDetailsElement;
+  setSubObjectRules(rules: SubObjectRule[], keepsSwitches?: boolean): void;
+  holdParts(): void;
+  onPartSwitched(listener: PartListener): void;
   restart(): void;
   getTime(): number;
   isPlaying(): boolean;
+  setBoneTurns(
+    source: (skeleton: SceneSkeleton, time: number) => ReadonlyMap<number, number> | undefined,
+  ): void;
+  drawModelShadow(matrix: number[], heightPlane: readonly number[]): void;
   showStatus(text: string): void;
   getCamera(): ViewerCamera;
 }
 
 const DEFAULT_TARGET: Vec3 = [0, 0, 20];
 const DEFAULT_RADIUS = 85;
-const CONTROLS_HELP =
-  'drag to orbit, right-drag to pan, scroll to zoom, double-click to reset, B for bones';
+const CONTROLS_HELP = [
+  'Drag to orbit, right-drag to pan, scroll to zoom, double-click to reset the camera.',
+  'Space plays and pauses, R restarts, . steps one frame, B shows the bones.',
+].join('\n');
+const SETTINGS_STATE_KEY = 'viewerSettingsOpen';
 const MAX_FRAME_SECONDS = 0.25;
 
 const getBoundsSphere = ({ bounds }: ViewerModel): [Vec3, number] => [
@@ -104,15 +133,32 @@ const getBoundsSphere = ({ bounds }: ViewerModel): [Vec3, number] => [
   ),
 ];
 
-const openContext = (canvas: HTMLCanvasElement) => {
-  const gl = canvas.getContext('webgl', { antialias: true, alpha: false }) ?? undefined;
+const openContext = (canvas: HTMLCanvasElement, onTexturesChanged: () => void) => {
+  const gl =
+    canvas.getContext('webgl', { antialias: true, alpha: false, stencil: true }) ?? undefined;
 
   try {
-    return gl && { gl, renderer: createModelRenderer(gl), drawLines: createLineRenderer(gl) };
+    return (
+      gl && {
+        gl,
+        renderer: createModelRenderer(gl, onTexturesChanged),
+        drawLines: createLineRenderer(gl),
+      }
+    );
   } catch (error) {
     console.error(error);
     return undefined;
   }
+};
+
+const createStateMemory = (): SettingsMemory => {
+  const api = getVsCodeApi<unknown>();
+  const read = () => (api.getState() as Record<string, unknown> | undefined) ?? {};
+
+  return {
+    initial: read()[SETTINGS_STATE_KEY] === true,
+    onChange: (isOpen) => api.setState({ ...read(), [SETTINGS_STATE_KEY]: isOpen }),
+  };
 };
 
 export const createViewer = (
@@ -121,6 +167,7 @@ export const createViewer = (
     onPickClip,
     partsHint,
     sky: skyMemory,
+    settings: settingsMemory = createStateMemory(),
     target = DEFAULT_TARGET,
     radius = DEFAULT_RADIUS,
   }: ViewerOptions,
@@ -133,13 +180,16 @@ export const createViewer = (
   const side = element('div', undefined, 'viewer-side');
   const main = element('div', undefined, 'viewer-main');
   const transportBar = element('div', undefined, 'viewer-bar');
-  const viewBar = element('div', undefined, 'viewer-bar');
+  const playback = element('div', undefined, 'viewer-group');
+  const toggles = element('div', undefined, 'viewer-group');
+  const viewBar = element('div', undefined, 'viewer-bar viewer-settings');
+  const settingsButton = element('button', '⚙', 'viewer-settings-button');
+  const help = element('span', '?', 'viewer-help');
   const status = element('span', undefined, 'viewer-status');
   const facts = element('p');
   const clipNotice = element('p');
   const levelFacts = element('p');
-  const help = element('p', CONTROLS_HELP);
-  const graphics = openContext(canvas);
+  const graphics = openContext(canvas, () => invalidate());
   const orbit = createOrbit(canvas, target, radius, () => invalidate());
 
   let model: ViewerModel | undefined;
@@ -159,30 +209,46 @@ export const createViewer = (
     status.textContent = text;
   };
 
+  let getBoneTurns: Parameters<Viewer['setBoneTurns']>[0] | undefined;
+
+  const getFrameAt = (time: number) =>
+    clip ? getClipFrame(clip.animation, time - (clip.startsAt ?? 0), clip.playsOnce) : 0;
+
   const applyTime = () => {
     const skeleton = model?.skeleton;
-    const frame = clip ? getClipFrame(clip.animation, transport.getTime()) : 0;
+    const time = transport.getTime();
+    const frame = getFrameAt(time);
 
-    pose = skeleton && poseAt(skeleton, clip?.animation, frame);
+    pose =
+      skeleton && poseAt(skeleton, clip?.animation, frame, getBoneTurns?.(skeleton, time));
     if (skeleton) {
       graphics?.renderer.setPose(pose);
     }
-    if (clip) {
-      const { name, frameCount, frameRate } = clip.animation;
-
-      showStatus(`${name} · frame ${frame.toFixed(1)} / ${frameCount} · ${frameRate} fps`);
-    }
     invalidate();
+  };
+
+  const describeTime = (time: number) => {
+    if (!clip) {
+      return { text: `${time.toFixed(1)} s`, title: 'Seconds since the start' };
+    }
+
+    const { name, frameCount, frameRate } = clip.animation;
+
+    return {
+      text: `${getFrameAt(time).toFixed(1)} / ${frameCount}`,
+      title: `Frame of ${name}, ${frameCount} frames at ${frameRate} fps`,
+    };
   };
 
   const transport = createTransport({
     getLength: () =>
       Math.max(
-        clip ? getClipSeconds(clip.animation) : 0,
+        clip ? (clip.startsAt ?? 0) + getClipSeconds(clip.animation) : 0,
         ...layers.map((layer) => layer.getLength?.() ?? 0),
       ),
     isBusy: () => layers.some((layer) => layer.isBusy?.()),
     canPlay: () => !!clip || animatesMaterials || layers.length > 0,
+    describeTime,
     onAdvance: (time) => {
       applyTime();
       layers.forEach((layer) => layer.onAdvance?.(time));
@@ -197,6 +263,7 @@ export const createViewer = (
     },
   });
   const picker = createClipPicker((id) => {
+    transport.setPlaying(true);
     if (!id) {
       clearClip();
       return;
@@ -214,17 +281,27 @@ export const createViewer = (
       invalidate();
     }
   });
-  const parts = createPartsPanel(view.choices, () => rules, partsHint, invalidate);
+  const partListeners: PartListener[] = [];
+  const parts = createPartsPanel(view.choices, () => rules, partsHint, invalidate, (...switched) =>
+    partListeners.forEach((listener) => listener(...switched)),
+  );
 
   const describeClipFit = () =>
     clip && model?.skeleton && !isOwnClip(model.skeleton, clip.animation, clip.skeleton)
       ? describeForeignClip(clip.animation)
       : '';
 
+  const refreshModelSection = () => {
+    modelSection.hidden = ![...modelSection.children].some(
+      (child) => child.tagName !== 'SUMMARY' && child.textContent,
+    );
+  };
+
   const clearClip = (notice = '') => {
     clip = undefined;
     picker.show(undefined);
     clipNotice.textContent = notice;
+    refreshModelSection();
     showStatus('');
     transport.restart();
   };
@@ -274,6 +351,7 @@ export const createViewer = (
     const camera = getCamera(shake);
     const { basis, matrix } = camera;
 
+    layers.forEach((layer) => layer.drawUnder?.(camera));
     if (choices.showGrid) {
       drawLines(grid, matrix, true);
     }
@@ -282,8 +360,9 @@ export const createViewer = (
       light: basis.forward.map((axis) => -axis) as Vec3,
       showBones: choices.showBones,
       showMeshes: choices.showMeshes,
+      showTextures: choices.showTextures,
+      houseColour: choices.houseColour,
       lod: choices.lod,
-      showHidden: choices.showHidden,
       subObjectRules: rules,
       partOverrides: parts.overrides,
       showBoxes: choices.showBoxes,
@@ -336,13 +415,13 @@ export const createViewer = (
     requestAnimationFrame(runFrame);
   };
 
-  const setModel = (next: ViewerModel | undefined) => {
+  const setModel = (next: ViewerModel | undefined, showsBareSkeleton = false) => {
     model = next;
     graphics?.renderer.setModel(next);
     animatesMaterials = !!next?.meshes.some((mesh) =>
       mesh.draws?.some((each) => isSurfaceAnimated(each.surface)),
     );
-    view.setModel(next, rules);
+    view.setModel(next, showsBareSkeleton);
     parts.setModel(next);
     picker.setHasSkeleton(!!next?.skeleton);
     facts.textContent = next ? describeModel(next) : '';
@@ -350,6 +429,7 @@ export const createViewer = (
     if (clip) {
       clipNotice.textContent = describeClipFit();
     }
+    refreshModelSection();
     if (next) {
       const [centre, size] = getBoundsSphere(next);
 
@@ -364,9 +444,19 @@ export const createViewer = (
   };
 
   window.addEventListener('keydown', (event) => {
+    const { target } = event;
+
     if (
-      event.target instanceof HTMLInputElement ||
-      event.target instanceof HTMLSelectElement
+      (target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          isFieldKey(
+            target.tagName,
+            target instanceof HTMLInputElement ? target.type : undefined,
+            event.key,
+          ))) ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey
     ) {
       return;
     }
@@ -381,7 +471,7 @@ export const createViewer = (
     } else if (key === '.') {
       transport.step();
     } else if (key === 'b') {
-      if (model?.skeleton) {
+      if (model?.skeleton && !event.repeat) {
         view.toggleBones();
       }
     } else {
@@ -389,17 +479,52 @@ export const createViewer = (
     }
   });
 
-  transportBar.append(picker.select, ...transport.controls);
-  viewBar.append(...view.controls, status);
+  const setSettingsOpen = (isOpen: boolean) => {
+    viewBar.hidden = !isOpen;
+    settingsButton.setAttribute('aria-pressed', String(isOpen));
+    settingsButton.setAttribute('aria-expanded', String(isOpen));
+  };
+
+  settingsButton.id = 'viewerSettings';
+  settingsButton.title =
+    'View settings: bone names, model, textures, boxes, grid, detail, house colour, background';
+  settingsButton.setAttribute('aria-label', 'View settings');
+  settingsButton.onclick = () => {
+    const isOpen = !!viewBar.hidden;
+
+    setSettingsOpen(isOpen);
+    settingsMemory.onChange?.(isOpen);
+  };
+  setSettingsOpen(!!settingsMemory.initial);
+  help.title = CONTROLS_HELP;
+  help.tabIndex = 0;
+  help.setAttribute('role', 'img');
+  help.setAttribute('aria-label', CONTROLS_HELP);
+  playback.append(...transport.buttons);
+  toggles.append(...view.basicControls);
+  transportBar.append(playback, picker.select, ...transport.timeline, toggles, settingsButton);
+  viewBar.append(...view.settingsControls);
   main.append(transportBar, viewBar, stage);
-  stage.append(canvas, boneLabels.layer);
-  side.append(clipNotice, facts, levelFacts, parts.panel, help);
+  stage.append(canvas, boneLabels.layer, status, help);
+  const addSection = (title: string, content: Node[], isOpen = true) => {
+    const section = element('details', undefined, 'viewer-section');
+
+    section.open = isOpen;
+    section.append(element('summary', title), ...content);
+    side.append(section);
+    return section;
+  };
+
+  const modelSection = addSection('Model', [clipNotice, facts, levelFacts]);
+
+  refreshModelSection();
+  side.append(parts.panel);
   root.classList.add('viewer');
   root.replaceChildren(main, side);
   if (!graphics) {
     showStatus('This view needs WebGL, which is not available here.');
   }
-  view.setModel(undefined, rules);
+  view.setModel(undefined);
   transport.refresh();
   requestAnimationFrame(runFrame);
 
@@ -409,6 +534,9 @@ export const createViewer = (
     stage,
     side,
     bar: transportBar,
+    toggles,
+    viewBar,
+    modelSection,
     orbit,
     drawLines: (lines, matrix, depthTest) => graphics?.drawLines(lines, matrix, depthTest),
     addLayer: (layer) => {
@@ -426,20 +554,49 @@ export const createViewer = (
       clip = next;
       picker.show(next.id);
       clipNotice.textContent = describeClipFit();
+      refreshModelSection();
       transport.restart();
-      transport.setPlaying(true);
+      transport.playUnlessPaused();
+    },
+    switchClip: (next) => {
+      clip = next;
+      clipNotice.textContent = describeClipFit();
+      refreshModelSection();
+      applyTime();
+      transport.refresh();
     },
     clearClip,
     showClipChoice: (id) => picker.show(id),
-    setSubObjectRules: (next) => {
+    getDrawLook: () => ({
+      showTextures: view.choices.showTextures,
+      houseColour: view.choices.houseColour,
+    }),
+    addSection,
+    onPartSwitched: (listener) => {
+      partListeners.push(listener);
+    },
+    holdParts: parts.hold,
+    setSubObjectRules: (next, keepsSwitches) => {
       rules = next;
-      view.setModel(model, rules);
-      parts.refresh();
+      parts.refresh(keepsSwitches);
       invalidate();
     },
     restart: () => transport.restart(),
     getTime: () => transport.getTime(),
     isPlaying: () => transport.isPlaying(),
+    setBoneTurns: (source) => {
+      getBoneTurns = source;
+    },
+    drawModelShadow: (matrix, heightPlane) => {
+      if (graphics && view.choices.showMeshes) {
+        graphics.renderer.drawShadow(matrix, {
+          heightPlane,
+          lod: view.choices.lod,
+          subObjectRules: rules,
+          partOverrides: parts.overrides,
+        });
+      }
+    },
     showStatus,
     getCamera: () => getCamera(),
   };

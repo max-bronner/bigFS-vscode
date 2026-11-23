@@ -3,6 +3,7 @@ import type { MatchBlock } from '../../core/collectLineMatches';
 
 export interface SearchRequest {
   query: SearchQuery;
+  target?: 'text' | 'names';
   include: string;
   exclude: string;
   contextLines: number;
@@ -15,6 +16,7 @@ export interface FileResult {
   uri: string;
   blocks: MatchBlock[];
   matchCount: number;
+  isNameMatch?: boolean;
 }
 
 export interface SearchSummary {
@@ -42,6 +44,7 @@ export type FromSearchPage =
   | {
       kind: 'open';
       uri: string;
+      isWhole?: boolean;
       line: number;
       start: number;
       end: number;

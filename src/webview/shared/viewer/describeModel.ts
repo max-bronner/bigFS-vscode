@@ -22,7 +22,10 @@ export const describeModel = ({
   ].join(' · ');
 
 export const describeDetailLevels = ({ hlod }: ViewerModel): string => {
-  if (!hlod?.lods.length) {
+  if (
+    !hlod?.lods.length ||
+    (hlod.lods.length < 2 && !hlod.skippedLodCount && !hlod.aggregates.length && !hlod.proxies.length)
+  ) {
     return '';
   }
 
@@ -35,7 +38,7 @@ export const describeDetailLevels = ({ hlod }: ViewerModel): string => {
           `${skippedLodCount} more LOD array${skippedLodCount === 1 ? '' : 's'} in the file past the header's count, which the game does not read`,
         ]
       : []),
-    `aggregates: ${aggregates.join(', ') || 'none'}`,
-    `proxies: ${proxies.join(', ') || 'none'}`,
+    ...(aggregates.length ? [`aggregates: ${aggregates.join(', ')}`] : []),
+    ...(proxies.length ? [`proxies: ${proxies.join(', ')}`] : []),
   ].join(' · ');
 };

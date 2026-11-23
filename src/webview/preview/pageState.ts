@@ -4,6 +4,7 @@ export interface PageState {
   zoom?: number;
   panelWidth?: number;
   sky?: string;
+  foldedSections?: string[];
 }
 
 export const readPageState = (): PageState =>

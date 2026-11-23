@@ -21,6 +21,7 @@ export interface EffectSet {
 
 export class EffectLibrary {
   private readonly textures = new Map<string, Promise<string | null>>();
+  private texturesRevision: number | undefined;
 
   public constructor(
     private readonly index: SageIniIndex,
@@ -158,7 +159,7 @@ export class EffectLibrary {
         );
       }
       if (def.particleName) {
-        const texture = await this.loadTexture(def.particleName);
+        const texture = await this.getTexture(def.particleName);
 
         textures[def.particleName.toLowerCase()] = texture;
         if (!texture) {
@@ -171,7 +172,16 @@ export class EffectLibrary {
     return { systems, fxLists, textures, notes: [...notes] };
   }
 
-  private loadTexture(name: string): Promise<string | null> {
+  public forgetTextures(): void {
+    this.textures.clear();
+  }
+
+  public getTexture(name: string): Promise<string | null> {
+    if (this.locator && this.locator.revision !== this.texturesRevision) {
+      this.texturesRevision = this.locator.revision;
+      this.textures.clear();
+    }
+
     const key = name.toLowerCase();
     let entry = this.textures.get(key);
 

@@ -1,8 +1,4 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
-import { parseSageIni } from '../../formats/ini/sageIniParser';
 import type { Pose } from '../../formats/w3d/w3dPose';
 import type { SceneSkeleton } from '../../formats/w3d/w3dScene';
 import {
@@ -11,29 +7,14 @@ import {
   pickDrawLook,
   readRankLine,
 } from '../../game/objects/objectComposition';
-import type { ComposableObject } from '../../game/objects/objectComposition';
-import { readObjectScene } from '../../game/objects/objectScene';
+import { groupComposedParts } from '../../game/objects/groupComposedParts';
+import { findOpeningAnimation } from '../../game/objects/objectScene';
 import {
   IDENTITY,
   listPassengerBones,
   placePart,
 } from '../../game/objects/placeComposedParts';
-
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
-
-const toObject = (lines: string[]): ComposableObject => {
-  const parsed = parseSageIni(lines, schema);
-  const scene = readObjectScene(parsed, schema, () => false, () => false, lines)!;
-
-  return { name: scene.name, parsed, scene };
-};
+import { toObject } from './objectFixtures';
 
 const createSources = (objects: Record<string, string[]>) => ({
   readObject: (name: string) =>
@@ -117,6 +98,31 @@ const skeleton = (names: string[], translations: number[][]): SceneSkeleton => (
 });
 
 suite('Object composition', () => {
+  test('an object opens on its idle state, not on a transition named after idle', () => {
+    const { scene } = toObject([
+      'Object TestRider',
+      '  Draw = W3DScriptedModelDraw ModuleTag_Draw',
+      '    DefaultModelConditionState',
+      '      Model = TRD_SKN',
+      '    End',
+      '    TransitionState = TRANS_Idle_to_Selected',
+      '      Animation = Turn',
+      '        AnimationName = TRD_SKL.TRD_ATNA',
+      '      End',
+      '    End',
+      '    IdleAnimationState',
+      '      Animation = Idle',
+      '        AnimationName = TRD_SKL.TRD_IDLA',
+      '      End',
+      '    End',
+      '  End',
+      'End',
+    ]);
+
+    assert.strictEqual(findOpeningAnimation(scene, 'ModuleTag_Draw'), 'TRD_SKL.TRD_IDLA');
+    assert.strictEqual(findOpeningAnimation(scene, undefined), 'TRD_SKL.TRD_IDLA');
+  });
+
   test('a contain module seats the occupants its KindOf admits on numbered bones, with their bone conditions', async () => {
     const composition = await composeObject(
       toObject(RAM),
@@ -243,6 +249,70 @@ suite('Object composition', () => {
       readRankLine(['RankNumber:2', 'UnitType:', 'A', 'Position:X:1', 'Y:2', 'Leader', '1', '0', 'Position:', 'X:3', 'Y:4', 'Position:X:', '5', 'Y:', '6', 'Junk']),
       { unitType: 'A', positions: [{ x: 1, y: 2 }, { x: 3, y: 4 }, { x: 5, y: 6 }] },
     );
+  });
+
+  test('a part hides and shows its sub-objects as its own object does in the state it is drawn in', async () => {
+    const crew = [
+      ...CREW.slice(0, 9),
+      '      BeginScript',
+      '        CurDrawableHideSubObjectPermanently("TRUNK")',
+      '      EndScript',
+      ...CREW.slice(9),
+    ];
+    const composition = await composeObject(
+      toObject(RAM),
+      createSources({ TestCrew: crew, TestStowaway: STOWAWAY }),
+    );
+    const seated = composition.parts.filter((part) => part.object === 'TestCrew');
+    const flag = composition.parts.find((part) => part.draw === 'ModuleTag_Flag');
+
+    assert.strictEqual(seated.length, 2);
+    for (const part of seated) {
+      assert.deepStrictEqual(
+        part.subObjectRules.map(({ pattern, hide }) => [pattern, hide]),
+        [['TRUNK', true]],
+      );
+    }
+    assert.deepStrictEqual(flag?.subObjectRules, []);
+  });
+
+  test("the crew holds the conditions of the state the object shows, each with its bone's own", async () => {
+    const crew = [
+      ...CREW.slice(0, -3),
+      '    AnimationState = MOVING PASSENGER PASSENGER_VARIATION_1',
+      '      Animation = Run',
+      '        AnimationName = TC_SKL.TC_RUNA',
+      '      End',
+      '    End',
+      ...CREW.slice(-3),
+    ];
+    const sources = createSources({ TestCrew: crew, TestStowaway: STOWAWAY });
+    const clips = async (conditions: string[]) =>
+      (await composeObject(toObject(RAM), sources, conditions)).parts
+        .filter((part) => part.object === 'TestCrew')
+        .map((part) => part.animation);
+
+    assert.deepStrictEqual(await clips([]), ['TC_SKL.TC_PSHA', 'TC_SKL.TC_PSHB']);
+    assert.deepStrictEqual(await clips(['MOVING']), ['TC_SKL.TC_RUNA', 'TC_SKL.TC_PSHB']);
+  });
+
+  test('parts of one kind from one field group together, each group after the group it stands on', async () => {
+    const composition = await composeObject(
+      toObject(RAM),
+      createSources({ TestCrew: CREW, TestStowaway: STOWAWAY }),
+    );
+    const groups = groupComposedParts(composition.parts);
+
+    assert.deepStrictEqual(
+      groups.map((group) => [group.name, group.parts.length]),
+      [
+        ['ModuleTag_Body', 1],
+        ['ModuleTag_Flag', 1],
+        ['ModuleTag_Spikes', 1],
+        ['TestCrew', 2],
+      ],
+    );
+    assert.ok(groups.every((group) => group.parent === undefined));
   });
 
   test('a draw module shows the state matching most of the conditions held', () => {
@@ -396,5 +466,135 @@ suite('Composed part placement', () => {
     placePart(seat, owner);
     assert.ok(first > 0);
     assert.strictEqual(searches, first);
+  });
+
+  test('a SpawnBehavior stands what it keeps alive on its spawn points, from its trigger on', async () => {
+    const tree = [
+      'Object TestTree',
+      '  Draw = W3DScriptedModelDraw ModuleTag_Draw',
+      '    DefaultModelConditionState',
+      '      Model = TT_TREE',
+      '    End',
+      '  End',
+      '  Behavior = SpawnPointProductionExitUpdate ModuleTag_Exit',
+      '    SpawnPointBoneName = PERCH',
+      '  End',
+      '  Behavior = SpawnBehavior ModuleTag_Spawn',
+      '    TriggeredBy = Upgrade_TestLevel3',
+      '    SpawnNumber = 2',
+      '    SpawnTemplateName = TestCrew',
+      '  End',
+      'End',
+    ];
+    const sources = createSources({ TestCrew: CREW });
+    const before = await composeObject(toObject(tree), sources);
+    const after = await composeObject(toObject(tree), sources, [], { upgrades: ['Upgrade_TestLevel3'] });
+    const spawned = (parts: typeof before.parts) => parts.filter((part) => part.object === 'TestCrew');
+
+    assert.deepStrictEqual(
+      spawned(before.parts).map((part) => [part.placement, part.isShown, part.binding?.show]),
+      [0, 1].map((slot) => [
+        { kind: 'spawnPoint', prefix: 'PERCH', slot },
+        false,
+        { give: ['Upgrade_TestLevel3'] },
+      ]),
+    );
+    assert.deepStrictEqual(spawned(after.parts).map((part) => part.isShown), [true, true]);
+  });
+
+  test('what a SpawnBehavior creates without a spawn point exit walks away, and is left out', async () => {
+    const lair = [
+      'Object TestLair',
+      '  Draw = W3DScriptedModelDraw ModuleTag_Draw',
+      '    DefaultModelConditionState',
+      '      Model = TL_LAIR',
+      '    End',
+      '  End',
+      '  Behavior = SpawnBehavior ModuleTag_Spawn',
+      '    SpawnNumber = 3',
+      '    SpawnTemplateName = TestCrew',
+      '  End',
+      'End',
+    ];
+    const composition = await composeObject(toObject(lair), createSources({ TestCrew: CREW }));
+
+    assert.ok(!composition.parts.some((part) => part.object === 'TestCrew'));
+    assert.ok(composition.notes.some((note) => /TestCrew.*walks out of it/.test(note)));
+  });
+
+  test('a spawn point is its bone as it rests, and none past the last bone', () => {
+    const owner = { matrix: IDENTITY, skeleton: bones };
+
+    assert.deepStrictEqual(
+      placePart({ kind: 'spawnPoint', prefix: 'CREWBONE', slot: 1 }, owner)!.slice(12, 15),
+      [10, -5, 0],
+    );
+    assert.strictEqual(placePart({ kind: 'spawnPoint', prefix: 'CREWBONE', slot: 2 }, owner), undefined);
+  });
+
+  test('what an upgrade creates in a variation no plot builds is said to be a look the game never shows', async () => {
+    const tower = toObject([
+      'Object TestTower',
+      '  Draw = W3DScriptedModelDraw ModuleTag_Draw',
+      '    DefaultModelConditionState',
+      '      Model = TT_SIDE',
+      '    End',
+      '    ModelConditionState = BUILD_VARIATION_ONE',
+      '      Model = TT_SIDE',
+      '    End',
+      '    ModelConditionState = BUILD_VARIATION_TWO',
+      '      Model = TT_CORNER',
+      '    End',
+      '  End',
+      '  Behavior = ObjectCreationUpgrade ModuleTag_Engine',
+      '    TriggeredBy = Upgrade_TestEngine',
+      '    ThingToSpawn = TestCrew',
+      '    Offset = X:12 Y:0 Z:50',
+      '  End',
+      'End',
+    ]);
+    const sources = createSources({ TestCrew: CREW });
+    const compose = (variation: string) =>
+      composeObject(tower, sources, [], { conditions: [variation] });
+
+    tower.scene.padVariation = 'BUILD_VARIATION_TWO';
+    assert.ok((await compose('BUILD_VARIATION_ONE')).notes.some((note) => /never shows it in BUILD_VARIATION_ONE/.test(note)));
+    assert.deepStrictEqual((await compose('BUILD_VARIATION_TWO')).notes, []);
+  });
+
+  test('a group of parts offers its states, and a state picked for it is held beside its own', async () => {
+    const perch = toObject([
+      'Object TestPerch',
+      '  Draw = W3DScriptedModelDraw ModuleTag_Draw',
+      '    DefaultModelConditionState',
+      '      Model = TP_PERCH',
+      '    End',
+      '  End',
+      '  Behavior = SpawnPointProductionExitUpdate ModuleTag_Exit',
+      '    SpawnPointBoneName = PERCH',
+      '  End',
+      '  Behavior = SpawnBehavior ModuleTag_Spawn',
+      '    SpawnNumber = 2',
+      '    SpawnTemplateName = TestCrew',
+      '  End',
+      'End',
+    ]);
+    const sources = createSources({ TestCrew: CREW });
+    const before = await composeObject(perch, sources);
+    const group = groupComposedParts(before.parts).find((each) => each.name === 'TestCrew')!;
+    const options = before.partStates?.[group.key] ?? [];
+    const pushing = options.find((option) => option.conditions.includes('PASSENGER_VARIATION_2'))!;
+
+    assert.deepStrictEqual(
+      options.map((option) => option.group),
+      ['Idle', 'Riding and garrison', 'Riding and garrison', 'Model states'],
+    );
+
+    const after = await composeObject(perch, sources, [], {}, { [group.key]: pushing.conditions });
+    const crew = (parts: typeof before.parts) =>
+      parts.filter((part) => part.object === 'TestCrew').map((part) => part.animation);
+
+    assert.deepStrictEqual(crew(before.parts), ['TC_SKL.TC_IDLA', 'TC_SKL.TC_IDLA']);
+    assert.deepStrictEqual(crew(after.parts), ['TC_SKL.TC_PSHB', 'TC_SKL.TC_PSHB']);
   });
 });

@@ -1,4 +1,5 @@
 import type { Event, LogOutputChannel, Uri } from 'vscode';
+import type { ResolvedUri } from './nodeAddress';
 import type { ConflictChoice } from '../../core/transferPlan';
 import type { Archive } from './archive';
 import { createArchiveOperations } from './archiveOperations';
@@ -8,12 +9,13 @@ import type {
   TransferResult,
 } from './archiveOperations';
 import { createArchivePolicy } from './archivePolicy';
-import type { ArchivePolicy } from './archivePolicy';
+import type { ArchivePolicy, PolicedArchive } from './archivePolicy';
 import { createArchiveRegistry } from './archiveRegistry';
 import type { ArchiveChange, ArchiveRegistry } from './archiveRegistry';
 import { createArchiveScanner } from './archiveScanner';
 import type { ArchiveScanner } from './archiveScanner';
 import type { ArchiveSource } from './archiveSource';
+import { settings } from '../../platform/settings';
 import { LoadOrder } from './loadOrder';
 import { isInReadOnlySource } from './sourceAccess';
 import type { VirtualNode } from './virtualNode';
@@ -40,7 +42,10 @@ export class ArchiveModel {
       discover: (uri) => this.scanner.discover(uri),
       retryLater: (archivePath) => this.scanner.retryLater(archivePath),
     });
-    this.policy = createArchivePolicy(() => this.registry.sources);
+    this.policy = createArchivePolicy(
+      () => this.registry.sources,
+      () => settings.protectGameArchives.get(),
+    );
     this.operations = createArchiveOperations(this.registry, this.policy, log);
     this.scanner = createArchiveScanner(
       this.registry,
@@ -68,6 +73,10 @@ export class ArchiveModel {
     return this.registry.getArchiveRoots();
   }
 
+  public resolveUri(uri: Uri): ResolvedUri | undefined {
+    return this.registry.resolveUri(uri);
+  }
+
   public getSources(): readonly ArchiveSource[] {
     return this.registry.sources;
   }
@@ -76,8 +85,8 @@ export class ArchiveModel {
     return this.registry.getArchivesOf(sourceId);
   }
 
-  public isReadOnly(archive: Archive): boolean {
-    return this.policy.isReadOnly(archive.sourceId);
+  public isReadOnly(archive: PolicedArchive): boolean {
+    return this.policy.isArchiveReadOnly(archive);
   }
 
   public isSourceReadOnly(sourceId: string): boolean {
@@ -85,6 +94,13 @@ export class ArchiveModel {
   }
 
   public ensureWritable(uri: Uri): void {
+    const resolved = this.registry.resolveUri(uri);
+
+    if (resolved) {
+      this.policy.ensureArchiveWritable(resolved.archive);
+      return;
+    }
+
     const [sourceId = ''] = uri.path.split('/').filter(Boolean);
 
     this.policy.ensureWritable(sourceId);

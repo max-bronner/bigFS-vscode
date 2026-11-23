@@ -1,9 +1,5 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import Module from 'module';
-import { join } from 'path';
 import type { LogOutputChannel, Uri } from 'vscode';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
 import { compareLoadPositions } from '../../game/install/gameView';
 import { buildStacks } from '../../game/install/installLayers';
 import type { InstallKind, GameId } from '../../game/install/installLayers';
@@ -11,8 +7,8 @@ import type { Archive } from '../../services/archives/archive';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
 import type { ArchiveSource } from '../../services/archives/archiveSource';
 import type { VirtualNode } from '../../services/archives/virtualNode';
-
-type Loader = (request: string, ...rest: unknown[]) => unknown;
+import { loadSageIniSchema } from './loadSageIniSchema';
+import { requireWithVscode } from './requireWithVscode';
 
 const makeUri = (scheme: string, path: string): Uri =>
   ({
@@ -57,46 +53,15 @@ const vscodeStub = {
   },
 };
 
-const internals = Module as unknown as { _load: Loader };
-const original = internals._load;
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { loadOrders, indexes, libraries } = requireWithVscode(vscodeStub, () => ({
+  loadOrders: require('../../services/archives/loadOrder') as typeof import('../../services/archives/loadOrder'),
+  indexes: require('../../services/ini/sageIniIndex') as typeof import('../../services/ini/sageIniIndex'),
+  libraries: require('../../features/apt/aptLibrary') as typeof import('../../features/apt/aptLibrary'),
+}));
+/* eslint-enable @typescript-eslint/no-require-imports */
 
-internals._load = (request, ...rest) =>
-  request === 'vscode' ? vscodeStub : original.call(Module, request, ...rest);
-
-let loadOrders: typeof import('../../services/archives/loadOrder');
-let indexes: typeof import('../../services/ini/sageIniIndex');
-let libraries: typeof import('../../features/apt/aptLibrary');
-
-const freshModules = [
-  '../../services/archives/nodeAddress',
-  '../../services/archives/loadOrder',
-  '../../services/ini/sageIniIndex',
-  '../../features/apt/aptLibrary',
-].map((module) => require.resolve(module));
-const cached = freshModules.map((path) => require.cache[path]);
-
-freshModules.forEach((path) => delete require.cache[path]);
-
-try {
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  loadOrders = require('../../services/archives/loadOrder');
-  indexes = require('../../services/ini/sageIniIndex');
-  libraries = require('../../features/apt/aptLibrary');
-  /* eslint-enable @typescript-eslint/no-require-imports */
-} finally {
-  internals._load = original;
-  freshModules.forEach((path, at) => {
-    if (cached[at]) {
-      require.cache[path] = cached[at];
-    }
-  });
-}
-
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'), 'utf8'),
-  ),
-);
+const schema = loadSageIniSchema();
 
 const makeSource = (
   id: string,

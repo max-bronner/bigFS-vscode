@@ -1,11 +1,9 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
 import { findOwningTemplate } from '../../game/objects/findOwningTemplate';
 import { createRequestSequence } from '../../features/preview/createRequestSequence';
 import { createRevisionCache } from '../../features/preview/createRevisionCache';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
 suite('preview request sequencing', () => {
   test('only the latest request is current', () => {
@@ -34,14 +32,7 @@ suite('revision cache', () => {
 });
 
 suite('owning template', () => {
-  const schema = createSageIniSchema(
-    JSON.parse(
-      readFileSync(
-        join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-        'utf8',
-      ),
-    ),
-  );
+  const schema = loadSageIniSchema();
   const { blocks } = parseSageIni(
     [
       'Object Archer',

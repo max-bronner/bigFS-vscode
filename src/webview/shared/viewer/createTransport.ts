@@ -8,17 +8,20 @@ export interface TransportHooks {
   getLength(): number;
   isBusy(): boolean;
   canPlay(): boolean;
+  describeTime(time: number): { text: string; title: string };
   onAdvance(time: number): void;
   onSeek(time: number): void;
   onRestart(): void;
 }
 
 export interface Transport {
-  controls: HTMLElement[];
+  buttons: HTMLElement[];
+  timeline: HTMLElement[];
   getTime(): number;
   getMaterialSeconds(): number;
   isPlaying(): boolean;
   setPlaying(playing: boolean): void;
+  playUnlessPaused(): void;
   togglePlaying(): void;
   advance(seconds: number): void;
   step(): void;
@@ -26,21 +29,29 @@ export interface Transport {
   refresh(): void;
 }
 
-export const createTransport = (hooks: TransportHooks): Transport => {
-  const play = element('button', 'Pause');
-  const stop = element('button', 'Stop');
-  const restartButton = element('button', 'Restart');
-  const stepButton = element('button', 'Step');
-  const slider = element('input');
-  const speedSelect = element('select');
-  const loopLabel = element('label');
-  const loopBox = element('input');
-  const clock = { time: 0, materialSeconds: 0, playing: true, speed: 1 };
+const createButton = (text: string, title: string) => {
+  const button = element('button', text);
 
-  play.title = 'Space';
-  stop.title = 'Back to the start, paused';
-  restartButton.title = 'R';
-  stepButton.title = '.';
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  return button;
+};
+
+export const createTransport = (hooks: TransportHooks): Transport => {
+  const play = createButton('❚❚', 'Pause (Space)');
+  const stop = createButton('■', 'Stop: back to the start, paused');
+  const restartButton = createButton('↺', 'Restart (R)');
+  const stepButton = createButton('⇥', 'Step one frame (.)');
+  const loop = createButton('⟳', 'Loop: start over at the end');
+  const slider = element('input');
+  const time = element('span', '', 'viewer-time');
+  const speedSelect = element('select');
+  const clock = { time: 0, materialSeconds: 0, playing: true, speed: 1, loops: true };
+  let isPausedByHand = false;
+
+  play.id = 'viewerPlay';
+  loop.id = 'viewerLoop';
+  loop.setAttribute('aria-pressed', 'true');
   slider.type = 'range';
   slider.min = '0';
   slider.step = 'any';
@@ -48,26 +59,42 @@ export const createTransport = (hooks: TransportHooks): Transport => {
   speedSelect.title = 'Playback speed';
   speedSelect.append(...SPEEDS.map((speed) => new Option(`${speed}×`, String(speed))));
   speedSelect.value = '1';
-  loopBox.type = 'checkbox';
-  loopBox.checked = true;
-  loopLabel.append(loopBox, ' Loop');
 
   const isPlaying = () => clock.playing && hooks.canPlay();
 
   const refresh = () => {
     const length = hooks.getLength();
     const canPlay = hooks.canPlay();
+    const playing = isPlaying();
+    const label = playing ? 'Pause (Space)' : 'Play (Space)';
+    const described = hooks.describeTime(clock.time);
 
-    play.textContent = isPlaying() ? 'Pause' : 'Play';
-    play.disabled = stop.disabled = restartButton.disabled = stepButton.disabled = !canPlay;
+    play.textContent = playing ? '❚❚' : '▶';
+    play.title = label;
+    play.setAttribute('aria-label', label);
+    for (const each of [play, stop, restartButton, stepButton, loop, speedSelect]) {
+      each.hidden = !canPlay;
+    }
+    slider.hidden = time.hidden = !canPlay && !length;
     slider.disabled = !length;
     slider.max = String(Math.max(length, clock.time));
     slider.value = String(clock.time);
+    if (time.textContent !== described.text) {
+      time.textContent = described.text;
+    }
+    time.title = described.title;
   };
 
   const setPlaying = (playing: boolean) => {
     clock.playing = playing;
+    isPausedByHand = !playing;
     refresh();
+  };
+
+  const playUnlessPaused = () => {
+    if (!isPausedByHand) {
+      setPlaying(true);
+    }
   };
 
   const restart = () => {
@@ -92,7 +119,7 @@ export const createTransport = (hooks: TransportHooks): Transport => {
       elapsed,
       hooks.getLength(),
       hooks.isBusy(),
-      loopBox.checked,
+      clock.loops,
     );
 
     clock.materialSeconds += elapsed;
@@ -111,38 +138,51 @@ export const createTransport = (hooks: TransportHooks): Transport => {
   play.onclick = togglePlaying;
   stop.onclick = () => {
     clock.playing = false;
+    isPausedByHand = true;
     restart();
   };
   restartButton.onclick = restart;
   stepButton.onclick = () => {
     clock.playing = false;
+    isPausedByHand = true;
     clock.time += STEP_SECONDS;
     clock.materialSeconds += STEP_SECONDS;
     hooks.onAdvance(clock.time);
     refresh();
   };
+  loop.onclick = () => {
+    clock.loops = !clock.loops;
+    loop.setAttribute('aria-pressed', String(clock.loops));
+  };
   speedSelect.onchange = () => {
     clock.speed = Number(speedSelect.value);
   };
   slider.oninput = () => {
-    const time = Number(slider.value);
+    const at = Number(slider.value);
 
     clock.playing = false;
-    clock.materialSeconds += time - clock.time;
-    clock.time = time;
-    hooks.onSeek(time);
+    isPausedByHand = true;
+    clock.materialSeconds += at - clock.time;
+    clock.time = at;
+    hooks.onSeek(at);
     refresh();
   };
 
   return {
-    controls: [play, stop, restartButton, stepButton, slider, speedSelect, loopLabel],
+    buttons: [play, stop, restartButton, stepButton, loop],
+    timeline: [slider, time, speedSelect],
     getTime: () => clock.time,
     getMaterialSeconds: () => clock.materialSeconds,
     isPlaying,
     setPlaying,
+    playUnlessPaused,
     togglePlaying,
     advance,
-    step: () => stepButton.click(),
+    step: () => {
+      if (hooks.canPlay()) {
+        stepButton.click();
+      }
+    },
     restart,
     refresh,
   };

@@ -110,7 +110,7 @@ export const createArchiveOperations = (
     archive: Archive,
     changes: readonly EntryChange[],
   ): Promise<void> => {
-    policy.ensureWritable(archive.sourceId);
+    policy.ensureArchiveWritable(archive);
 
     try {
       await archive.applyChanges(changes);
@@ -353,7 +353,7 @@ export const createArchiveOperations = (
         for (const { item } of move ? plan : []) {
           const origin = item.node.archive;
 
-          if (policy.isReadOnly(origin.sourceId)) {
+          if (policy.isArchiveReadOnly(origin)) {
             continue;
           }
 

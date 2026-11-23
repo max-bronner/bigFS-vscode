@@ -1,17 +1,17 @@
-import * as assert from "assert";
-import { parseW3d } from "../../formats/w3d/w3dTools";
-import { createToolRegistry } from "../../core/toolRegistry";
+import * as assert from 'assert';
+import { parseW3d } from '../../formats/w3d/w3dTools';
+import { createToolRegistry } from '../../core/toolRegistry';
 import {
   MAX_DRAWS_PER_MESH,
   MAX_PASSES_PER_MESH,
   resolveMaterialDraws,
-} from "../../formats/w3d/resolveMaterialDraws";
-import { DEFAULT_SURFACE } from "../../formats/w3d/w3dMaterialTypes";
-import { loadSceneDraws, MAX_TEXTURE_NAMES } from "../../formats/w3d/w3dSceneDraws";
-import type { W3dMesh } from "../../formats/w3d/w3dTools";
-import type { W3dMeshMaterials, W3dShader } from "../../formats/w3d/w3dMaterialChunks";
-import { MAX_NAME_LENGTH } from "../../formats/w3d/w3dChunks";
-import { buildChunk, concatBytes, encodeFloats, encodeUints } from "./w3d.test";
+} from '../../formats/w3d/resolveMaterialDraws';
+import { DEFAULT_SURFACE } from '../../formats/w3d/w3dMaterialTypes';
+import { loadSceneDraws, MAX_TEXTURE_NAMES } from '../../formats/w3d/w3dSceneDraws';
+import type { W3dMesh } from '../../formats/w3d/w3dTools';
+import type { W3dMeshMaterials, W3dShader } from '../../formats/w3d/w3dMaterialChunks';
+import { MAX_NAME_LENGTH } from '../../formats/w3d/w3dChunks';
+import { buildChunk, concatBytes, encodeFloats, encodeUints } from './w3dSynth';
 
 const shader = (fields: Partial<W3dShader> = {}): W3dShader => ({
   depthCompare: 3,
@@ -59,8 +59,8 @@ const meshWithTexture = (nameBytes: Uint8Array) => {
   );
 };
 
-suite("W3D material limits", () => {
-  test("passes past the cap are dropped", () => {
+suite('W3D material limits', () => {
+  test('passes past the cap are dropped', () => {
     const materials: W3dMeshMaterials = {
       shaders: [shader()],
       vertexMaterials: [],
@@ -74,7 +74,7 @@ suite("W3D material limits", () => {
     assert.strictEqual(draws[draws.length - 1].pass, MAX_PASSES_PER_MESH - 1);
   });
 
-  test("a mesh that would split into too many draws draws each pass whole", () => {
+  test('a mesh that would split into too many draws draws each pass whole', () => {
     const triangles = MAX_DRAWS_PER_MESH + 44;
     const materials: W3dMeshMaterials = {
       shaders: [shader()],
@@ -95,11 +95,11 @@ suite("W3D material limits", () => {
     assert.strictEqual(draws[0].indices, undefined);
   });
 
-  test("ids past their tables name nothing, and triangles naming nothing draw together", () => {
+  test('ids past their tables name nothing, and triangles naming nothing draw together', () => {
     const materials: W3dMeshMaterials = {
       shaders: [shader()],
       vertexMaterials: [],
-      textures: [{ name: "A.tga", clampU: false, clampV: false }],
+      textures: [{ name: 'A.tga', clampU: false, clampV: false }],
       fxMaterials: [],
       passes: [
         { ...emptyPass, shaderIds: [9000, 9001], stages: [{ textureIds: [5, 70000] }] },
@@ -111,13 +111,13 @@ suite("W3D material limits", () => {
     assert.strictEqual(draws[0].texture, undefined);
   });
 
-  test("a texture name of any length is cut, not thrown on", () => {
+  test('a texture name of any length is cut, not thrown on', () => {
     const [mesh] = parseW3d(meshWithTexture(new Uint8Array(300_000).fill(0x41))).meshes;
 
     assert.strictEqual(mesh.draws[0].texture?.name.length, MAX_NAME_LENGTH);
   });
 
-  test("a depth function byte past the defined ones is clamped to always", () => {
+  test('a depth function byte past the defined ones is clamped to always', () => {
     const materials: W3dMeshMaterials = {
       shaders: [shader({ depthCompare: 200 })],
       vertexMaterials: [],
@@ -146,7 +146,7 @@ suite("W3D material limits", () => {
     assert.strictEqual(draw(0).depthWrite, false);
   });
 
-  test("a scene loads no more distinct textures than the cap", async () => {
+  test('a scene loads no more distinct textures than the cap', async () => {
     const mesh = {
       draws: Array.from({ length: MAX_TEXTURE_NAMES + 50 }, (_, at) => ({
         pass: 0,
@@ -158,7 +158,7 @@ suite("W3D material limits", () => {
     const scene = await loadSceneDraws(
       [mesh],
       async (name) => {
-        asked.add(name.replace(/\.[^.]*$/, ""));
+        asked.add(name.replace(/\.[^.]*$/, ''));
         return undefined;
       },
       createToolRegistry(),

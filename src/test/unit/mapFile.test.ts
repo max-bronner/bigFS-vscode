@@ -93,7 +93,7 @@ suite('Maps', () => {
     );
     assert.strictEqual(map.lighting?.timeOfDay, 4);
     assert.strictEqual(map.sides[0].entries[1].value.value, false);
-    assert.deepStrictEqual(map.body.subarray(0, 200), body.subarray(0, 200));
+    assert.deepStrictEqual(map.body.subarray(0, 200), body.subarray(0, 200), 'the height map before every edit is untouched');
     assert.throws(
       () =>
         applyMapEdit(map, {

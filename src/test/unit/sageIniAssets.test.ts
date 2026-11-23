@@ -1,18 +1,9 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
 import { findAssetReferences } from '../../formats/ini/sageIniAssets';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+const schema = loadSageIniSchema();
 
 const TEXT = [
   'Object TestUnit',

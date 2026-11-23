@@ -6,9 +6,6 @@ import { getRunBounds } from '../../formats/apt/aptGeometry';
 import { AptReader, parseFrames } from '../../formats/apt/aptMovie';
 import { parseSageIni, forEachBlock } from '../../formats/ini/sageIniParser';
 import type { SageBlock } from '../../formats/ini/sageIniParser';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { applyMapEdit } from '../../formats/map/mapEdit';
 import { parseMap } from '../../formats/map/mapFile';
 import { decompressRefPack } from '../../formats/refpack/refpack';
@@ -21,6 +18,7 @@ import { skin } from '../../formats/w3d/w3dPose';
 import type { Pose } from '../../formats/w3d/w3dPose';
 import type { SceneMesh } from '../../formats/w3d/w3dScene';
 import { buildMap } from './mapSynth';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let value = n;
@@ -208,14 +206,7 @@ suite('Hostile input to the format parsers', () => {
   });
 
   suite('INI', () => {
-    const schema = createSageIniSchema(
-      JSON.parse(
-        readFileSync(
-          join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-          'utf8',
-        ),
-      ),
-    );
+    const schema = loadSageIniSchema();
 
     test('thousands of nested inline definitions neither overflow the stack nor close real blocks', () => {
       const depth = 20000;

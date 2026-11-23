@@ -19,7 +19,7 @@ export interface BoneLines {
   attachments: number[];
 }
 
-const bindSolid = (
+export const bindSolid = (
   gl: WebGLRenderingContext,
   { uniform, attributes }: ModelLocations,
   colour: number[],

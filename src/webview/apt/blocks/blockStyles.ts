@@ -12,7 +12,7 @@ const CSS = `
 .bk-head:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .bk-chevron { width: 10px; opacity: 0.7; flex: none; }
 .bk-type { flex: none; min-width: 20px; text-align: center; font-size: 11px; font-weight: 600; color: var(--vscode-symbolIcon-classForeground, var(--vscode-textLink-foreground)); }
-.bk-title { font-weight: 600; white-space: nowrap; }
+.bk-title { font-weight: 600; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .bk-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.7; font-size: 0.92em; }
 .bk-tools { display: flex; gap: 2px; align-items: center; margin-left: auto; flex: none; }
 .bk-handle { cursor: grab; opacity: 0.5; letter-spacing: -2px; padding: 0 2px; }
@@ -80,7 +80,6 @@ const CSS = `
 #inspector .bk-stack, #details .bk-stack { padding-top: 6px; }
 #inspector > .bk, #timeline > .bk { margin: 6px 0; }
 #timeline > .bk > .bk-body { padding-left: 8px; }
-#toggleTextView { margin-left: auto; }
 `;
 
 export const installBlockStyles = (): void => {

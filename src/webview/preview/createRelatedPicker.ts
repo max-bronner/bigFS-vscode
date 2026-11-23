@@ -2,12 +2,26 @@ import type {
   RelatedModel,
   RelatedModelKind,
 } from '../../game/objects/findRelatedModels';
+import { element } from '../shared/element';
+import { createSideRow } from './createSideRow';
 
 export interface RelatedPicker {
-  select: HTMLSelectElement;
+  list: HTMLElement;
   setList(openedFile: string, files: RelatedModel[]): void;
   show(file: string | undefined): void;
 }
+
+export type RelatedLine =
+  | { kind: 'heading'; text: string }
+  | {
+      kind: 'file';
+      entry?: RelatedModel;
+      name: string;
+      detail?: string;
+      title?: string;
+      isPicked: boolean;
+    }
+  | { kind: 'more'; group: RelatedModelKind; hidden: number };
 
 const GROUPS: [RelatedModelKind, string][] = [
   ['model', 'Models'],
@@ -15,54 +29,112 @@ const GROUPS: [RelatedModelKind, string][] = [
   ['animation', 'Animations'],
 ];
 
+const ROWS_SHOWN = 10;
+
 const withoutExtension = (file: string) => file.replace(/\.w3d$/i, '');
 
-export const labelRelatedModel = ({ file, uses }: RelatedModel): string =>
-  uses[0]
-    ? `${withoutExtension(file)} · ${uses[0].object}: ${uses[0].state}${uses.length > 1 ? ` +${uses.length - 1}` : ''}`
-    : withoutExtension(file);
+const shortenState = (state: string) => state.replace(/^[^=]*=\s*/, '');
+
+export const layOutRelatedList = (
+  openedFile: string,
+  files: readonly RelatedModel[],
+  picked: string | undefined,
+  expanded: ReadonlySet<RelatedModelKind>,
+): RelatedLine[] => [
+  {
+    kind: 'file',
+    name: withoutExtension(openedFile),
+    detail: 'this file',
+    isPicked: picked === undefined,
+  },
+  ...GROUPS.flatMap(([group, label]): RelatedLine[] => {
+    const members = files.filter((entry) => entry.kind === group);
+    const isWhole =
+      expanded.has(group) ||
+      members.length <= ROWS_SHOWN ||
+      members.findIndex((entry) => entry.file === picked) >= ROWS_SHOWN;
+    const shown = isWhole ? members : members.slice(0, ROWS_SHOWN);
+
+    if (!members.length) {
+      return [];
+    }
+    return [
+      { kind: 'heading', text: `${label} (${members.length})` },
+      ...shown.map(
+        (entry): RelatedLine => ({
+          kind: 'file',
+          entry,
+          name: withoutExtension(entry.file),
+          detail: entry.uses[0]
+            ? `${entry.uses[0].object}: ${shortenState(entry.uses[0].state)}${entry.uses.length > 1 ? ` +${entry.uses.length - 1}` : ''}`
+            : undefined,
+          title: entry.uses.map((use) => `${use.object}: ${use.state}`).join('\n') || undefined,
+          isPicked: entry.file === picked,
+        }),
+      ),
+      ...(isWhole
+        ? []
+        : [{ kind: 'more' as const, group, hidden: members.length - ROWS_SHOWN }]),
+    ];
+  }),
+];
 
 export const createRelatedPicker = (
   onPick: (entry: RelatedModel | undefined) => void,
 ): RelatedPicker => {
-  const select = document.createElement('select');
-  let entries = new Map<string, RelatedModel>();
+  const list = element('div', undefined, 'side-list');
+  const expanded = new Set<RelatedModelKind>();
+  let opened = '';
+  let files: RelatedModel[] = [];
+  let picked: string | undefined;
 
-  select.title = 'Related W3D files: the states, skins, skeleton and animations that belong with this one';
-  select.hidden = true;
-  select.style.maxWidth = '24em';
-  select.onchange = () => onPick(entries.get(select.value));
+  list.title = 'Related W3D files: the states, skins, skeleton and animations that belong with this one';
+
+  const render = () => {
+    list.replaceChildren(
+      ...layOutRelatedList(opened, files, picked, expanded).map((line) => {
+        if (line.kind === 'heading') {
+          return element('div', line.text, 'side-group');
+        }
+        if (line.kind === 'more') {
+          const more = element('button', `Show all, ${line.hidden} more`, 'side-more');
+
+          more.onclick = () => {
+            expanded.add(line.group);
+            render();
+          };
+          return more;
+        }
+
+        const { entry } = line;
+        const row = createSideRow(line.name, line.detail, () => {
+          if (line.isPicked && entry?.kind !== 'animation') {
+            return;
+          }
+          picked = entry?.file;
+          render();
+          onPick(entry);
+        });
+
+        row.setAttribute('aria-pressed', String(line.isPicked));
+        if (line.title) {
+          row.title = line.title;
+        }
+        return row;
+      }),
+    );
+  };
 
   return {
-    select,
-    setList: (openedFile, files) => {
-      const opened = new Option(`${withoutExtension(openedFile)} (this file)`, '');
-
-      entries = new Map(files.map((entry) => [entry.file, entry]));
-      select.replaceChildren(
-        opened,
-        ...GROUPS.flatMap(([kind, label]) => {
-          const members = files.filter((entry) => entry.kind === kind);
-          const group = document.createElement('optgroup');
-
-          group.label = label;
-          group.append(
-            ...members.map((entry) => {
-              const option = new Option(labelRelatedModel(entry), entry.file);
-
-              option.title = entry.uses
-                .map((use) => `${use.object}: ${use.state}`)
-                .join('\n');
-              return option;
-            }),
-          );
-          return members.length ? [group] : [];
-        }),
-      );
-      select.hidden = !files.length;
+    list,
+    setList: (openedFile, next) => {
+      opened = openedFile;
+      files = next;
+      render();
     },
     show: (file) => {
-      select.value = file ?? '';
+      picked = file;
+      render();
     },
   };
 };

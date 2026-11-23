@@ -15,17 +15,21 @@ import { blockCard } from './blocks/blockCard';
 import { showDetails } from './details';
 import { send } from './send';
 import { createButton, byId } from './dom';
-import { currentPlayer, goToFrame, render, showMode, view } from './stage';
+import { attachMenu, openMenu } from './popupMenu';
+import type { MenuEntry } from './popupMenu';
+import { currentPlayer, goToFrame, render, view } from './stage';
 import { state } from './state';
 import { readTimelineFlow } from '../../formats/apt/aptFlow';
 import type { Jump, TimelineFlow } from '../../formats/apt/aptFlow';
 import { buildDisplayList } from './timeline';
+import { buildTimelineContextMenu, buildTimelineMenus } from './timelineMenus';
+import type { TimelineForm, TimelineMenus } from './timelineMenus';
 
 const panel = byId('timeline');
 
 const selection: { from: number; to: number; anchor: number; depth?: number } =
   { from: 0, to: 0, anchor: 0 };
-let form: 'tween' | 'formula' | 'script' | undefined;
+let form: TimelineForm | undefined;
 let copied: { motion: Motion; from: string } | undefined;
 let scriptText: string | undefined;
 let formEasing = 'linear';
@@ -304,176 +308,117 @@ const scriptForm = (tweens: DetectedTween[]): HTMLElement => {
   return element;
 };
 
+const countForm = (
+  name: string,
+  start: number,
+  button: string,
+  apply: (count: number) => void,
+): HTMLElement => {
+  const element = document.createElement('div');
+  const count = textInput(String(start));
+
+  element.className = 'field';
+  element.append(
+    field(name, count),
+    createButton(button, () => {
+      const value = Math.trunc(Number(count.value));
+
+      if (Number.isFinite(value) && value > 0) {
+        apply(value);
+      }
+    }),
+  );
+  setTimeout(() => count.select(), 0);
+  return element;
+};
+
+const toggleForm = (name: TimelineForm) => {
+  form = form === name ? undefined : name;
+  formEasing = 'linear';
+  showTimeline();
+};
+
+const findNearestPlaced = (frameCount: number): number | undefined => {
+  const { from, to, depth } = selection;
+
+  if (depth === undefined) {
+    return undefined;
+  }
+  for (let frame = from - 1; frame >= 0; frame--) {
+    if (poseAt(frame, depth)) {
+      return frame;
+    }
+  }
+  for (let frame = to + 1; frame < frameCount; frame++) {
+    if (poseAt(frame, depth)) {
+      return frame;
+    }
+  }
+  return undefined;
+};
+
+const menusFor = (frameCount: number): TimelineMenus => {
+  const { from, to, depth } = selection;
+
+  return buildTimelineMenus({
+    from,
+    to,
+    depth,
+    frameCount,
+    isPlacedAtDepth: depth !== undefined && !!poseAt(from, depth),
+    copiedFrom: copied?.from,
+    nearestPlaced: findNearestPlaced(frameCount),
+    run,
+    openForm: toggleForm,
+    copyMotion: () => {
+      const timeline = shownTimeline()!;
+
+      copied = {
+        motion: readMotion(decodeTimeline(undefined, timeline.frames), depth!, from, to),
+        from: `depth ${depth}, frames ${from}–${to}`,
+      };
+      showTimeline();
+    },
+    pasteMotion: (mirror) =>
+      run({ op: 'motion', depth: depth!, at: from, motion: copied!.motion, mirror }),
+  });
+};
+
 const toolbar = (frameCount: number): HTMLElement => {
   const { from, to, depth } = selection;
   const element = document.createElement('div');
-  const count = textInput('1');
-  const length = textInput(String(to - from + 1));
-  const atDepth = depth !== undefined && !!poseAt(from, depth);
-  const tool = (
-    name: string,
-    title: string,
-    enabled: boolean,
-    onClick: () => void,
-  ) => {
-    const control = createButton(name, onClick);
+  const menu = (label: string, title: string, pick: (menus: TimelineMenus) => MenuEntry[]) => {
+    const button = createButton(label, () => {});
 
-    control.title = title;
-    control.disabled = !enabled;
-    return control;
+    button.title = title;
+    return attachMenu(button, () => pick(menusFor(frameCount)));
   };
-  const nearest = () => {
-    for (let frame = from - 1; frame >= 0; frame--) {
-      if (poseAt(frame, depth!)) {
-        return frame;
-      }
-    }
-    for (let frame = to + 1; frame < frameCount; frame++) {
-      if (poseAt(frame, depth!)) {
-        return frame;
-      }
-    }
-    return undefined;
-  };
-  const like = depth === undefined ? undefined : nearest();
 
   element.className = 'toolbar';
   element.append(
     Object.assign(document.createElement('span'), {
+      className: 'muted',
       textContent:
         `Frames ${from}–${to}` +
         (depth === undefined ? ', every depth' : `, depth ${depth}`),
     }),
-    tool(
-      'Tween…',
-      'Move, scale, turn or fade from the pose at the first frame to an end pose',
-      atDepth,
-      () => {
-        form = form === 'tween' ? undefined : 'tween';
-        formEasing = 'linear';
-        showTimeline();
-      },
+    menu('Frames', 'Insert, delete, duplicate, reverse or retime the selected frames', (menus) => menus.frames),
+    menu('Motion', 'Tween, formula, and copying a motion from one range to another', (menus) => menus.motion),
+    menu('Placement', 'Show, fade out or remove what is at the selected depth', (menus) => menus.placement),
+    Object.assign(
+      createButton('Script…', () => toggleForm('script')),
+      { title: 'The whole timeline as a few lines, like a CSS animation: edit and run it' },
     ),
-    tool('Formula…', 'Set properties by formulas of the frame', atDepth, () => {
-      form = form === 'formula' ? undefined : 'formula';
-      showTimeline();
-    }),
-    tool(
-      'Copy motion',
-      'Remember how this depth moves over the range, relative to its first frame',
-      atDepth && to > from,
-      () => {
-        const timeline = shownTimeline()!;
-
-        copied = {
-          motion: readMotion(
-            decodeTimeline(undefined, timeline.frames),
-            depth!,
-            from,
-            to,
-          ),
-          from: `depth ${depth}, frames ${from}–${to}`,
-        };
-        showTimeline();
-      },
-    ),
-    ...(
-      [
-        ['Paste motion', undefined, ''],
-        ['Paste ↔', 'x', ', mirrored left to right'],
-        ['Paste ↕', 'y', ', mirrored top to bottom'],
-      ] as const
-    ).map(([name, mirror, how]) =>
-      tool(
-        name,
-        copied
-          ? `Play the motion of ${copied.from} here from frame ${from}${how}`
-          : 'Copy a motion first',
-        atDepth && !!copied,
-        () =>
-          run({
-            op: 'motion',
-            depth: depth!,
-            at: from,
-            motion: copied!.motion,
-            mirror,
-          }),
-      ),
-    ),
-    tool(
-      'Script…',
-      'The whole timeline as a few lines, like a CSS animation: edit and run it',
-      true,
-      () => {
-        form = form === 'script' ? undefined : 'script';
-        showTimeline();
-      },
-    ),
-    tool(
-      'Fade out',
-      'Alpha 0 for the range; the instance stays, so its own animation goes on',
-      depth !== undefined,
-      () => run({ op: 'hide', depth: depth!, from, to, how: 'alpha' }),
-    ),
-    tool(
-      'Remove',
-      'Take it off the stage for the range; it is placed again afterwards',
-      depth !== undefined,
-      () => run({ op: 'hide', depth: depth!, from, to, how: 'remove' }),
-    ),
-    tool(
-      'Show',
-      `Show it for the range as it is in frame ${like ?? '?'}, fully opaque`,
-      like !== undefined || atDepth,
-      () =>
-        run({
-          op: 'show',
-          depth: depth!,
-          from,
-          to,
-          like: like ?? from,
-        }),
-    ),
-    tool(
-      'Insert',
-      'Insert frames after the range, holding its last frame',
-      true,
-      () =>
-        run({
-          op: 'insert',
-          at: to + 1,
-          count: Math.trunc(Number(count.value)),
-        }),
-    ),
-    count,
-    tool(
-      'Delete',
-      'Delete the frames, with their scripts and labels',
-      to - from + 1 < frameCount,
-      () => run({ op: 'delete', from, to }),
-    ),
-    tool('Duplicate', 'Copy the frames after the range', true, () =>
-      run({ op: 'duplicate', from, to }),
-    ),
-    tool('Reverse', 'Play the range backwards', to > from, () =>
-      run({ op: 'reverse', from, to }),
-    ),
-    tool(
-      'Retime to',
-      'Stretch or squeeze the range to this many frames, interpolating motion',
-      true,
-      () =>
-        run({
-          op: 'retime',
-          from,
-          to,
-          length: Math.trunc(Number(length.value)),
-        }),
-    ),
-    length,
   );
   return element;
 };
+
+const openContextMenu = (x: number, y: number, frameCount: number) =>
+  openMenu(
+    buildTimelineContextMenu(menusFor(frameCount), () => toggleForm('script')),
+    { x, y },
+    panel.querySelector<HTMLElement>('.grid') ?? panel,
+  );
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
@@ -630,24 +575,6 @@ const isPicked = (frame: number, depth: number): boolean =>
 
 let shownBar: HTMLElement | undefined;
 
-const createBar = (frameCount: number): HTMLElement => {
-  const onion = document.createElement('select');
-
-  onion.title = 'Onion skin: frames either side drawn faintly (N)';
-  onion.append(
-    ...[0, 1, 2, 3].map(
-      (each) => new Option(each ? `onion ±${each}` : 'onion off', String(each)),
-    ),
-  );
-  onion.value = String(view.onion);
-  onion.onchange = () => setOnion(Number(onion.value));
-
-  const bar = toolbar(frameCount);
-
-  bar.prepend(onion);
-  return bar;
-};
-
 const refreshSelection = (frameCount: number): boolean => {
   if (!shownBar?.isConnected) {
     return false;
@@ -658,7 +585,7 @@ const refreshSelection = (frameCount: number): boolean => {
       isPicked(Number(cell.dataset.frame), Number(cell.dataset.depth)),
     );
   });
-  const bar = createBar(frameCount);
+  const bar = toolbar(frameCount);
 
   shownBar.replaceWith(bar);
   shownBar = bar;
@@ -701,6 +628,13 @@ export const showTimeline = (): void => {
       `Frame ${index}` +
       (scripts ? `, ${scripts} script${scripts > 1 ? 's' : ''}` : '');
     cell.onclick = (event) => select(index, undefined, event.shiftKey);
+    cell.oncontextmenu = (event) => {
+      event.preventDefault();
+      if (selection.depth !== undefined || index < selection.from || index > selection.to) {
+        select(index, undefined, false);
+      }
+      openContextMenu(event.clientX, event.clientY, frameCount);
+    };
   });
   scriptRow(table, flow, frameCount);
 
@@ -730,18 +664,50 @@ export const showTimeline = (): void => {
       cell.dataset.depth = String(depth);
       cell.classList.toggle('picked', isPicked(frame, depth));
       cell.onclick = (event) => select(frame, depth, event.shiftKey);
+      cell.oncontextmenu = (event) => {
+        event.preventDefault();
+        if (!isPicked(frame, depth)) {
+          select(frame, depth, false);
+        }
+        openContextMenu(event.clientX, event.clientY, frameCount);
+      };
     });
   }
 
   const scroller = document.createElement('div');
 
   scroller.className = 'grid';
+  scroller.tabIndex = 0;
+  scroller.title = 'Click a cell to select it, Shift+click to select a range; right-click or Shift+F10 for its commands';
   scroller.append(table);
+  scroller.addEventListener('keydown', (event) => {
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      const box = (scroller.querySelector('.picked') ?? scroller).getBoundingClientRect();
+
+      event.preventDefault();
+      openContextMenu(box.left, box.bottom, frameCount);
+    }
+  });
 
   const forms =
     form === 'script'
       ? [scriptForm(tweens)]
-      : form &&
+      : form === 'insert'
+        ? [
+            countForm('Frames to insert after frame ' + selection.to, 1, 'Insert', (count) =>
+              run({ op: 'insert', at: selection.to + 1, count }),
+            ),
+          ]
+        : form === 'retime'
+          ? [
+              countForm(
+                `Retime frames ${selection.from}–${selection.to} to`,
+                selection.to - selection.from + 1,
+                'Retime',
+                (length) => run({ op: 'retime', from: selection.from, to: selection.to, length }),
+              ),
+            ]
+          : form &&
           selection.depth !== undefined &&
           poseAt(selection.from, selection.depth)
         ? [
@@ -750,7 +716,7 @@ export const showTimeline = (): void => {
               : formulaForm(selection.depth),
           ]
         : [];
-  const bar = createBar(frameCount);
+  const bar = toolbar(frameCount);
 
   shownBar = bar;
 
@@ -772,12 +738,6 @@ export const showTimeline = (): void => {
 
 export const setOnion = (frames: number): void => {
   view.onion = frames;
-  const control = panel.querySelector('select');
-
-  if (control) {
-    control.value = String(frames);
-  }
-  showMode();
   render();
 };
 

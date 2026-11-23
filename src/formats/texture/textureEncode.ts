@@ -242,17 +242,22 @@ export const encodeTga = (image: RgbaImage, withAlpha: boolean): Uint8Array => {
   view.setUint16(12, width, true);
   view.setUint16(14, height, true);
   out[16] = withAlpha ? 32 : 24;
-  out[17] = (withAlpha ? 8 : 0) | 0x20;
+  out[17] = withAlpha ? 8 : 0;
 
-  for (let index = 0; index < width * height; index++) {
-    const at = 18 + index * bytesPerPixel;
+  for (let row = 0; row < height; row++) {
+    const y = height - 1 - row;
 
-    out[at] = pixels[index * 4 + 2];
-    out[at + 1] = pixels[index * 4 + 1];
-    out[at + 2] = pixels[index * 4];
+    for (let x = 0; x < width; x++) {
+      const from = (y * width + x) * 4;
+      const at = 18 + (row * width + x) * bytesPerPixel;
 
-    if (withAlpha) {
-      out[at + 3] = pixels[index * 4 + 3];
+      out[at] = pixels[from + 2];
+      out[at + 1] = pixels[from + 1];
+      out[at + 2] = pixels[from];
+
+      if (withAlpha) {
+        out[at + 3] = pixels[from + 3];
+      }
     }
   }
 

@@ -1,6 +1,8 @@
 import type { Vec3 } from '../../formats/w3d/w3dPose';
 import { cross } from './viewProjection';
 
+export const FOCAL_LENGTH = 1 / Math.tan(Math.PI / 8);
+
 export interface OrbitPlace {
   yaw: number;
   pitch: number;

@@ -4,11 +4,12 @@ import type { VisibleBox } from './getOverlayWindow';
 import { readPageState, savePageState } from './pageState';
 import { createRegionLayer } from './regionLayer';
 import { createRegionPanel } from './regionPanel';
-import type { FromPreviewPage, RegionsMessage } from './protocol';
+import type { FileUse, FromPreviewPage, RegionsMessage } from './protocol';
 
 export interface RegionEditor {
   mount(stage: HTMLElement): void;
   show(message: RegionsMessage): void;
+  showUses(uses: readonly FileUse[]): void;
   fit(
     cssWidth: number,
     cssHeight: number,
@@ -22,6 +23,7 @@ export const createRegionEditor = (
   post: (message: FromPreviewPage) => void,
 ): RegionEditor => {
   let content: RegionsMessage = { kind: 'regions', regions: [] };
+  let uses: readonly FileUse[] = [];
 
   const select = (id: string) => {
     content = { ...content, selected: id };
@@ -55,12 +57,13 @@ export const createRegionEditor = (
 
   function render() {
     layer.setRegions(content.regions, content.selected);
-    show(content);
+    show({ ...content, uses });
   }
 
   return {
     mount(stage) {
       content = { kind: 'regions', regions: [] };
+      uses = [];
       stage.append(layer.element);
       render();
     },
@@ -78,6 +81,10 @@ export const createRegionEditor = (
             ]
           : message.regions,
       };
+      render();
+    },
+    showUses(found) {
+      uses = found;
       render();
     },
     fit: layer.fit,

@@ -1,3 +1,4 @@
+import { forgetDecals, receiveDecal, setGroundColour } from './shadowsView';
 import { pageSoundPlayer } from '../shared/pageSoundPlayer';
 import { getEffectStateAt } from '../../formats/particles/fxEffects';
 import { scaleEffect } from '../../formats/particles/particleScale';
@@ -6,6 +7,7 @@ import { attachment, getModelOrigin, getRootOrigin } from './emitterOrigin';
 import { renderCurves } from './curves';
 import { renderFields } from './fields';
 import { attachHandles, drawHandles } from './handles';
+import { attachMove } from './moveModel';
 import { resetStats, sampleStats, showStats } from './stats';
 import {
   drawTimeline,
@@ -16,21 +18,32 @@ import {
 } from './timeline';
 import { drawSystems, hasGraphics, loadTextures } from './graphics';
 import { $, library, post, state, viewer, world } from './page';
+import { getNextEventStep } from './clipEvents';
+import { listEnabledEffects } from './effectsPanel';
+import { showAbilities } from './abilitiesPanel';
+import {
+  advanceAbility,
+  getAbilitySeconds,
+  isAbilityPlaying,
+  listAbilityEffects,
+  syncAbilityClip,
+} from './abilityPlayback';
+import type { AbilityPlayedEffect } from './abilityPlayback';
+import type { Effect } from './effectsPanel';
 import {
   getBonePosition,
-  listEnabledEffects,
   objectView,
   refreshShownModel,
-  setLoadedAnimation,
+  receiveAnimation,
   showObject,
 } from './objectPanel';
-import {
-  receivePartAnimation,
-  receivePartModel,
-  showComposition,
-} from './composedParts';
+import { getPartBonePoint, showComposition } from './composedParts';
+import { onMainModel } from './mainModel';
+import { forgetLoaded, forgetTextures, receiveClip, receiveModel } from './modelStore';
+import { planPreload, receivePreloadPlan } from './preloading';
 import { poseAt } from '../../formats/w3d/w3dPose';
 import type { Pose, Vec3 } from '../../formats/w3d/w3dPose';
+import type { ModelScene } from '../../formats/w3d/w3dScene';
 import type { ViewerCamera } from '../shared/viewer/createViewer';
 import type { ToPage } from './protocol';
 import { pushRing, estimateReach, pushVolumeLines } from './volume';
@@ -46,21 +59,80 @@ const DEFAULT_DISTANCE = 260;
 
 const hud = $('hud');
 const isChecked = (id: string) => $<HTMLInputElement>(id).checked;
-const getSelectedValue = (id: string) => $<HTMLSelectElement>(id).value;
 
 if (!hasGraphics) {
   hud.textContent =
     'WebGL is not available here, so nothing is drawn; the simulation still runs.';
 }
 
-let attached: { id: number; bone?: string }[] = [];
+let attached: (Pick<Effect, 'bone' | 'part' | 'offset'> & { id: number })[] = [];
+let waitingForPart: Effect[] = [];
+let delayed: Effect[] = [];
+let delayedSeconds = 0;
+let clipEvents: { effect: Effect; frame: number }[] = [];
+let scheduledStops: { id: number; step: number }[] = [];
+let abilityEffects = new Set<Effect>();
+const abilitySystems = new Set<number>();
 
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 
 let lastBusyTime = 0;
 
+const getEffectOrigin = ({ bone, part, offset }: Pick<Effect, 'bone' | 'part' | 'offset'>): Vec3 | undefined => {
+  if (offset) {
+    return add(getModelOrigin(), offset);
+  }
+  return part === undefined ? add(getModelOrigin(), getBonePosition(bone)) : getPartBonePoint(part, bone);
+};
+
+const startEffect = (effect: AbilityPlayedEffect) => {
+  const { kind, name, bone, part, offset, until } = effect;
+  const origin = getEffectOrigin(effect);
+
+  if (!origin) {
+    return [];
+  }
+
+  const ids = (kind === 'fxList' ? world.fire(name, origin) : [world.spawn(name, origin)]).flatMap((id) =>
+    id === undefined ? [] : [id],
+  );
+
+  if (until !== undefined) {
+    scheduledStops.push(...ids.map((id) => ({ id, step: Math.round(until * STEP_HZ) })));
+  }
+  if (abilityEffects.has(effect)) {
+    ids.forEach((id) => abilitySystems.add(id));
+  }
+  return ids.map((id) => ({ id, bone, part, offset }));
+};
+
+const fireDueEffects = () => {
+  const step = world.frame;
+  const due = clipEvents.flatMap(({ effect, frame }) =>
+    getNextEventStep(frame, step - 1, STEP_HZ, objectView.clipTiming) === step ? [effect] : [],
+  );
+
+  if (!due.length) {
+    return;
+  }
+  const alive = new Set(world.systems.map((system) => system.id));
+
+  attached = attached.filter(({ id }) => alive.has(id));
+  state.roots = state.roots.filter((id) => alive.has(id));
+  for (const started of due.flatMap(startEffect)) {
+    attached.push(started);
+    state.roots.push(started.id);
+  }
+};
+
 const startEffects = () => {
   world.clear();
+  clipEvents = [];
+  scheduledStops = [];
+  abilitySystems.clear();
+  waitingForPart = [];
+  delayed = [];
+  delayedSeconds = 0;
   lastBusyTime = 0;
   resetStats();
 
@@ -71,17 +143,21 @@ const startEffects = () => {
   }
 
   if (objectView.scene) {
-    attached = listEnabledEffects().flatMap((effect) => {
-      const origin = add(getModelOrigin(), getBonePosition(effect.bone));
-      const ids =
-        effect.kind === 'fxList'
-          ? world.fire(effect.name, origin)
-          : [world.spawn(effect.name, origin)];
+    const shown = listEnabledEffects().filter((effect) => !isAbilityPlaying() || effect.frame === undefined);
+    abilityEffects = new Set(listAbilityEffects());
 
-      return ids
-        .filter((id): id is number => id !== undefined)
-        .map((id) => ({ id, bone: effect.bone }));
-    });
+    const enabled: AbilityPlayedEffect[] = [...shown, ...abilityEffects];
+
+    clipEvents = enabled.flatMap((effect) =>
+      effect.frame === undefined ? [] : [{ effect, frame: effect.frame }],
+    );
+    delayed = enabled.filter((effect) => effect.frame === undefined && effect.delay);
+    delayedSeconds = Math.max(0, ...delayed.map(({ delay = 0 }) => delay));
+
+    const lasting = enabled.filter((effect) => effect.frame === undefined && !effect.delay);
+
+    waitingForPart = lasting.filter((effect) => !getEffectOrigin(effect));
+    attached = lasting.filter((effect) => !waitingForPart.includes(effect)).flatMap(startEffect);
     state.roots = attached.map((each) => each.id);
     return;
   }
@@ -103,8 +179,35 @@ const stepOnce = () => {
   const origin = getRootOrigin();
 
   if (objectView.scene) {
-    for (const { id, bone } of attached) {
-      world.setOrigin(id, add(getModelOrigin(), getBonePosition(bone)));
+    fireDueEffects();
+    if (scheduledStops.length) {
+      const due = scheduledStops.filter(({ step }) => world.frame >= step);
+
+      due.forEach(({ id }) => world.stop(id));
+      scheduledStops = scheduledStops.filter((each) => !due.includes(each));
+    }
+    if (delayed.length) {
+      const due = delayed.filter(({ delay = 0 }) => world.frame >= Math.round(delay * STEP_HZ));
+
+      delayed = delayed.filter((effect) => !due.includes(effect));
+      waitingForPart.push(...due);
+    }
+    if (waitingForPart.length) {
+      const ready = waitingForPart.filter((effect) => getEffectOrigin(effect));
+
+      waitingForPart = waitingForPart.filter((effect) => !ready.includes(effect));
+      for (const started of ready.flatMap(startEffect)) {
+        attached.push(started);
+        state.roots.push(started.id);
+      }
+    }
+    for (const each of attached) {
+      const { id } = each;
+      const origin = getEffectOrigin(each);
+
+      if (origin) {
+        world.setOrigin(id, origin);
+      }
     }
   } else {
     for (const id of state.roots) {
@@ -112,6 +215,11 @@ const stepOnce = () => {
     }
   }
   world.step();
+  for (const system of world.systems.filter(({ id }) => abilitySystems.has(id))) {
+    [system.slave, ...system.particles.map((particle) => particle.attached)].forEach(
+      (id) => id !== undefined && abilitySystems.add(id),
+    );
+  }
   sampleStats();
 };
 
@@ -129,7 +237,24 @@ const stepTo = (time: number, maxSteps: number) => {
 const getEffectSeconds = (): number => {
   const scene = state.scene;
 
-  if (!scene || !state.roots.length) {
+  if (!scene) {
+    return 0;
+  }
+  if (getAbilitySeconds()) {
+    return getAbilitySeconds();
+  }
+  const delayedLength = delayedSeconds > 0 ? delayedSeconds + OPEN_ENDED_FRAMES / STEP_HZ : 0;
+
+  if (clipEvents.length) {
+    const last = Math.max(...clipEvents.map(({ frame }) => frame));
+    const rate = objectView.clipTiming?.frameRate || STEP_HZ;
+
+    return Math.max(last / rate + OPEN_ENDED_FRAMES / STEP_HZ, delayedLength);
+  }
+  if (delayedLength) {
+    return delayedLength;
+  }
+  if (!state.roots.length) {
     return 0;
   }
 
@@ -176,7 +301,6 @@ const draw = ({ matrix, basis }: ViewerCamera) => {
     matrix,
     basis,
     viewer.isPlaying() ? Math.max(0, Math.min(1, between)) : 1,
-    isChecked('keys'),
   );
   if (effects.scorches.length) {
     const lines: number[] = [];
@@ -209,10 +333,8 @@ const onFrame = (now: number) => {
   showStats(now);
   const status = [
     ...(hasGraphics ? [] : ['WebGL is not available; nothing is drawn.']),
-    `frame ${world.frame}  ${(world.frame / STEP_HZ).toFixed(1)} s`,
-    `${world.systems.length} systems  ${world.liveParticles} particles` +
-      (world.dropped ? `  dropped ${world.dropped}` : ''),
-    `wind ${world.options.wind}  hollow box ${world.options.hollowBox}`,
+    `${world.systems.length} systems · ${world.liveParticles} particles` +
+      (world.dropped ? ` · dropped ${world.dropped}` : ''),
     ...(state.scene?.comparing ? ['showing the block as written (C)'] : []),
   ].join('\n');
 
@@ -230,28 +352,8 @@ const onFrame = (now: number) => {
   }
 };
 
-const syncOptions = () => {
-  world.options.wind = getSelectedValue('wind') as typeof world.options.wind;
-  world.options.hollowBox = getSelectedValue(
-    'hollowBox',
-  ) as typeof world.options.hollowBox;
-  world.options.compound = isChecked('compound');
-  world.options.batchLimit = isChecked('batchLimit');
-};
-const cycle = (id: string) => {
-  const select = $<HTMLSelectElement>(id);
-
-  select.selectedIndex = (select.selectedIndex + 1) % select.options.length;
-  select.dispatchEvent(new Event('change'));
-};
-
 attachHandles();
-for (const id of ['wind', 'hollowBox', 'compound', 'batchLimit']) {
-  $(id).onchange = () => {
-    syncOptions();
-    viewer.restart();
-  };
-}
+attachMove();
 $('apply').onclick = () => post({ kind: 'apply' });
 const compare = () => post({ kind: 'compare', on: !state.scene?.comparing });
 $('compare').onclick = compare;
@@ -305,16 +407,11 @@ $('scale').onclick = () => {
 $('reset').onclick = () => post({ kind: 'reset' });
 
 const onKey = (key: string): boolean => {
-  if (key === 'w') {
-    cycle('wind');
-  } else if (key === 'h') {
-    cycle('hollowBox');
-  } else if (key === 'c') {
+  if (key === 'c') {
     compare();
-  } else {
-    return false;
+    return true;
   }
-  return true;
+  return false;
 };
 
 const bones = $<HTMLSelectElement>('bone');
@@ -331,6 +428,29 @@ bones.onchange = () => {
 };
 $('pickModel').onclick = () => post({ kind: 'pickModel' });
 
+const showModel = (shown: { name: string; scene: ModelScene } | undefined) => {
+  const skeleton = shown?.scene.skeleton;
+
+  viewer.setModel(shown?.scene, !objectView.scene);
+  pose = skeleton && poseAt(skeleton);
+  bones.replaceChildren(
+    new Option('origin', ''),
+    ...(skeleton?.names ?? []).map(
+      (bone, at) => new Option(bone, String(at)),
+    ),
+  );
+  bones.hidden = !shown || !!objectView.scene;
+  attachment.bone = [0, 0, 0];
+  $('pickModel').textContent = shown ? shown.name : 'On a model…';
+  if (objectView.scene) {
+    refreshShownModel();
+    return;
+  }
+  viewer.restart();
+};
+
+onMainModel(showModel);
+
 window.addEventListener('message', ({ data }: MessageEvent<ToPage>) => {
   if (data.kind === 'sound') {
     void pageSoundPlayer.receive(data);
@@ -341,45 +461,71 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPage>) => {
     return;
   }
   if (data.kind === 'object') {
-    showObject(data.object, data.focus);
+    setGroundColour(data.groundColour);
+    showObject(data.object, data.focus, data.definition);
+    return;
+  }
+  if (data.kind === 'decal') {
+    receiveDecal(data.name, data.url);
     return;
   }
   if (data.kind === 'composition') {
     showComposition(data.composition);
+    planPreload();
     return;
   }
   if (data.kind === 'partModel') {
-    receivePartModel(data.name, data.scene);
+    const { name, textures, detail, scene, error } = data;
+
+    receiveModel({ name, textures, detail }, scene, error);
     return;
   }
   if (data.kind === 'partAnimation') {
-    receivePartAnimation(data.name, data.animation, data.skeleton);
+    receiveClip(data.name, data.animation, data.skeleton);
+    return;
+  }
+  if (data.kind === 'preloadPlan') {
+    receivePreloadPlan(data.plan);
+    return;
+  }
+  if (data.kind === 'abilities') {
+    for (const [name, system] of Object.entries(data.systems)) {
+      library.systems.set(name, system);
+    }
+    for (const [name, list] of Object.entries(data.fxLists)) {
+      library.fxLists.set(name, list);
+    }
+    loadTextures(data.textures);
+    showAbilities(data.groups);
+    return;
+  }
+  if (data.kind === 'partEffects') {
+    for (const [name, system] of Object.entries(data.systems)) {
+      library.systems.set(name, system);
+    }
+    for (const [name, list] of Object.entries(data.fxLists)) {
+      library.fxLists.set(name, list);
+    }
+    loadTextures(data.textures);
+    viewer.restart();
+    return;
+  }
+  if (data.kind === 'forgetModels') {
+    forgetLoaded();
+    forgetDecals();
+    planPreload();
+    return;
+  }
+  if (data.kind === 'forgetTextures') {
+    forgetTextures();
     return;
   }
   if (data.kind === 'animation') {
-    setLoadedAnimation(data.name, data.animation, data.skeleton);
+    receiveAnimation(data.name, data.animation, data.skeleton);
     return;
   }
   if (data.kind === 'model') {
-    const shown = data.model;
-    const skeleton = shown?.scene.skeleton;
-
-    viewer.setModel(shown?.scene);
-    pose = skeleton && poseAt(skeleton);
-    bones.replaceChildren(
-      new Option('origin', ''),
-      ...(skeleton?.names ?? []).map(
-        (bone, at) => new Option(bone, String(at)),
-      ),
-    );
-    bones.hidden = !shown || !!objectView.scene;
-    attachment.bone = [0, 0, 0];
-    $('pickModel').textContent = shown ? shown.name : 'On a model…';
-    if (objectView.scene) {
-      refreshShownModel();
-      return;
-    }
-    viewer.restart();
+    showModel(data.model);
     return;
   }
 
@@ -426,13 +572,13 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPage>) => {
 viewer.addLayer({
   getLength: getEffectSeconds,
   isBusy: () =>
-    !!state.scene &&
-    state.roots.length > 0 &&
-    viewer.getTime() - lastBusyTime <= LOOP_PAUSE,
+    isAbilityPlaying() ||
+    (!!state.scene && state.roots.length > 0 && viewer.getTime() - lastBusyTime <= LOOP_PAUSE),
   onAdvance: (time) => {
     if (state.scene) {
       stepTo(time, MAX_FRAME_STEPS);
     }
+    advanceAbility(time, world.systems.some(({ id }) => abilitySystems.has(id)));
   },
   onSeek: (time) => {
     if (time * STEP_HZ < world.frame) {
@@ -440,12 +586,15 @@ viewer.addLayer({
     }
     stepTo(time, MAX_SEEK_STEPS);
     skipDueSounds();
+    syncAbilityClip(time);
   },
-  onRestart: startEffects,
+  onRestart: () => {
+    startEffects();
+    syncAbilityClip(0);
+  },
   onFrame,
   prepareFrame,
   draw,
   onKey,
 });
-syncOptions();
 post({ kind: 'ready' });

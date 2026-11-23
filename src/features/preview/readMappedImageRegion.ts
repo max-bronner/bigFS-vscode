@@ -1,4 +1,5 @@
 import type { ArchiveModel } from '../../services/archives/archiveModel';
+import { describeFileLocation } from '../../services/archives/describeFileLocation';
 import { isEditable } from '../../services/ini/archiveText';
 import {
   locateMappedImageBlock,
@@ -49,5 +50,6 @@ export const readMappedImageRegion = (
         .filter((each) => each)
         .join(' ') || undefined,
     source: { uri: source.uri.toString(), line: header as number },
+    location: describeFileLocation(archives, source.uri),
   };
 };

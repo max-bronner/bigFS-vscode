@@ -267,7 +267,12 @@ export const createArchiveScanner = (
   const sourceWatchers: Disposable[] = [
     workspace.onDidChangeWorkspaceFolders(scanInBackground),
     onDidChangeSetting(
-      [settings.baseGameFolder, settings.underlyingGameFolder, settings.folderGame],
+      [
+        settings.baseGameFolder,
+        settings.underlyingGameFolder,
+        settings.folderGame,
+        settings.protectGameArchives,
+      ],
       scanInBackground,
     ),
   ];

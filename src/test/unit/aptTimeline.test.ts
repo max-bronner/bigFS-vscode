@@ -12,7 +12,7 @@ import {
   parseMotionScript,
   tweensAsScript,
 } from '../../formats/apt/motionScript';
-import { buildMovie } from './apt.test';
+import { buildMovie } from './aptMovieFixtures';
 
 const buildFiveFrameMovie = () => {
   const { apt, constFile } = buildMovie();

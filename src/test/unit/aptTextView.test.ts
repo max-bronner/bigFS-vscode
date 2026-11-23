@@ -13,7 +13,7 @@ import {
 } from '../../formats/apt/text/numbers';
 import { parseMovieText } from '../../formats/apt/text/parser';
 import { printMovieText } from '../../formats/apt/text/printer';
-import { buildFullMovie } from './aptFullEdit.test';
+import { buildFullMovie } from './aptMovieFixtures';
 import { Image, buildConst } from './aptSynth';
 
 const full = () => {

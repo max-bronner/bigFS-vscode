@@ -28,7 +28,7 @@ const createSoundPanel = (
   const panel = createSingletonPanel<FromSoundPage, ToSoundPage>({
     viewType: 'bigfs.soundPlayer',
     title: 'Sound',
-    column: { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
+    column: { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
     options: {
       enableScripts: true,
       retainContextWhenHidden: true,

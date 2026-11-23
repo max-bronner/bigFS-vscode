@@ -1,6 +1,4 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import {
   planArmorEdit,
   parseArmorValue,
@@ -9,16 +7,9 @@ import {
   resolveShownArmor,
 } from '../../game/objects/armorTable';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+const schema = loadSageIniSchema();
 
 const TEXT = `Armor TestArmor
   Armor = DEFAULT 100%

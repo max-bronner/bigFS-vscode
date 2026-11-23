@@ -1,6 +1,4 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import {
   BulkQueryError,
   planBulkChanges,
@@ -9,16 +7,9 @@ import {
 } from '../../game/ini-tools/bulkEdit';
 import type { BulkQuery, BulkSource } from '../../game/ini-tools/bulkEdit';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+const schema = loadSageIniSchema();
 
 const TEXT = `Object TestArcher
   Side = Testland

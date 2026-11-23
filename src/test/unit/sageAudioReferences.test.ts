@@ -1,10 +1,5 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import {
-  ROOT_CONTEXT,
-  createSageIniSchema,
-} from '../../formats/ini/sageIniSchema';
+import { ROOT_CONTEXT } from '../../formats/ini/sageIniSchema';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
 import { findSageIniProblems } from '../../formats/ini/sageIniProblems';
 import { resolveSageSymbol } from '../../formats/ini/sageIniSymbol';
@@ -18,15 +13,9 @@ import {
   isAudioSentinel,
   findReferencedNames,
 } from '../../formats/ini/sageAudioValues';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+const schema = loadSageIniSchema();
 
 const FIXTURE = [
   'AudioEvent TestVoiceSelect',

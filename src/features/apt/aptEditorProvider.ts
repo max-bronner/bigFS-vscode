@@ -352,7 +352,6 @@ export class AptEditorProvider
         game: this.game,
         locator: this.locator,
         scriptTabs: this.scriptTabs,
-        textView: this.textView,
       }),
     );
 

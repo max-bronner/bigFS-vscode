@@ -12,13 +12,18 @@ import { isFolderRow, isSourceRow } from '../../services/archives/explorerRow';
 const READ_ONLY_MESSAGE =
   'The base game is read-only. Copy what you need into a folder of the workspace to change it.';
 
+const formatProtectedMessage = (name: string): string =>
+  `${name} here would count as one of the game's own archives, which bigFS keeps read-only, ` +
+  `so nothing could be added to it. Use another name or folder, or turn off the ` +
+  `bigfs.protectGameArchives setting.`;
+
 const readFileNames = async (folder: Uri): Promise<Set<string>> =>
   new Set((await workspace.fs.readDirectory(folder)).map(([name]) => name));
 
 const getRowFolder = (
   archiveModel: ArchiveModel,
   row: ExplorerRow,
-): { folder: Uri; sourceId: string } | undefined => {
+): { folder: Uri; sourceId: string; isProtected: (name: string) => boolean } | undefined => {
   const sourceId = isSourceRow(row)
     ? row.source.id
     : isFolderRow(row)
@@ -30,11 +35,17 @@ const getRowFolder = (
     return undefined;
   }
 
+  const folderPath = isFolderRow(row) ? row.path : '';
+
   return {
-    folder: isFolderRow(row)
-      ? Uri.joinPath(source.baseUri, row.path)
-      : source.baseUri,
+    folder: folderPath ? Uri.joinPath(source.baseUri, folderPath) : source.baseUri,
     sourceId,
+    isProtected: (name) =>
+      archiveModel.isReadOnly({
+        sourceId,
+        pathInSource: folderPath ? `${folderPath}/${name}` : name,
+        name,
+      }),
   };
 };
 
@@ -63,7 +74,13 @@ export const createArchive = async (
   const name = await askForName({
     title: 'New Archive',
     takenNames: await readFileNames(target.folder),
-    normalizeName: toArchiveFileName,
+    normalizeName: (input) => {
+      const result = toArchiveFileName(input);
+
+      return 'name' in result && target.isProtected(result.name)
+        ? { error: formatProtectedMessage(result.name) }
+        : result;
+    },
   });
 
   if (!name) {
@@ -117,6 +134,11 @@ export const copyArchivesInto = async (
 
     if (taken.has(name.toLowerCase())) {
       window.showWarningMessage(`${name} already exists there, so it was not copied.`);
+      continue;
+    }
+
+    if (target.isProtected(name)) {
+      window.showWarningMessage(`${formatProtectedMessage(name)} It was not copied.`);
       continue;
     }
 

@@ -1,12 +1,9 @@
 import { AUDIO_NAMESPACES } from '../../formats/ini/sageAudioFields';
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import {
   FRAGMENT_CONTEXT,
   ROOT_CONTEXT,
   UNCHECKED_CONTEXT,
-  createSageIniSchema,
 } from '../../formats/ini/sageIniSchema';
 import type { SageIniSchema } from '../../formats/ini/sageIniSchema';
 import {
@@ -15,15 +12,9 @@ import {
   tokenize,
 } from '../../formats/ini/sageIniParser';
 import type { SageBlock } from '../../formats/ini/sageIniParser';
+import { loadSageIniSchema, readSageIniSchemaFile } from './loadSageIniSchema';
 
-const schema: SageIniSchema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+const schema: SageIniSchema = loadSageIniSchema();
 
 const parse = (source: string): SageBlock[] =>
   parseSageIni(source.split('\n'), schema).blocks;
@@ -139,13 +130,8 @@ suite('SAGE INI schema', () => {
   });
 
   test('a name only one game reads is refused for the other', () => {
-    const data = JSON.parse(
-      readFileSync(
-        join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-        'utf8',
-      ),
-    );
-    const bfme2 = createSageIniSchema(data, 'bfme2');
+    const data = readSageIniSchemaFile();
+    const bfme2 = loadSageIniSchema('bfme2');
     const id = data.contexts.findIndex((context: { f: [string, number][] }) =>
       context.f.some(([, mask]) => mask === 2),
     );

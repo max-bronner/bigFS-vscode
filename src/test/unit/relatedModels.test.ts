@@ -1,8 +1,4 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
-import { parseSageIni } from '../../formats/ini/sageIniParser';
 import { readW3dHeader } from '../../formats/w3d/readW3dHeader';
 import {
   findRelatedModels,
@@ -10,19 +6,10 @@ import {
   readAnimationValue,
 } from '../../game/objects/findRelatedModels';
 import type { RelatedModel } from '../../game/objects/findRelatedModels';
-import { readObjectScene } from '../../game/objects/objectScene';
 import type { ObjectScene } from '../../game/objects/objectScene';
 import { chooseRelatedStep } from '../../webview/preview/chooseRelatedStep';
-import { buildChunk, concatBytes, encodeName, encodeUints } from './w3d.test';
-
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+import { buildChunk, concatBytes, encodeName, encodeUints } from './w3dSynth';
+import { toScene } from './objectFixtures';
 
 const model = (name: string, hierarchy: string) =>
   buildChunk(
@@ -95,7 +82,7 @@ const INI = [
   'End',
 ];
 
-const scene = readObjectScene(parseSageIni(INI, schema), schema, () => false, () => false)!;
+const scene = toScene(INI);
 
 const read = (file: string) => FILES[file] && readW3dHeader(FILES[file]);
 const sources = (scenes: Record<string, ObjectScene[]>, reads: string[] = []) => ({

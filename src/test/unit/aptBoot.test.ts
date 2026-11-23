@@ -1,12 +1,12 @@
-import * as assert from "assert";
-import { decodeBlock } from "../../formats/apt/aptBytecode";
-import { compileScript } from "../../formats/apt/aptCompiler";
-import type { FrameItem } from "../../formats/apt/aptMovie";
-import { parseScript } from "../../formats/apt/aptScriptParser";
-import { AptImage } from "../../formats/apt/writer/aptImage";
-import { Engine } from "../../webview/apt/avm/engine";
-import { Player } from "../../webview/apt/player";
-import type { PageMovie } from "../../webview/apt/protocol";
+import * as assert from 'assert';
+import { decodeBlock } from '../../formats/apt/aptBytecode';
+import { compileScript } from '../../formats/apt/aptCompiler';
+import type { FrameItem } from '../../formats/apt/aptMovie';
+import { parseScript } from '../../formats/apt/aptScriptParser';
+import { AptImage } from '../../formats/apt/writer/aptImage';
+import { Engine } from '../../webview/apt/avm/engine';
+import { Player } from '../../webview/apt/player';
+import type { PageMovie } from '../../webview/apt/protocol';
 
 interface Source {
   frames: string[];
@@ -15,7 +15,7 @@ interface Source {
 
 const build = (source: Source) => {
   const image = new AptImage(new Uint8Array(64));
-  const code: PageMovie["code"] = {};
+  const code: PageMovie['code'] = {};
   const compile = (text: string) => {
     const block = compileScript(parseScript(text), image, []);
 
@@ -24,17 +24,17 @@ const build = (source: Source) => {
   };
   const frames = source.frames.map((text, index) => {
     const items: FrameItem[] = [
-      { offset: 0, type: "action", block: compile(text) } as FrameItem,
+      { offset: 0, type: 'action', block: compile(text) } as FrameItem,
     ];
 
     if (index === 0) {
       items.push({
         offset: 0,
-        type: "placeObject",
+        type: 'placeObject',
         flags: 0,
         depth: 1,
         character: 1,
-        name: "kid",
+        name: 'kid',
       } as FrameItem);
     }
     const init = source.init?.[index];
@@ -42,7 +42,7 @@ const build = (source: Source) => {
     if (init !== undefined) {
       items.push({
         offset: 0,
-        type: "initAction",
+        type: 'initAction',
         sprite: 1,
         block: compile(init),
       } as FrameItem);
@@ -51,11 +51,11 @@ const build = (source: Source) => {
   });
 
   return {
-    name: "Boot",
+    name: 'Boot',
     record: { screenWidth: 100, screenHeight: 100 },
     characters: [
-      { id: 0, offset: 0, type: "movie" },
-      { id: 1, offset: 0, type: "sprite" },
+      { id: 0, offset: 0, type: 'movie' },
+      { id: 1, offset: 0, type: 'sprite' },
     ],
     imports: [],
     exports: [],
@@ -95,39 +95,39 @@ const boot = (source: Source) => {
   return { player, lines, read };
 };
 
-suite("APT boot", () => {
-  test("a root script that reads _root runs to its end, without a failure", () => {
-    const { lines, read } = boot({ frames: ["a = _root._name; b = 1;"] });
+suite('APT boot', () => {
+  test('a root script that reads _root runs to its end, without a failure', () => {
+    const { lines, read } = boot({ frames: ['a = _root._name; b = 1;'] });
 
-    assert.strictEqual(read("b"), 1);
+    assert.strictEqual(read('b'), 1);
     assert.deepStrictEqual(
       lines.filter((line) => /fail|error|undefined/i.test(line)),
       [],
     );
   });
 
-  test("_level0 resolves in the first frame too", () => {
-    const { read } = boot({ frames: ["a = _level0._name; b = 2;"] });
+  test('_level0 resolves in the first frame too', () => {
+    const { read } = boot({ frames: ['a = _level0._name; b = 2;'] });
 
-    assert.strictEqual(read("b"), 2);
+    assert.strictEqual(read('b'), 2);
   });
 
   test("a stop() in the root's first frame holds, also after the same frame is asked for", () => {
-    const { player } = boot({ frames: ["stop();", ""] });
+    const { player } = boot({ frames: ['stop();', ''] });
 
     assert.strictEqual(player.root.playing, false);
     player.tick();
     assert.strictEqual(player.root.frame, 0);
   });
 
-  test("an init action on a later frame runs before the first tick", () => {
+  test('an init action on a later frame runs before the first tick', () => {
     const { player, read } = boot({
-      frames: ["", "", "", ""],
-      init: { 3: "ready = 7;" },
+      frames: ['', '', '', ''],
+      init: { 3: 'ready = 7;' },
     });
 
     assert.strictEqual(player.ticks, 0);
-    assert.strictEqual(read("ready"), 7);
+    assert.strictEqual(read('ready'), 7);
     assert.strictEqual(player.root.frame, 0);
   });
 });

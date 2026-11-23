@@ -24,6 +24,7 @@ import { registerVideo } from './features/video';
 import { registerInstalls } from './features/installs';
 import { registerMods } from './features/mods';
 import { registerArchiveSearch } from './features/archiveSearch';
+import { registerConverters } from './features/converters';
 import { registerFileFinder } from './features/fileFinder';
 import { registerExplorer } from './features/explorer';
 import { registerAssetCatalogue } from './features/assetCatalogue';
@@ -53,6 +54,7 @@ const FEATURES: ((context: ExtensionContext, services: Services) => void)[] = [
   registerMods,
   registerAssetCatalogue,
   registerArchiveSearch,
+  registerConverters,
   registerFileFinder,
   registerExplorer,
 ];

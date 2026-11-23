@@ -24,6 +24,7 @@ import { currentPlayer, play, render, view } from './stage';
 import { suggestFrom } from './suggestingInput';
 
 const panel = byId('engine');
+const count = byId('engine-count');
 let restart = () => {};
 let filter = '';
 const drafts = new Map<string, string>();
@@ -87,9 +88,17 @@ const callRow = (entry: FunctionEntry) => {
     return field;
   });
 
-  return createRow(
-    entry.path,
-    ...fields,
+  const row = document.createElement('div');
+  const name = text(entry.path, 'name');
+  const parameters = document.createElement('span');
+
+  row.className = 'engine-call';
+  name.title = `${entry.path}(${entry.params.join(', ')})`;
+  parameters.className = 'arguments';
+  parameters.append(...fields);
+  row.append(
+    name,
+    parameters,
     createButton('Call', () => {
       const result = engine.invokeAndRepeat(
         entry,
@@ -110,6 +119,7 @@ const callRow = (entry: FunctionEntry) => {
         );
     }),
   );
+  return row;
 };
 
 const overrideField = (
@@ -370,13 +380,16 @@ export const showEngine = (): void => {
     showEngine();
   };
 
-  const wrapper = document.createElement('details');
-  const title = document.createElement('summary');
+  const found = `${engine.overrides.size + engine.externOverrides.size + engine.imageOverrides.size} overrides · ${entries.length} entry points · ${engine.reads.size} values read · ${engine.calls.size} calls`;
 
-  wrapper.open = panel.querySelector('details')?.open ?? true;
-  title.textContent = `Engine: ${engine.overrides.size + engine.externOverrides.size + engine.imageOverrides.size} overrides · ${entries.length} entry points · ${engine.reads.size} values read · ${engine.calls.size} calls`;
-  wrapper.append(
-    title,
+  count.textContent = entries.length ? String(entries.length) : '';
+  count.parentElement!.title = `What the movie's code reached for in the engine: ${found}`;
+
+  const foundLine = text(found, 'muted');
+
+  foundLine.id = 'engine-summary';
+  panel.replaceChildren(
+    foundLine,
     createRow('', search),
     createHeading('Called by the engine'),
     ...(entries.length
@@ -433,7 +446,6 @@ export const showEngine = (): void => {
       createButton('Clear overrides', () => changed(() => engine.clear())),
     ),
   );
-  panel.replaceChildren(wrapper);
 };
 
 onEngineChange(showEngine);

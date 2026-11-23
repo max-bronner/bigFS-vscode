@@ -1,12 +1,10 @@
-import * as assert from "assert";
-import Module from "module";
-import type * as vscode from "vscode";
+import * as assert from 'assert';
+import type * as vscode from 'vscode';
 import type {
   SnapshotDocument,
   SnapshotFormat,
-} from "../../platform/webview/snapshotEditor";
-
-type Loader = (request: string, ...rest: unknown[]) => unknown;
+} from '../../platform/webview/snapshotEditor';
+import { requireWithVscode } from './requireWithVscode';
 
 const READONLY = 1;
 const files = new Map<string, Uint8Array>();
@@ -44,20 +42,8 @@ const fakeVscode = {
   },
 };
 
-const internals = Module as unknown as { _load: Loader };
-const original = internals._load;
-
-internals._load = (request, ...rest) =>
-  request === "vscode" ? fakeVscode : original.call(Module, request, ...rest);
-
-let editor: typeof import("../../platform/webview/snapshotEditor");
-
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  editor = require("../../platform/webview/snapshotEditor");
-} finally {
-  internals._load = original;
-}
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const editor = requireWithVscode(fakeVscode, () => require('../../platform/webview/snapshotEditor') as typeof import('../../platform/webview/snapshotEditor'));
 
 const TEXT: SnapshotFormat<string> = {
   read: (bytes) => new TextDecoder().decode(bytes),
@@ -86,49 +72,49 @@ const recordEvents = () => {
   };
 };
 
-suite("snapshotEditor", () => {
+suite('snapshotEditor', () => {
   setup(() => {
     files.clear();
     permissions.clear();
   });
 
-  test("opens from the backup when there is one, else the file", async () => {
-    files.set("/a.txt", TEXT.write("saved"));
-    files.set("/backup", TEXT.write("unsaved"));
+  test('opens from the backup when there is one, else the file', async () => {
+    files.set('/a.txt', TEXT.write('saved'));
+    files.set('/backup', TEXT.write('unsaved'));
 
     assert.strictEqual(
-      TEXT.read(await editor.readSnapshotSource(fakeUri("/a.txt"), undefined)),
-      "saved",
+      TEXT.read(await editor.readSnapshotSource(fakeUri('/a.txt'), undefined)),
+      'saved',
     );
     assert.strictEqual(
-      TEXT.read(await editor.readSnapshotSource(fakeUri("/a.txt"), "/backup")),
-      "unsaved",
+      TEXT.read(await editor.readSnapshotSource(fakeUri('/a.txt'), '/backup')),
+      'unsaved',
     );
   });
 
-  test("reads the read-only flag, and treats a file it cannot stat as writable", async () => {
-    files.set("/install.txt", TEXT.write(""));
-    permissions.set("/install.txt", READONLY);
-    files.set("/workspace.txt", TEXT.write(""));
+  test('reads the read-only flag, and treats a file it cannot stat as writable', async () => {
+    files.set('/install.txt', TEXT.write(''));
+    permissions.set('/install.txt', READONLY);
+    files.set('/workspace.txt', TEXT.write(''));
 
     assert.strictEqual(
-      await editor.isReadOnlyFile(fakeUri("/install.txt")),
+      await editor.isReadOnlyFile(fakeUri('/install.txt')),
       true,
     );
     assert.strictEqual(
-      await editor.isReadOnlyFile(fakeUri("/workspace.txt")),
+      await editor.isReadOnlyFile(fakeUri('/workspace.txt')),
       false,
     );
     assert.strictEqual(
-      await editor.isReadOnlyFile(fakeUri("/missing.txt")),
+      await editor.isReadOnlyFile(fakeUri('/missing.txt')),
       false,
     );
   });
 
-  test("records an edit whose undo and redo swap the snapshots and redraw", () => {
+  test('records an edit whose undo and redo swap the snapshots and redraw', () => {
     const document = editor.createSnapshotDocument(
-      fakeUri("/a.txt"),
-      "one",
+      fakeUri('/a.txt'),
+      'one',
       false,
     );
     const { panel } = fakePanel();
@@ -136,50 +122,50 @@ suite("snapshotEditor", () => {
     let redraws = 0;
 
     editor.addSnapshotView(document, panel, () => redraws++);
-    editor.recordSnapshotEdit({ fire }, document, "Change", "two");
+    editor.recordSnapshotEdit({ fire }, document, 'Change', 'two');
 
-    assert.strictEqual(document.snapshot, "two");
+    assert.strictEqual(document.snapshot, 'two');
     assert.strictEqual(redraws, 0);
     assert.strictEqual(events.length, 1);
-    assert.strictEqual(events[0].label, "Change");
+    assert.strictEqual(events[0].label, 'Change');
     assert.strictEqual(events[0].document, document);
 
     void events[0].undo();
-    assert.strictEqual(document.snapshot, "one");
+    assert.strictEqual(document.snapshot, 'one');
     assert.strictEqual(redraws, 1);
 
     void events[0].redo();
-    assert.strictEqual(document.snapshot, "two");
+    assert.strictEqual(document.snapshot, 'two');
     assert.strictEqual(redraws, 2);
   });
 
-  test("stops redrawing a panel once it closes, and every panel once the document is disposed", () => {
+  test('stops redrawing a panel once it closes, and every panel once the document is disposed', () => {
     const document = editor.createSnapshotDocument(
-      fakeUri("/a.txt"),
-      "",
+      fakeUri('/a.txt'),
+      '',
       false,
     );
     const first = fakePanel();
     const second = fakePanel();
     const drawn: string[] = [];
 
-    editor.addSnapshotView(document, first.panel, () => drawn.push("first"));
-    editor.addSnapshotView(document, second.panel, () => drawn.push("second"));
+    editor.addSnapshotView(document, first.panel, () => drawn.push('first'));
+    editor.addSnapshotView(document, second.panel, () => drawn.push('second'));
     editor.redrawSnapshotViews(document);
     first.close();
     editor.redrawSnapshotViews(document);
     document.dispose();
     editor.redrawSnapshotViews(document);
 
-    assert.deepStrictEqual(drawn, ["first", "second", "second"]);
+    assert.deepStrictEqual(drawn, ['first', 'second', 'second']);
   });
 
-  test("saves to the file, saves as elsewhere, and reverts from the file", async () => {
-    files.set("/a.txt", TEXT.write("one"));
+  test('saves to the file, saves as elsewhere, and reverts from the file', async () => {
+    files.set('/a.txt', TEXT.write('one'));
 
     const document = editor.createSnapshotDocument(
-      fakeUri("/a.txt"),
-      "two",
+      fakeUri('/a.txt'),
+      'two',
       false,
     );
     const { panel } = fakePanel();
@@ -187,53 +173,53 @@ suite("snapshotEditor", () => {
 
     editor.addSnapshotView(document, panel, () => redraws++);
 
-    await editor.saveSnapshot(document, TEXT, fakeUri("/b.txt"));
-    assert.strictEqual(textAt("/b.txt"), "two");
-    assert.strictEqual(textAt("/a.txt"), "one");
+    await editor.saveSnapshot(document, TEXT, fakeUri('/b.txt'));
+    assert.strictEqual(textAt('/b.txt'), 'two');
+    assert.strictEqual(textAt('/a.txt'), 'one');
 
     await editor.revertSnapshot(document, TEXT);
-    assert.strictEqual(document.snapshot, "one");
+    assert.strictEqual(document.snapshot, 'one');
     assert.strictEqual(redraws, 1);
 
-    document.snapshot = "three";
+    document.snapshot = 'three';
     await editor.saveSnapshot(document, TEXT);
-    assert.strictEqual(textAt("/a.txt"), "three");
+    assert.strictEqual(textAt('/a.txt'), 'three');
   });
 
-  test("backs up to a destination a later open restores from", async () => {
-    files.set("/a.txt", TEXT.write("saved"));
+  test('backs up to a destination a later open restores from', async () => {
+    files.set('/a.txt', TEXT.write('saved'));
 
     const document = editor.createSnapshotDocument(
-      fakeUri("/a.txt"),
-      "unsaved",
+      fakeUri('/a.txt'),
+      'unsaved',
       false,
     );
     const backup = await editor.backupSnapshot(document, TEXT, {
-      destination: fakeUri("/backup"),
+      destination: fakeUri('/backup'),
     } as vscode.CustomDocumentBackupContext);
 
-    assert.strictEqual(backup.id, "/backup");
+    assert.strictEqual(backup.id, '/backup');
     assert.strictEqual(
-      TEXT.read(await editor.readSnapshotSource(fakeUri("/a.txt"), backup.id)),
-      "unsaved",
+      TEXT.read(await editor.readSnapshotSource(fakeUri('/a.txt'), backup.id)),
+      'unsaved',
     );
 
     await backup.delete();
-    assert.strictEqual(files.has("/backup"), false);
+    assert.strictEqual(files.has('/backup'), false);
   });
 
-  test("lets the format refuse to write, leaving the file untouched", async () => {
-    files.set("/a.txt", TEXT.write("saved"));
+  test('lets the format refuse to write, leaving the file untouched', async () => {
+    files.set('/a.txt', TEXT.write('saved'));
 
     const document = editor.createSnapshotDocument(
-      fakeUri("/a.txt"),
-      "bad",
+      fakeUri('/a.txt'),
+      'bad',
       false,
     );
     const strict: SnapshotFormat<string> = {
       ...TEXT,
       write: () => {
-        throw new Error("cannot store this");
+        throw new Error('cannot store this');
       },
     };
 
@@ -241,6 +227,6 @@ suite("snapshotEditor", () => {
       editor.saveSnapshot(document, strict),
       /cannot store this/,
     );
-    assert.strictEqual(textAt("/a.txt"), "saved");
+    assert.strictEqual(textAt('/a.txt'), 'saved');
   });
 });

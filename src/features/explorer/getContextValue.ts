@@ -22,4 +22,11 @@ const CONTEXT_PREFIXES: Record<RowContextKind, string> = {
 export const getContextValue = (
   kind: RowContextKind,
   isReadOnly = false,
-): string => `${CONTEXT_PREFIXES[kind]}${isReadOnly ? READ_ONLY_SUFFIX : ''}`;
+  fileName?: string,
+): string => {
+  const dot = fileName ? fileName.lastIndexOf('.') : -1;
+  const extension =
+    fileName && dot > 0 ? `:${fileName.slice(dot + 1).toLowerCase()}` : '';
+
+  return `${CONTEXT_PREFIXES[kind]}${isReadOnly ? READ_ONLY_SUFFIX : ''}${extension}`;
+};

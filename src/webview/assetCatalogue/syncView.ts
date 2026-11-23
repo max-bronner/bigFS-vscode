@@ -1,4 +1,6 @@
+import { createDisclosureRow } from '../shared/createDisclosureRow';
 import { element } from '../shared/element';
+import { groupSyncRows } from './groupSyncRows';
 import type { SyncGroup, SyncMessage, SyncResultMessage, SyncRow } from './protocol';
 
 const ROWS_SHOWN = 500;
@@ -72,24 +74,25 @@ export const renderSyncView = (
 
   const renderGroup = ({ group, title, action }: (typeof GROUPS)[number]): HTMLElement => {
     const rows = message.groups[group];
-    const section = element('details', undefined, 'group');
-    const summary = element('summary');
-    const box = element('input');
     const count = element('span', '', 'muted');
+    const { root: section, members, box } = createDisclosureRow({
+      text: [`${title} `, count],
+      name: `Show the rows of ${title}`,
+      isOpen: rows.length > 0,
+      onToggleOpen: () => undefined,
+      onSwitch: (on) => {
+        selected[group] = new Set(on ? rows.map((row) => row.id) : []);
+        refresh();
+      },
+    });
     const list = element('div', undefined, 'rows');
     const boxes = new Map<string, HTMLInputElement>();
+    const originBoxes = new Map<HTMLInputElement, string[]>();
     let limit = ROWS_SHOWN;
 
     section.id = `group-${group}`;
-    section.open = rows.length > 0;
-    box.type = 'checkbox';
+    section.classList.add('group');
     box.id = `select-${group}`;
-    box.addEventListener('click', (event) => event.stopPropagation());
-    box.addEventListener('change', () => {
-      selected[group] = new Set(box.checked ? rows.map((row) => row.id) : []);
-      refresh();
-    });
-    summary.append(box, ` ${title} `, count);
 
     const renderRow = (row: SyncRow): HTMLElement => {
       const label = element('label', undefined, 'row');
@@ -122,16 +125,44 @@ export const renderSyncView = (
       if (row.path) {
         label.append(element('span', row.path, 'path'));
       }
-      if (row.origin) {
-        label.append(element('span', row.origin, 'muted'));
-      }
 
+      return label;
+    };
+
+    const originIds = new Map(
+      groupSyncRows(rows).map(({ origin, rows: members }) => [origin, members.map((row) => row.id)]),
+    );
+
+    const renderOrigin = (origin: string): HTMLElement => {
+      const label = element('label', undefined, 'origin');
+      const originBox = element('input');
+      const ids = originIds.get(origin) ?? [];
+
+      originBox.type = 'checkbox';
+      originBox.addEventListener('change', () => {
+        for (const id of ids) {
+          if (originBox.checked) {
+            selected[group].add(id);
+          } else {
+            selected[group].delete(id);
+          }
+        }
+        refresh();
+      });
+      originBoxes.set(originBox, ids);
+      label.append(originBox, ` ${origin} `, element('span', `(${ids.length.toLocaleString()})`, 'muted'));
       return label;
     };
 
     const renderRows = () => {
       boxes.clear();
-      list.replaceChildren(...rows.slice(0, limit).map(renderRow));
+      originBoxes.clear();
+      list.replaceChildren(
+        ...groupSyncRows(rows.slice(0, limit)).flatMap(({ origin, rows: members }) => [
+          ...(origin ? [renderOrigin(origin)] : []),
+          ...members.map(renderRow),
+        ]),
+      );
 
       if (rows.length > limit) {
         const all = element('button', `Show all ${rows.length.toLocaleString()}`);
@@ -151,26 +182,26 @@ export const renderSyncView = (
       for (const [id, rowBox] of boxes) {
         rowBox.checked = selected[group].has(id);
       }
+      for (const [originBox, ids] of originBoxes) {
+        setTriState(originBox, ids.filter((id) => selected[group].has(id)).length, ids.length);
+      }
     });
 
     renderRows();
-    section.append(
-      summary,
-      element('p', rows.length ? action : 'None found.', 'muted'),
-      list,
-    );
+    members.append(element('p', rows.length ? action : 'None found.', 'muted'), list);
 
     return section;
   };
 
   const toolbar = element('div', undefined, 'toolbar');
+  const bar = element('div', undefined, 'sync-bar');
 
   toolbar.append(everythingLabel, apply);
+  bar.append(toolbar, status);
   root.replaceChildren(
     element('h2', `Sync ${message.catalogue}`),
     element('p', `Compared with the files the game loads. Apply writes ${message.target}.`, 'muted'),
-    toolbar,
-    status,
+    bar,
     ...GROUPS.map(renderGroup),
   );
   refresh();

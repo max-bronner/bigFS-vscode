@@ -15,6 +15,8 @@ uniform vec4 detailUvLinear;
 uniform vec2 detailUvOffset;
 uniform int detailUvGenerated;
 uniform float pointSize;
+uniform vec4 heightPlane;
+varying float vHeight;
 varying vec3 vNormal;
 varying vec2 vUv;
 varying vec2 vDetailUv;
@@ -42,6 +44,7 @@ void main() {
   vColor = color;
   vPosition = position + offset;
   vToEye = eye - vPosition;
+  vHeight = dot(heightPlane, vec4(position + offset, 1.0));
   gl_Position = viewProjection * vec4(position + offset, 1.0);
   gl_PointSize = pointSize;
 }`;
@@ -58,6 +61,8 @@ varying vec3 vToEye;
 varying vec2 vUv;
 varying vec2 vDetailUv;
 varying vec4 vColor;
+varying float vHeight;
+uniform bool clipsBelowGround;
 uniform sampler2D tex;
 uniform sampler2D detailTex;
 uniform bool hasTexture;
@@ -158,7 +163,11 @@ vec3 shade(vec3 vertexColour, vec3 unit) {
   );
 }
 void main() {
-  if (useSolid) { gl_FragColor = solid; return; }
+  if (useSolid) {
+    if (clipsBelowGround && vHeight < 0.0) discard;
+    gl_FragColor = solid;
+    return;
+  }
   vec3 vertexColour = vColor.rgb * vertexScale;
   bool alphaFromVertex = diffuseFromVertex || vertexMultiplies;
   vec4 texel = hasTexture ? texture2D(tex, vUv) : untextured;

@@ -1,7 +1,4 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
 import {
   findHidingSources,
@@ -17,6 +14,8 @@ import {
   readCreatedSubObjects,
   readStateScript,
 } from '../../game/objects/subObjectScripts';
+import { loadSageIniSchema } from './loadSageIniSchema';
+import { toScene } from './objectFixtures';
 
 const mesh = (name: string, hidden = false) => ({
   name,
@@ -316,14 +315,7 @@ end`;
 });
 
 suite('Sub-objects of an object', () => {
-  const schema = createSageIniSchema(
-    JSON.parse(
-      readFileSync(
-        join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-        'utf8',
-      ),
-    ),
-  );
+  const schema = loadSageIniSchema();
   const TEXT = [
     'Object TestBeast',
     '  Draw = W3DScriptedModelDraw ModuleTag_Draw',
@@ -554,6 +546,25 @@ suite('Sub-objects of an object', () => {
     ]);
   });
 
+  test('an upgrade held from creation fires before the creation scripts, after them when it waits to fade in', () => {
+    const scene = read();
+    const model = scene.states.find((each) => each.kind === 'model');
+    const parts = [mesh('BANNER'), mesh('BOULDER')];
+    const hidingNow = () => findHidingSources(parts, listSubObjectRules(scene, model));
+
+    scene.created = {
+      rules: [{ pattern: 'BANNER', hide: true, isPermanent: true, source: 'OnBeastCreated' }],
+      conditional: [],
+      grantedUpgrades: [],
+    };
+    scene.heldUpgrades = ['UPGRADE_BANNER'];
+    assert.deepStrictEqual(hidingNow(), ['OnBeastCreated', undefined]);
+
+    scene.upgrades[0].waitsBeforeShowing = true;
+    assert.deepStrictEqual(hidingNow(), [undefined, undefined]);
+    assert.ok(!listSubObjectRules(scene, model).some((each) => each.pattern === 'BOULDER'));
+  });
+
   test('a state reads the previous state as its idle, idle as none', () => {
     const lines = [
       'Object TestBeast',
@@ -584,13 +595,7 @@ suite('Sub-objects of an object', () => {
       '  End',
       'End',
     ];
-    const scene = readObjectScene(
-      parseSageIni(lines, schema),
-      schema,
-      () => false,
-      () => false,
-      lines,
-    )!;
+    const scene = toScene(lines);
 
     assert.deepStrictEqual(
       scene.states.flatMap((each) => each.subObjects.rules.map((rule) => rule.pattern)),

@@ -1,8 +1,12 @@
 import * as vscode from 'vscode';
 import { readObjectScene } from '../../game/objects/objectScene';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
+import type { ArchiveModel } from '../../services/archives/archiveModel';
+import { describeFileLocation } from '../../services/archives/describeFileLocation';
+import type { FileLocation } from '../../services/archives/describeFileLocation';
 import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
 import { FILE_USES } from '../../formats/ini/sageIniEntries';
+import { getFileUseNames } from '../../formats/ini/sageIniAssets';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
 import { readWorkspaceText } from '../../services/ini/workspaceText';
 import { registerCommand } from '../../platform/commands';
@@ -12,6 +16,7 @@ export interface FileUse {
   line: number;
   field: string;
   owner?: string;
+  location?: FileLocation;
 }
 
 const MAX_USES = 40;
@@ -20,12 +25,15 @@ const TOP_LEVEL = /^\S/;
 
 const findUses = async (index: SageIniIndex, fileName: string) => {
   await index.whenReady();
-  return index.findReferences(FILE_USES, fileName).slice(0, MAX_USES);
+  return getFileUseNames(fileName)
+    .flatMap((name) => index.findReferences(FILE_USES, name))
+    .slice(0, MAX_USES);
 };
 
 export const registerFileUses = (
   documents: SageIniDocuments,
   index: SageIniIndex,
+  archives: ArchiveModel,
 ): vscode.Disposable[] => [
   registerCommand(
     'bigfs.findFileUses',
@@ -58,6 +66,7 @@ export const registerFileUses = (
             owner: DEFINITION.exec(lines[at] ?? '')
               ?.slice(1)
               .join(' '),
+            location: describeFileLocation(archives, use.uri),
           };
         }),
       );

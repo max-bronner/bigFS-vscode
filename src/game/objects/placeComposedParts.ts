@@ -92,6 +92,18 @@ const getBindPose = (skeleton: SceneSkeleton) => {
 const findBone = (names: readonly string[], name: string) =>
   names.findIndex((each) => each.toLowerCase() === name.toLowerCase());
 
+export const getPlacedBonePoint = (
+  { matrix, skeleton, pose }: PlacedModel,
+  bone: string | undefined,
+): Vec3 => {
+  const at = skeleton && bone ? findBone(skeleton.names, bone) : -1;
+  const [x, y, z] = at >= 0 ? (pose ?? getBindPose(skeleton!)).world[at].t : [0, 0, 0];
+
+  return [0, 1, 2].map(
+    (row) => matrix[row] * x + matrix[4 + row] * y + matrix[8 + row] * z + matrix[12 + row],
+  ) as Vec3;
+};
+
 export const listPassengerBones = (names: readonly string[], prefix: string): number[] => {
   const found: number[] = [];
 
@@ -141,6 +153,11 @@ export const placePart = (
       return owner.matrix;
     case 'slot':
       return multiplyMatrices(owner.matrix, toTranslation([placement.x, placement.y, 0]));
+    case 'offset':
+      return multiplyMatrices(
+        owner.matrix,
+        toTranslation([placement.x, placement.y, placement.z]),
+      );
     case 'attachBone': {
       for (const skeleton of [owner.skeleton, ...attachModels]) {
         const at = skeleton ? findBone(skeleton.names, placement.bone) : -1;
@@ -150,6 +167,21 @@ export const placePart = (
         }
       }
       return owner.matrix;
+    }
+    case 'spawnPoint': {
+      const skeleton = owner.skeleton;
+      const bone = skeleton ? getPassengerBones(skeleton, placement.prefix)[placement.slot] : undefined;
+
+      if (!skeleton || bone === undefined) {
+        return undefined;
+      }
+
+      const rest = toBoneMatrix(getBindPose(skeleton).world[bone]);
+
+      return multiplyMatrices(
+        owner.matrix,
+        multiplyMatrices(toTranslation([rest[12], rest[13], rest[14]]), toTurn(Math.atan2(rest[1], rest[0]))),
+      );
     }
     case 'passengerBone': {
       const skeleton = owner.skeleton;

@@ -14,6 +14,7 @@ import type { AptLibrary, MovieLocation } from './aptLibrary';
 import { toMovieKey } from './aptLibrary';
 import { describeError } from '../../core/errors';
 import { readEngineAnswers } from './aptEngineAnswers';
+import { readAptToolbar } from './aptToolbar';
 
 const listCodeStrings = (code: readonly AptInstruction[]): string[] =>
   code.flatMap(({ operand }) => {
@@ -367,6 +368,7 @@ export const createAptMovieImports = ({
         origins: {},
         texts: await resolveTexts([root.movie], document.uri),
         answers,
+        toolbar: readAptToolbar(game.state),
       });
       early.catch(() => undefined);
       walk.textures = {};
@@ -397,6 +399,7 @@ export const createAptMovieImports = ({
         document.uri,
       ),
       answers,
+      toolbar: readAptToolbar(game.state),
     };
   };
 

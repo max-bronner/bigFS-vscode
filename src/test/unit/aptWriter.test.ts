@@ -7,7 +7,7 @@ import {
 import { applyAptEdit } from '../../formats/apt/writer/applyAptEdit';
 import { AptImage } from '../../formats/apt/writer/aptImage';
 import type { AptEdit } from '../../formats/apt/writer/aptEdit';
-import { buildMovie } from './apt.test';
+import { buildMovie } from './aptMovieFixtures';
 
 const edited = (...edits: AptEdit[]) => {
   const { apt, constFile } = buildMovie();

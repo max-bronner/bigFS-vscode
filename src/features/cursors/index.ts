@@ -5,10 +5,10 @@ import { registerCursorConversionCommands } from './cursorConversionCommands';
 
 export const registerCursors = (
   context: ExtensionContext,
-  _services: Services,
+  { archives }: Services,
 ): void => {
   context.subscriptions.push(
-    registerCursorConversionCommands(),
+    registerCursorConversionCommands(archives),
     registerAnimationBuilder(context),
   );
 };

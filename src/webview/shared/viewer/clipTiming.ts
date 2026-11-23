@@ -7,10 +7,10 @@ const getFrameSpan = ({ frameCount }: ClipClock) => Math.max(1, frameCount - 1);
 export const getClipSeconds = (clip: ClipClock): number =>
   getFrameSpan(clip) / (clip.frameRate || 1);
 
-export const getClipFrame = (clip: ClipClock, seconds: number): number => {
+export const getClipFrame = (clip: ClipClock, seconds: number, playsOnce = false): number => {
   const span = getFrameSpan(clip);
-  const frames = seconds * (clip.frameRate || 1);
-  const frame = frames % span;
+  const frames = Math.max(0, seconds) * (clip.frameRate || 1);
+  const frame = playsOnce ? Math.min(frames, span) : frames % span;
 
   return frames > 0 && frame === 0 ? span : frame;
 };

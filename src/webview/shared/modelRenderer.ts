@@ -20,15 +20,18 @@ import { applyMapper, DETAIL_UV_UNIFORMS, UV_UNIFORMS } from "./applyMapper";
 import { applySurface } from "./applySurface";
 import { bindAttribute } from "./bindAttribute";
 import { bindColors } from "./bindColors";
-import { drawModelLines } from "./drawModelLines";
+import { bindSolid, drawModelLines } from "./drawModelLines";
 import type { BoneLines } from "./drawModelLines";
 import type { ModelAttributes } from "./modelLocations";
 import { buildFragmentShader, VERTEX_SHADER } from "./modelShaders";
 import { orderDraws } from "./orderDraws";
-import { uploadTextures } from "./uploadTextures";
+import { computeFacingAxes, turnVertices } from "../../formats/w3d/w3dFacing";
+import { releaseTextures, uploadTextures } from "./uploadTextures";
 
 const MISSING_TEXTURE = [0.7, 0.7, 0.7, 1];
 const NO_TEXTURE = [1, 1, 1, 1];
+const CLAY = [0.75, 0.73, 0.7, 1];
+const SHADOW_COLOUR = [160 / 255, 160 / 255, 160 / 255, 1];
 
 export interface DrawOptions {
   offset?: Vec3;
@@ -43,22 +46,55 @@ export interface DrawOptions {
   showBoxes?: boolean;
   seconds?: number;
   camera?: ModelCamera;
-  houseColour?: Vec3;
+  houseColour?: Vec3 | null;
+  showTextures?: boolean;
+  isFloor?: boolean;
 }
 
 export interface ModelCamera {
   eye: Vec3;
+  up?: Vec3;
   rotation: number[];
 }
 
 const DEFAULT_ROTATION = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 const FAR_EYE = 1e5;
 
+const programs = new WeakMap<WebGLRenderingContext, WebGLProgram>();
+
+const getProgram = (gl: WebGLRenderingContext): WebGLProgram => {
+  let program = programs.get(gl);
+
+  if (!program) {
+    program = gl.createProgram()!;
+    gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERTEX_SHADER));
+    gl.attachShader(
+      program,
+      compile(
+        gl,
+        gl.FRAGMENT_SHADER,
+        buildFragmentShader(!!gl.getExtension("OES_standard_derivatives")),
+      ),
+    );
+    gl.linkProgram(program);
+    programs.set(gl, program);
+  }
+  return program;
+};
+
 export interface ModelRenderer {
   setModel(scene: ModelScene | undefined): void;
   setPose(pose: Pose | undefined): void;
   draw(viewProjection: Float32Array | number[], options: DrawOptions): void;
+  drawShadow(viewProjection: Float32Array | number[], options: ShadowDrawOptions): void;
 }
+
+export type ShadowDrawOptions = Pick<
+  DrawOptions,
+  'offset' | 'lod' | 'subObjectRules' | 'partOverrides'
+> & {
+  heightPlane: readonly number[];
+};
 
 const ALPHA_CUTOFF = 96 / 255;
 
@@ -84,6 +120,7 @@ interface Drawable {
   normal?: WebGLBuffer;
   parts: DrawablePart[];
   posed?: { positions: Float32Array; normals?: Float32Array };
+  turned?: { positions: Float32Array; normals?: Float32Array };
 }
 
 const NO_MAPPER = parseUvMapper(UV_MAPPER.UV);
@@ -135,19 +172,9 @@ const poseAtBind = (skeleton: NonNullable<ModelScene["skeleton"]>): Pose => {
 
 export const createModelRenderer = (
   gl: WebGLRenderingContext,
+  onTexturesChanged?: () => void,
 ): ModelRenderer => {
-  const program = gl.createProgram()!;
-
-  gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERTEX_SHADER));
-  gl.attachShader(
-    program,
-    compile(
-      gl,
-      gl.FRAGMENT_SHADER,
-      buildFragmentShader(!!gl.getExtension("OES_standard_derivatives")),
-    ),
-  );
-  gl.linkProgram(program);
+  const program = getProgram(gl);
 
   const wideIndices = !!gl.getExtension("OES_element_index_uint");
   const uniforms = new Map<string, WebGLUniformLocation | null>();
@@ -192,7 +219,7 @@ export const createModelRenderer = (
     for (const buffer of buffers) {
       gl.deleteBuffer(buffer);
     }
-    textures.forEach((texture) => gl.deleteTexture(texture));
+    releaseTextures(gl, textures);
     buffers = new Set();
     arrayBuffers = new Map();
     drawables = [];
@@ -220,7 +247,7 @@ export const createModelRenderer = (
       return;
     }
 
-    textures = uploadTextures(gl, next);
+    textures = uploadTextures(gl, next, onTexturesChanged);
 
     const boxLines = Float32Array.from(
       next.boxes.flatMap((box) => Array.from(box.lines)),
@@ -238,7 +265,7 @@ export const createModelRenderer = (
         return [];
       }
 
-      const usage = mesh.local ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW;
+      const usage = mesh.local || mesh.facing ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW;
       const uploadIndices = (indices: Uint32Array) =>
         uploadBuffer(
           gl.ELEMENT_ARRAY_BUFFER,
@@ -281,6 +308,10 @@ export const createModelRenderer = (
             index: getIndexBuffer(draw.indices),
             namesTexture: draw.textured,
           })),
+          turned: mesh.facing && {
+            positions: new Float32Array(mesh.positions.length),
+            normals: mesh.normals && new Float32Array(mesh.normals.length),
+          },
           posed: mesh.local && {
             positions: new Float32Array(mesh.positions.length),
             normals: mesh.normals && new Float32Array(mesh.normals.length),
@@ -321,12 +352,82 @@ export const createModelRenderer = (
     }
   };
 
+  const turnToCamera = (drawable: Drawable, { eye, rotation, up }: ModelCamera, offset: Vec3) => {
+    const { facing, bone } = scene!.meshes[drawable.mesh];
+    const { turned } = drawable;
+
+    if (!facing || !turned) {
+      return;
+    }
+
+    const posedAt = bone === undefined ? undefined : pose?.world[bone]?.t;
+    const origin: Vec3 = posedAt ? [posedAt[0], posedAt[1], posedAt[2]] : facing.origin;
+    const axes = computeFacingAxes(facing.kind, origin, {
+      eye: [eye[0] - offset[0], eye[1] - offset[1], eye[2] - offset[2]],
+      backward: [rotation[2], rotation[5], rotation[8]],
+      up: up ?? [0, 0, 1],
+    });
+
+    turnVertices(facing.stored, origin, axes, turned.positions, turned.normals);
+    gl.bindBuffer(gl.ARRAY_BUFFER, drawable.position);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, turned.positions);
+    if (drawable.normal && turned.normals) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, drawable.normal);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, turned.normals);
+    }
+  };
+
   const bindTexture = (texture: WebGLTexture | undefined, name: string, unit: number) => {
     if (texture) {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.uniform1i(uniform(name), unit);
     }
+  };
+
+  const drawShadow = (
+    viewProjection: Float32Array | number[],
+    { offset = [0, 0, 0], lod, subObjectRules, partOverrides, heightPlane }: ShadowDrawOptions,
+  ) => {
+    if (!scene) {
+      return;
+    }
+
+    const { meshes } = scene;
+    const visible = getMeshVisibility(scene, { lod, subObjectRules, partOverrides });
+
+    gl.useProgram(program);
+    gl.uniformMatrix4fv(uniform("viewProjection"), false, viewProjection);
+    gl.uniform3fv(uniform("offset"), offset);
+    gl.uniform4fv(uniform("heightPlane"), heightPlane);
+    gl.uniform1i(uniform("clipsBelowGround"), 1);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.depthMask(false);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ZERO, gl.SRC_COLOR);
+    gl.disable(gl.CULL_FACE);
+    for (const drawable of drawables) {
+      const mesh = meshes[drawable.mesh];
+      const isSolid = mesh.blend === "opaque" && !mesh.alphaTest && !mesh.facing;
+
+      if (
+        !visible[drawable.mesh] ||
+        mesh.pickProxy ||
+        (!isSolid && !mesh.castsShadow) ||
+        (pose && !isMeshShown(mesh, pose))
+      ) {
+        continue;
+      }
+      bindSolid(gl, { uniform, attributes }, SHADOW_COLOUR, drawable.position);
+      for (const part of drawable.parts) {
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, part.index);
+        gl.drawElements(gl.TRIANGLES, part.count, part.indexType, 0);
+      }
+    }
+    applyBlend(gl, "opaque", true);
+    gl.depthFunc(gl.LESS);
+    gl.uniform1i(uniform("clipsBelowGround"), 0);
   };
 
   const draw = (
@@ -345,6 +446,8 @@ export const createModelRenderer = (
       seconds = 0,
       camera,
       houseColour = DEFAULT_HOUSE_COLOUR,
+      showTextures = true,
+      isFloor = false,
     }: DrawOptions,
   ) => {
     if (!scene) {
@@ -354,7 +457,7 @@ export const createModelRenderer = (
     gl.uniformMatrix4fv(uniform("viewProjection"), false, viewProjection);
     gl.uniform3fv(uniform("offset"), offset);
     gl.uniform3fv(uniform("lightDirection"), light);
-    gl.uniform3fv(uniform("houseColour"), houseColour);
+    gl.uniform3fv(uniform("houseColour"), houseColour ?? DEFAULT_HOUSE_COLOUR);
     gl.uniform3fv(uniform("eye"), camera?.eye ?? light.map((axis) => axis * FAR_EYE));
     gl.uniformMatrix3fv(
       uniform("viewRotation"),
@@ -366,6 +469,12 @@ export const createModelRenderer = (
     gl.depthMask(true);
     gl.disable(gl.BLEND);
 
+    if (camera) {
+      for (const drawable of drawables) {
+        turnToCamera(drawable, camera, offset as Vec3);
+      }
+    }
+
     const { meshes } = scene;
     const visible = getMeshVisibility(scene, {
       lod,
@@ -376,7 +485,7 @@ export const createModelRenderer = (
     const opacityOf = (each: Drawable) =>
       pose ? getMeshOpacity(meshes[each.mesh], pose) : 1;
     const blendOf = (drawable: Drawable, { surface }: DrawablePart): W3dBlend =>
-      surface.blend === "opaque" && opacityOf(drawable) < 1 ? "alpha" : surface.blend;
+      isFloor || (surface.blend === "opaque" && opacityOf(drawable) < 1) ? "alpha" : surface.blend;
     const shown = showMeshes
       ? drawables
           .filter(
@@ -397,9 +506,13 @@ export const createModelRenderer = (
       applyBlend(
         gl,
         blend,
-        blend === "opaque" || (part.surface.blend !== "opaque" && part.surface.depthWrite),
+        !isFloor &&
+          (blend === "opaque" || (part.surface.blend !== "opaque" && part.surface.depthWrite)),
       );
       applySurface(gl, uniform, part.surface);
+      if (isFloor) {
+        gl.depthFunc(gl.LEQUAL);
+      }
       applyMapper(gl, uniform, UV_UNIFORMS, part.surface.mappers?.[0], seconds, drawable.hasNormals);
       applyMapper(
         gl,
@@ -421,21 +534,23 @@ export const createModelRenderer = (
         uniform("alphaCutoff"),
         part.surface.alphaTest ? ALPHA_CUTOFF : -1,
       );
-      gl.uniform1i(uniform("hasTexture"), part.texture ? 1 : 0);
+      const texture = showTextures ? part.texture : undefined;
+      const houseMask = houseColour ? part.houseMask : undefined;
+      const detail = !showTextures || part.houseMask ? undefined : part.detailTexture;
+
+      gl.uniform1i(uniform("hasTexture"), texture ? 1 : 0);
       gl.uniform4fv(
         uniform("untextured"),
-        part.namesTexture ? MISSING_TEXTURE : NO_TEXTURE,
+        !showTextures ? CLAY : part.namesTexture ? MISSING_TEXTURE : NO_TEXTURE,
       );
       gl.uniform1i(uniform("hasNormals"), drawable.hasNormals && !unlit ? 1 : 0);
-      bindTexture(part.texture, "tex", 0);
+      bindTexture(texture, "tex", 0);
       bindAttribute(gl, attributes.position, drawable.position, 3);
       bindAttribute(gl, attributes.normal, drawable.normal, 3);
-      const detail = part.houseMask ? undefined : part.detailTexture;
-
       gl.uniform1i(uniform("hasDetail"), detail ? 1 : 0);
       bindTexture(detail, "detailTex", 1);
-      gl.uniform1i(uniform("hasHouseMask"), part.houseMask ? 1 : 0);
-      bindTexture(part.houseMask, "houseMaskTex", 2);
+      gl.uniform1i(uniform("hasHouseMask"), houseMask ? 1 : 0);
+      bindTexture(houseMask, "houseMaskTex", 2);
       gl.uniform1i(uniform("hasNormalMap"), part.normalMap && drawable.hasNormals ? 1 : 0);
       bindTexture(part.normalMap, "normalTex", 3);
       bindAttribute(gl, attributes.uv, part.uv, 2);
@@ -475,5 +590,5 @@ export const createModelRenderer = (
     gl.activeTexture(gl.TEXTURE0);
   };
 
-  return { setModel, setPose, draw };
+  return { setModel, setPose, draw, drawShadow };
 };

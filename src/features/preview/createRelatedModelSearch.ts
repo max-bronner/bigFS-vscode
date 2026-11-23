@@ -5,7 +5,9 @@ import { FILE_USES } from '../../formats/ini/sageIniEntries';
 import { decompressEar, isEarWrapped } from '../../formats/refpack/refpack';
 import { readW3dHeader } from '../../formats/w3d/readW3dHeader';
 import type { W3dHeader } from '../../formats/w3d/readW3dHeader';
-import { findRelatedModels } from '../../game/objects/findRelatedModels';
+import { findRelatedModels, getModelFileName } from '../../game/objects/findRelatedModels';
+import { listTextureVariants } from '../../game/objects/objectAppearance';
+import type { TextureVariant } from '../../game/objects/objectAppearance';
 import type { RelatedModel } from '../../game/objects/findRelatedModels';
 import { findOwningTemplate } from '../../game/objects/findOwningTemplate';
 import { readObjectScene } from '../../game/objects/objectScene';
@@ -16,7 +18,9 @@ import type { SageIniDocuments } from '../../services/ini/sageIniDocuments';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
 import { readWorkspaceText } from '../../services/ini/workspaceText';
 
-export type FindRelatedModels = (uri: vscode.Uri) => Promise<RelatedModel[]>;
+export type FindRelatedModels = (
+  uri: vscode.Uri,
+) => Promise<{ files: RelatedModel[]; textures: TextureVariant[] }>;
 
 const MAX_USES_READ = 24;
 
@@ -68,7 +72,7 @@ export const createRelatedModelSearch = (
     const schema = await documents.getSchema();
     const uses = index
       .findReferences(FILE_USES, file)
-      .filter((use) => use.field === 'model' || use.field === 'animation')
+      .filter((use) => ['model', 'modelname', 'animation'].includes(use.field ?? ''))
       .slice(0, MAX_USES_READ);
     const templates = new Map<string, { uri: vscode.Uri; line: number }>();
 
@@ -122,9 +126,11 @@ export const createRelatedModelSearch = (
       const header = readHeaderOf(await vscode.workspace.fs.readFile(uri));
 
       if (!header) {
-        return [];
+        return { files: [], textures: [] };
       }
-      return await findRelatedModels(getFileName(uri), header, {
+
+      const scenes: ObjectScene[] = [];
+      const files = await findRelatedModels(getFileName(uri), header, {
         readHeader: (name) => readHeader(name, uri),
         listNames: () => {
           let found = names.get(uri.toString());
@@ -139,10 +145,17 @@ export const createRelatedModelSearch = (
           }
           return found;
         },
-        findScenes,
+        findScenes: async (file) => {
+          const found = await findScenes(file);
+
+          scenes.push(...found);
+          return found;
+        },
       });
+
+      return { files, textures: listTextureVariants(scenes, getModelFileName) };
     } catch {
-      return [];
+      return { files: [], textures: [] };
     }
   };
 };
