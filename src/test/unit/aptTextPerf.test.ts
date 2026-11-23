@@ -25,11 +25,8 @@ suite('APT text of a large movie', () => {
     createScriptReader(apt, parseConst(constFile).items),
   );
 
-  test('the synthetic movie is as long as a large interface movie', () => {
-    assert.ok(printed.value.split('\n').length > 9000);
-  });
-
   test('printing it stays well under a second or two', () => {
+    assert.ok(printed.value.split('\n').length > 9000, 'the movie is shorter than a large interface movie');
     assert.ok(printed.ms < BOUND_MS, `printing took ${printed.ms} ms`);
   });
 

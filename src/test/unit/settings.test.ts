@@ -7,14 +7,22 @@ interface Contributed {
   default: unknown;
 }
 
-const contributed = (): Record<string, Contributed> => {
+interface Section {
+  title: string;
+  order?: number;
+  properties: Record<string, Contributed>;
+}
+
+const readSections = (): Section[] => {
   const manifest = JSON.parse(
     readFileSync(join(__dirname, '../../../package.json'), 'utf8'),
   );
-  const sections = [manifest.contributes.configuration].flat();
 
-  return Object.assign({}, ...sections.map(({ properties }) => properties));
+  return [manifest.contributes.configuration].flat();
 };
+
+const contributed = (): Record<string, Contributed> =>
+  Object.assign({}, ...readSections().map(({ properties }) => properties));
 
 const fakeConfiguration = (values: Record<string, unknown> = {}) => {
   const written: [string, unknown, unknown][] = [];
@@ -63,5 +71,22 @@ suite('Settings', () => {
     assert.deepStrictEqual(written, [
       ['bigfs.baseGameFolder', 'C:\\Games\\ROTWK', 1],
     ]);
+  });
+
+  test('groups the settings under four titled sections in a set order', () => {
+    const sections = readSections();
+
+    assert.deepStrictEqual(
+      sections.map(({ title, order }) => [title, order]),
+      [
+        ['Game and installs', 1],
+        ['Archives', 2],
+        ['INI', 3],
+        ['Media tools', 4],
+      ],
+    );
+    assert.ok(
+      Object.keys(sections[2].properties).every((key) => key.startsWith('bigfs.ini.')),
+    );
   });
 });

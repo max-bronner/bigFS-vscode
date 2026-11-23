@@ -1,22 +1,23 @@
-import * as assert from "assert";
-import { parseW3d } from "../../formats/w3d/w3dTools";
-import { buildBumpOffsets } from "../../formats/w3d/w3dBumpMap";
-import { parseHouseColours } from "../../formats/w3d/w3dHouseColour";
-import { buildW3dScene } from "../../formats/w3d/w3dScene";
-import { readMeshMaterials } from "../../formats/w3d/w3dMaterialChunks";
-import { createToolRegistry } from "../../core/toolRegistry";
-import { classifyBlend } from "../../formats/w3d/classifyBlend";
-import { isSurfaceAnimated } from "../../formats/w3d/isSurfaceAnimated";
-import { resolveVertexColour } from "../../formats/w3d/resolveVertexColour";
-import { DEFAULT_SURFACE } from "../../formats/w3d/w3dMaterialTypes";
+import * as assert from 'assert';
+import { parseW3d } from '../../formats/w3d/w3dTools';
+import { buildBumpOffsets } from '../../formats/w3d/w3dBumpMap';
+import { parseHouseColours } from '../../formats/w3d/w3dHouseColour';
+import { buildW3dScene } from '../../formats/w3d/w3dScene';
+import { readMeshMaterials } from '../../formats/w3d/w3dMaterialChunks';
+import { createToolRegistry } from '../../core/toolRegistry';
+import { classifyBlend } from '../../formats/w3d/classifyBlend';
+import { isSurfaceAnimated } from '../../formats/w3d/isSurfaceAnimated';
+import { resolveVertexColour } from '../../formats/w3d/resolveVertexColour';
+import { DEFAULT_SURFACE } from '../../formats/w3d/w3dMaterialTypes';
+import type { W3dSurface } from '../../formats/w3d/w3dMaterialTypes';
 import {
   parseUvMapper,
   sampleBumpMatrix,
   sampleUvTransform,
   UV_MAPPER,
-} from "../../formats/w3d/w3dUvMapper";
-import type { W3dShader } from "../../formats/w3d/w3dMaterialChunks";
-import { buildChunk, concatBytes, encodeFloats, encodeName, encodeUints } from "./w3d.test";
+} from '../../formats/w3d/w3dUvMapper';
+import type { W3dShader } from '../../formats/w3d/w3dMaterialChunks';
+import { buildChunk, concatBytes, encodeFloats, encodeName, encodeUints } from './w3dSynth';
 
 const shaderBytes = (fields: Partial<W3dShader> = {}) => {
   const bytes = new Uint8Array(16);
@@ -148,7 +149,7 @@ const buildMesh = (attributes: number, name: string, ...chunks: Uint8Array[]) =>
 
   view.setUint32(4, attributes, true);
   header.set(encodeName(name, 16), 8);
-  header.set(encodeName("UNIT", 16), 24);
+  header.set(encodeName('UNIT', 16), 24);
   view.setUint32(40, 2, true);
   view.setUint32(44, 4, true);
 
@@ -173,46 +174,42 @@ const buildMesh = (attributes: number, name: string, ...chunks: Uint8Array[]) =>
 };
 
 const parseMesh = (...chunks: Uint8Array[]) =>
-  parseW3d(buildMesh(0, "BODY", ...chunks)).meshes[0];
+  parseW3d(buildMesh(0, 'BODY', ...chunks)).meshes[0];
 
-suite("W3D materials", () => {
-  test("each factor pair the shipped shaders use has its own blend", () => {
-    const blendOf = (srcBlend: number, destBlend: number) =>
-      classifyBlend({ ...parseShader(), srcBlend, destBlend });
+suite('W3D materials', () => {
+  test('each factor pair the shipped shaders use has its own blend, and an alpha cutout is opaque', () => {
+    const blendOf = (srcBlend: number, destBlend: number, depthMask = 1, alphaTest = 0) =>
+      classifyBlend({ ...parseShader(), srcBlend, destBlend, depthMask, alphaTest });
 
-    assert.strictEqual(blendOf(1, 0), "opaque");
-    assert.strictEqual(blendOf(1, 1), "additive");
-    assert.strictEqual(blendOf(2, 5), "alpha");
-    assert.strictEqual(blendOf(0, 2), "multiply");
-    assert.strictEqual(blendOf(1, 2), "addScaledByColor");
-    assert.strictEqual(blendOf(1, 3), "addInverseScaledByColor");
-    assert.strictEqual(blendOf(1, 4), "addScaledByAlpha");
+    assert.strictEqual(blendOf(1, 0), 'opaque');
+    assert.strictEqual(blendOf(1, 1), 'additive');
+    assert.strictEqual(blendOf(2, 5), 'alpha');
+    assert.strictEqual(blendOf(0, 2), 'multiply');
+    assert.strictEqual(blendOf(1, 2), 'addScaledByColor');
+    assert.strictEqual(blendOf(1, 3), 'addInverseScaledByColor');
+    assert.strictEqual(blendOf(1, 4), 'addScaledByAlpha');
+    assert.strictEqual(blendOf(2, 5, 1, 1), 'opaque');
+    assert.strictEqual(blendOf(2, 5, 0, 1), 'alpha');
   });
 
-  test("an alpha blend that writes depth and alpha-tests is a cutout", () => {
-    const shader = { ...parseShader(), srcBlend: 2, destBlend: 5, alphaTest: 1, depthMask: 1 };
-
-    assert.strictEqual(classifyBlend(shader), "opaque");
-    assert.strictEqual(classifyBlend({ ...shader, depthMask: 0 }), "alpha");
-  });
-
-  test("a mesh with one of everything is one draw over all of it", () => {
+  test('a mesh with one of everything is one draw over all of it, with its shader\'s blend and depth test', () => {
     const mesh = parseMesh(
       buildChunk(0x029, shaderBytes({ destBlend: 1 })),
-      textureTable("A.tga"),
+      textureTable('A.tga'),
       pass([0], [0]),
     );
 
     assert.strictEqual(mesh.draws.length, 1);
     assert.strictEqual(mesh.draws[0].indices, undefined);
-    assert.strictEqual(mesh.draws[0].texture?.name, "A.tga");
-    assert.strictEqual(mesh.draws[0].surface.blend, "additive");
+    assert.strictEqual(mesh.draws[0].texture?.name, 'A.tga');
+    assert.strictEqual(mesh.draws[0].surface.blend, 'additive');
+    assert.strictEqual(parseMesh(buildChunk(0x029, shaderBytes({ depthCompare: 7 })), pass([0], [0])).draws[0].surface.depthCompare, 7);
   });
 
-  test("triangles of one pass split by the texture and shader each names", () => {
+  test('triangles of one pass split by the texture and shader each names', () => {
     const mesh = parseMesh(
       buildChunk(0x029, concatBytes(shaderBytes(), shaderBytes({ destBlend: 1 }))),
-      textureTable("A.tga", "B.tga"),
+      textureTable('A.tga', 'B.tga'),
       pass([0, 1], [0, 1]),
     );
 
@@ -223,8 +220,8 @@ suite("W3D materials", () => {
         Array.from(draw.indices ?? []),
       ]),
       [
-        ["A.tga", "opaque", [0, 1, 2]],
-        ["B.tga", "additive", [1, 3, 2]],
+        ['A.tga', 'opaque', [0, 1, 2]],
+        ['B.tga', 'additive', [1, 3, 2]],
       ],
     );
   });
@@ -232,7 +229,7 @@ suite("W3D materials", () => {
   test("a later pass is a draw of its own, and the mesh's own fields stay on the first", () => {
     const mesh = parseMesh(
       buildChunk(0x029, concatBytes(shaderBytes(), shaderBytes({ destBlend: 1 }))),
-      textureTable("Base.tga", "Glow.tga"),
+      textureTable('Base.tga', 'Glow.tga'),
       pass([0], [0]),
       pass([1], [1]),
     );
@@ -240,21 +237,12 @@ suite("W3D materials", () => {
     assert.deepStrictEqual(
       mesh.draws.map((draw) => [draw.pass, draw.texture?.name, draw.surface.blend]),
       [
-        [0, "Base.tga", "opaque"],
-        [1, "Glow.tga", "additive"],
+        [0, 'Base.tga', 'opaque'],
+        [1, 'Glow.tga', 'additive'],
       ],
     );
-    assert.strictEqual(mesh.texture, "Base.tga");
-    assert.strictEqual(mesh.blend, "opaque");
-  });
-
-  test("a shader's depth test reaches the surface", () => {
-    const mesh = parseMesh(
-      buildChunk(0x029, shaderBytes({ depthCompare: 7 })),
-      pass([0], [0]),
-    );
-
-    assert.strictEqual(mesh.draws[0].surface.depthCompare, 7);
+    assert.strictEqual(mesh.texture, 'Base.tga');
+    assert.strictEqual(mesh.blend, 'opaque');
   });
 
   test("a shader material's texture and states are read by name", () => {
@@ -262,21 +250,21 @@ suite("W3D materials", () => {
       buildChunk(
         0x050,
         fxMaterial(
-          "Simple.fx",
-          [7, "AlphaBlendingEnable", Uint8Array.of(1)],
-          [1, "Texture_0", fxText("Sky.tga")],
+          'Simple.fx',
+          [7, 'AlphaBlendingEnable', Uint8Array.of(1)],
+          [1, 'Texture_0', fxText('Sky.tga')],
         ),
         true,
       ),
       buildChunk(0x038, buildChunk(0x03f, encodeUints(0)), true),
     );
 
-    assert.strictEqual(mesh.draws[0].texture?.name, "Sky.tga");
-    assert.strictEqual(mesh.draws[0].surface.blend, "alpha");
+    assert.strictEqual(mesh.draws[0].texture?.name, 'Sky.tga');
+    assert.strictEqual(mesh.draws[0].surface.blend, 'alpha');
   });
 
   test("the two-sided attribute and a picking proxy's name are read", () => {
-    const mesh = parseW3d(buildMesh(0x2000, "PICKBOX")).meshes[0];
+    const mesh = parseW3d(buildMesh(0x2000, 'PICKBOX')).meshes[0];
 
     assert.strictEqual(mesh.draws[0].surface.twoSided, true);
     assert.strictEqual(mesh.pickProxy, true);
@@ -312,38 +300,20 @@ suite("W3D materials", () => {
     );
   });
 
-  test("an emissive-only material with vertex colours turns the lights off", () => {
-    const use = resolveVertexColour(false, {
-      ...DEFAULT_SURFACE,
-      ambient: [0, 0, 0],
-      diffuse: [0, 0, 0],
-      emissive: [0.5, 0.5, 0.5],
-      opacity: 0.25,
-    });
+  test('vertex colours on an emissive-only material replace the lights, and on a black one are lit unscaled', () => {
+    const black: W3dSurface = { ...DEFAULT_SURFACE, ambient: [0, 0, 0], diffuse: [0, 0, 0], emissive: [0, 0, 0] };
+    const emissive = resolveVertexColour(false, { ...black, emissive: [0.5, 0.5, 0.5], opacity: 0.25 });
+    const lit = resolveVertexColour(false, black);
 
-    assert.strictEqual(use.replacesLighting, true);
-    assert.deepStrictEqual(use.scale, [0.5, 0.5, 0.5]);
-    assert.strictEqual(use.alphaScale, 0.25);
+    assert.deepStrictEqual([emissive.replacesLighting, emissive.scale, emissive.alphaScale], [true, [0.5, 0.5, 0.5], 0.25]);
+    assert.deepStrictEqual([lit.replacesLighting, lit.diffuse, lit.scale], [false, true, [1, 1, 1]]);
   });
 
-  test("a black material with vertex colours lights them, unscaled, rather than drawing black", () => {
-    const use = resolveVertexColour(false, {
-      ...DEFAULT_SURFACE,
-      ambient: [0, 0, 0],
-      diffuse: [0, 0, 0],
-      emissive: [0, 0, 0],
-    });
-
-    assert.strictEqual(use.diffuse, true);
-    assert.strictEqual(use.replacesLighting, false);
-    assert.deepStrictEqual(use.scale, [1, 1, 1]);
-  });
-
-  test("on the effect path vertex colours multiply the result and stand for no colour", () => {
+  test('on the effect path vertex colours multiply the result and stand for no colour', () => {
     const mesh = parseMesh(
       vertexMaterials(0, [255, 255, 255], [255, 255, 255], [0, 0, 0], 1, 1),
       buildChunk(0x029, shaderBytes()),
-      textureTable("A.tga"),
+      textureTable('A.tga'),
       pass([0], [0], buildChunk(0x039, encodeUints(0)), buildChunk(0x03b, new Uint8Array(16).fill(255))),
     );
 
@@ -352,35 +322,35 @@ suite("W3D materials", () => {
     assert.strictEqual(mesh.draws[0].colors?.length, 16);
   });
 
-  test("vertex colours read from a Node Buffer stay bytes a webview message can carry", () => {
+  test('vertex colours read from a Node Buffer stay bytes a webview message can carry', () => {
     const file = Buffer.from(buildChunk(0x03b, Uint8Array.of(1, 2, 3, 4)));
     const [pass] = readMeshMaterials([{ type: 0x038, payload: file }]).passes;
 
     assert.strictEqual(Buffer.isBuffer(pass.colors), false);
     assert.deepStrictEqual(Array.from(pass.colors ?? []), [1, 2, 3, 4]);
     file.fill(0);
-    assert.strictEqual(pass.colors?.[0], 1, "the colours are a copy of the file");
+    assert.strictEqual(pass.colors?.[0], 1, 'the colours are a copy of the file');
   });
 
-  test("a vertex colour array that does not fit the vertices is dropped", () => {
+  test('a vertex colour array that does not fit the vertices is dropped', () => {
     const mesh = parseMesh(pass([0], [0], buildChunk(0x03b, new Uint8Array(8))));
 
     assert.strictEqual(mesh.draws[0].colors, undefined);
     assert.strictEqual(mesh.draws[0].surface.vertexColour, undefined);
   });
 
-  test("the shader byte and Simple.fx turn a draw unlit, and slot five doubles a textured fixed-function stage", () => {
+  test('the shader byte and Simple.fx draw unlit, and gradient five doubles a textured stage', () => {
     const unlit = parseMesh(
       buildChunk(0x029, shaderBytes({ primaryGradient: 0 })),
       pass([0], [0]),
     );
     const sky = parseMesh(
-      buildChunk(0x050, fxMaterial("Simple.fx", [1, "Texture_0", fxText("Sky.tga")]), true),
+      buildChunk(0x050, fxMaterial('Simple.fx', [1, 'Texture_0', fxText('Sky.tga')]), true),
       buildChunk(0x038, buildChunk(0x03f, encodeUints(0)), true),
     );
     const doubled = parseMesh(
       buildChunk(0x029, shaderBytes({ primaryGradient: 5 })),
-      textureTable("A.tga"),
+      textureTable('A.tga'),
       pass([0], [0]),
     );
 
@@ -389,7 +359,7 @@ suite("W3D materials", () => {
     assert.strictEqual(doubled.draws[0].surface.modulate2x, true);
   });
 
-  test("a second stage brings its texture, coordinates and the shader's combine", () => {
+  test("a second stage brings its texture, coordinates and the shader's combine, which is off without one", () => {
     const stage = (id: number, uvs: number[]) =>
       buildChunk(
         0x048,
@@ -398,7 +368,7 @@ suite("W3D materials", () => {
       );
     const [draw] = parseMesh(
       buildChunk(0x029, shaderBytes({ detailColor: 11, detailAlpha: 2 })),
-      textureTable("A.tga", "B.tga"),
+      textureTable('A.tga', 'B.tga'),
       buildChunk(
         0x038,
         concatBytes(
@@ -410,23 +380,17 @@ suite("W3D materials", () => {
       ),
     ).draws;
 
-    assert.strictEqual(draw.detailTexture?.name, "B.tga");
+    assert.strictEqual(draw.detailTexture?.name, 'B.tga');
     assert.strictEqual(draw.detailUvs?.[0], 1);
     assert.strictEqual(draw.surface.detailColor, 11);
     assert.strictEqual(draw.surface.detailAlpha, 2);
-  });
 
-  test("a combine with no second stage, or past the defined range, is off", () => {
-    const alone = parseMesh(
-      buildChunk(0x029, shaderBytes({ detailColor: 11 })),
-      textureTable("A.tga"),
-      pass([0], [0]),
-    );
+    const alone = parseMesh(buildChunk(0x029, shaderBytes({ detailColor: 11 })), textureTable('A.tga'), pass([0], [0]));
 
     assert.strictEqual(alone.draws[0].surface.detailColor, 0);
   });
 
-  test("clamp bits of a texture reach the scene, and each use uploads its own", async () => {
+  test('clamp bits of a texture reach the scene, and each use uploads its own', async () => {
     const info = new Uint8Array(12);
 
     info[0] = 0x08;
@@ -435,15 +399,15 @@ suite("W3D materials", () => {
       0x030,
       buildChunk(
         0x031,
-        concatBytes(buildChunk(0x032, encodeName("A.tga", 6)), buildChunk(0x033, info)),
+        concatBytes(buildChunk(0x032, encodeName('A.tga', 6)), buildChunk(0x033, info)),
         true,
       ),
       true,
     );
     const image = tgaOf(1);
     const scene = await buildW3dScene(
-      buildMesh(0, "BODY", table, pass([0], [])),
-      async (name) => (name === "A.tga" ? image : undefined),
+      buildMesh(0, 'BODY', table, pass([0], [])),
+      async (name) => (name === 'A.tga' ? image : undefined),
       createToolRegistry(),
     );
 
@@ -451,7 +415,7 @@ suite("W3D materials", () => {
     assert.strictEqual(scene.meshes[0].draws?.[0].texture, 0);
   });
 
-  test("a bump stage's height map becomes slopes, with EA's valley rule", () => {
+  test("a bump stage's height map becomes slopes, luminance rounded down in EA's fixed point", () => {
     const grey = (value: number) => [value, value, value, 255];
     const { pixels } = buildBumpOffsets({
       width: 3,
@@ -465,8 +429,8 @@ suite("W3D materials", () => {
   test("a vertex material's attribute word and argument text name each stage's mapper", () => {
     const material = vertexMaterialsWithArgs(
       0x00040800,
-      "UPerSec=0.0\r\nVPerSec=1.0;scroll\r\nUScale=2",
-      "Speed=0.03;In Hertz. 1 = 1 rotate per second\nUCenter=0.5\nVCenter=0.5",
+      'UPerSec=0.0\r\nVPerSec=1.0;scroll\r\nUScale=2',
+      'Speed=0.03;In Hertz. 1 = 1 rotate per second\nUCenter=0.5\nVCenter=0.5',
     );
     const { surface } = parseMesh(material, buildChunk(0x038, buildChunk(0x039, encodeUints(0)), true)).draws[0];
 
@@ -479,29 +443,29 @@ suite("W3D materials", () => {
     assert.strictEqual(isSurfaceAnimated(DEFAULT_SURFACE), false);
   });
 
-  test("a scroll moves the image the way its arguments say, so the sample point the other way", () => {
-    const mapper = parseUvMapper(UV_MAPPER.LINEAR_OFFSET, "UPerSec=0.25\nVPerSec=-0.5\nUScale=2");
+  test('a scroll moves the image the way its arguments say, so the sample point the other way', () => {
+    const mapper = parseUvMapper(UV_MAPPER.LINEAR_OFFSET, 'UPerSec=0.25\nVPerSec=-0.5\nUScale=2');
     const { linear, offset } = sampleUvTransform(mapper, 1);
 
     assert.deepStrictEqual(linear, [2, 0, 0, 1]);
     assert.deepStrictEqual(offset, [0.75, 0.5]);
   });
 
-  test("a flipbook steps through its cells and holds at zero frames a second", () => {
+  test('a flipbook steps through its cells and holds at zero frames a second', () => {
     const grid = (text: string, seconds: number) =>
       sampleUvTransform(parseUvMapper(UV_MAPPER.GRID, text), seconds).offset;
 
-    assert.deepStrictEqual(grid("FPS=10\nLog2Width=2", 0), [0, 0]);
-    assert.deepStrictEqual(grid("FPS=10\nLog2Width=2", 0.55), [0.25, 0.25]);
-    assert.deepStrictEqual(grid("FPS=10\nLog2Width=2\nLast=3", 0.35), [0, 0]);
-    assert.deepStrictEqual(grid("FPS=0\nLog2Width=2\nOffset=2", 5), [0.5, 0]);
-    assert.deepStrictEqual(grid("FPS=-10\nLog2Width=1", 0), [0.5, 0.5]);
-    assert.ok(Number.isFinite(grid("FPS=1\nLog2Width=99", 1)[0]));
+    assert.deepStrictEqual(grid('FPS=10\nLog2Width=2', 0), [0, 0]);
+    assert.deepStrictEqual(grid('FPS=10\nLog2Width=2', 0.55), [0.25, 0.25]);
+    assert.deepStrictEqual(grid('FPS=10\nLog2Width=2\nLast=3', 0.35), [0, 0]);
+    assert.deepStrictEqual(grid('FPS=0\nLog2Width=2\nOffset=2', 5), [0.5, 0]);
+    assert.deepStrictEqual(grid('FPS=-10\nLog2Width=1', 0), [0.5, 0.5]);
+    assert.ok(Number.isFinite(grid('FPS=1\nLog2Width=99', 1)[0]));
   });
 
-  test("a rotation holds its centre still", () => {
+  test('a rotation holds its centre still', () => {
     const { linear, offset } = sampleUvTransform(
-      parseUvMapper(UV_MAPPER.ROTATE, "Speed=0.25\nUCenter=0.5\nVCenter=0.5"),
+      parseUvMapper(UV_MAPPER.ROTATE, 'Speed=0.25\nUCenter=0.5\nVCenter=0.5'),
       1,
     );
     const u = linear[0] * 0.5 + linear[1] * 0.5 + offset[0];
@@ -511,17 +475,17 @@ suite("W3D materials", () => {
     assert.ok(Math.abs(linear[0]) < 1e-9);
   });
 
-  test("a sine offset follows its amplitude, frequency and phase", () => {
+  test('a sine offset follows its amplitude, frequency and phase', () => {
     const { offset } = sampleUvTransform(
-      parseUvMapper(UV_MAPPER.SINE_LINEAR_OFFSET, "UAmp=0.5\nUFreq=0.25\nVAmp=0"),
+      parseUvMapper(UV_MAPPER.SINE_LINEAR_OFFSET, 'UAmp=0.5\nUFreq=0.25\nVAmp=0'),
       1,
     );
 
     assert.ok(Math.abs(offset[0] - 0.5) < 1e-9);
   });
 
-  test("a scale mapper tiles, and a mapper that is not animated stands still", () => {
-    const mapper = parseUvMapper(UV_MAPPER.SCALE, "UScale=4\nVScale=8");
+  test('a scale mapper tiles, and a mapper that is not animated stands still', () => {
+    const mapper = parseUvMapper(UV_MAPPER.SCALE, 'UScale=4\nVScale=8');
 
     assert.deepStrictEqual(sampleUvTransform(mapper, 3).linear, [4, 0, 0, 8]);
     assert.deepStrictEqual(sampleUvTransform(parseUvMapper(0x0a), 3).offset, [0, 0]);
@@ -530,68 +494,68 @@ suite("W3D materials", () => {
   test("a bump mapper's matrix turns and scales; prose arguments read as defaults", () => {
     const mapper = parseUvMapper(
       UV_MAPPER.BUMP_ENVIRONMENT,
-      "BumpRotation=0.25\nBumpScale=.3 scale factor applied to the bumps",
+      'BumpRotation=0.25\nBumpScale=.3 scale factor applied to the bumps',
     );
     const [m00, m01] = sampleBumpMatrix(mapper, 1);
 
     assert.ok(Math.abs(m00) < 1e-9);
     assert.ok(Math.abs(m01 + 0.3) < 1e-9);
     assert.strictEqual(
-      parseUvMapper(UV_MAPPER.BUMP_ENVIRONMENT, "BumpScale = scale factor").bumpScale,
+      parseUvMapper(UV_MAPPER.BUMP_ENVIRONMENT, 'BumpScale = scale factor').bumpScale,
       1,
     );
   });
 
-  test("the house colour table reads base textures to masks, comments and casing aside", () => {
+  test('the house colour table reads base textures to masks, comments and casing aside', () => {
     const table = parseHouseColours(
-      "; note\r\nHouseColor\r\n\tBaseTexture\t= GUArcher.tga ; a\r\n\tHouseTexture = HC_GUArcher.tga\r\nEnd\r\n",
+      '; note\r\nHouseColor\r\n\tBaseTexture\t= GUArcher.tga ; a\r\n\tHouseTexture = HC_GUArcher.tga\r\nEnd\r\n',
     );
 
-    assert.strictEqual(table.get("guarcher.tga"), "HC_GUArcher.tga");
+    assert.strictEqual(table.get('guarcher.tga'), 'HC_GUArcher.tga');
   });
 
-  test("a mesh takes the mask its texture lists, in one pass only, and a mask is not reported missing", async () => {
+  test('a mesh takes the mask its texture lists, in one pass only, and a mask is not reported missing', async () => {
     const ini = new TextEncoder().encode(
-      "HouseColor\nBaseTexture = A.tga\nHouseTexture = HC_A.tga\nEnd\n",
+      'HouseColor\nBaseTexture = A.tga\nHouseTexture = HC_A.tga\nEnd\n',
     );
     const files = new Map<string, Uint8Array>([
-      ["data/ini/housecolor.ini", ini],
-      ["A.tga", tgaOf(1)],
-      ["HC_A.tga", tgaOf(2)],
+      ['data/ini/housecolor.ini', ini],
+      ['A.tga', tgaOf(1)],
+      ['HC_A.tga', tgaOf(2)],
     ]);
     const build = (...chunks: Uint8Array[]) =>
       buildW3dScene(
-        buildMesh(0, "BODY", ...chunks),
+        buildMesh(0, 'BODY', ...chunks),
         async (name) => files.get(name),
         createToolRegistry(),
       );
-    const table = [buildChunk(0x029, shaderBytes()), textureTable("A.tga")];
+    const table = [buildChunk(0x029, shaderBytes()), textureTable('A.tga')];
     const single = await build(...table, pass([0], [0]));
     const double = await build(...table, pass([0], [0]), pass([0], [0]));
-    const unknown = await build(textureTable("B.tga"), pass([0], [0]));
+    const unknown = await build(textureTable('B.tga'), pass([0], [0]));
 
     assert.strictEqual(single.meshes[0].draws?.[0].houseMask, 1);
     assert.strictEqual(single.textures[1].pixels[0], 2);
     assert.strictEqual(double.meshes[0].draws?.[0].houseMask, undefined);
     assert.strictEqual(unknown.meshes[0].draws?.[0].houseMask, undefined);
 
-    files.delete("HC_A.tga");
+    files.delete('HC_A.tga');
     assert.deepStrictEqual((await build(...table, pass([0], [0]))).missing, []);
   });
 
-  test("a mask compiled to a PNG is found when the host can decode one", async () => {
+  test('a mask compiled to a PNG is found when the host can decode one', async () => {
     const ini = new TextEncoder().encode(
-      "HouseColor\nBaseTexture = A.tga\nHouseTexture = HC_A.tga\nEnd\n",
+      'HouseColor\nBaseTexture = A.tga\nHouseTexture = HC_A.tga\nEnd\n',
     );
     const mask = { width: 1, height: 1, pixels: Uint8Array.of(255, 255, 255, 9) };
     const scene = await buildW3dScene(
-      buildMesh(0, "BODY", buildChunk(0x029, shaderBytes()), textureTable("A.tga"), pass([0], [0])),
+      buildMesh(0, 'BODY', buildChunk(0x029, shaderBytes()), textureTable('A.tga'), pass([0], [0])),
       async (name) =>
-        name === "data/ini/housecolor.ini"
+        name === 'data/ini/housecolor.ini'
           ? ini
-          : name === "A.tga"
+          : name === 'A.tga'
             ? tgaOf(1)
-            : name === "HC_A.png"
+            : name === 'HC_A.png'
               ? Uint8Array.of(1)
               : undefined,
       createToolRegistry(),
@@ -601,26 +565,86 @@ suite("W3D materials", () => {
     assert.strictEqual(scene.textures[scene.meshes[0].draws?.[0].houseMask ?? -1], mask);
   });
 
-  test("a normal-mapped material brings its map, highlight and colours, and takes no house colour", () => {
+  test('a PNG mask keeps a copy of the JPEG luminance beside it, and the model reads the player colours', async () => {
+    const ini = new TextEncoder().encode(
+      'HouseColor\nBaseTexture = A.tga\nHouseTexture = HC_A.tga\nEnd\n',
+    );
+    const colours = new TextEncoder().encode(
+      'MultiplayerColor ColorBlue\n  RGBColor = R:70 G:91 B:156 ; first\nEnd\nMultiplayerColor ColorRed\n  RGBColor = R:255 G:0 B:0\nEnd\n',
+    );
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const files = new Map<string, Uint8Array>([
+      ['data/ini/housecolor.ini', ini],
+      ['data/ini/multiplayer.ini', colours],
+      ['A.tga', tgaOf(1)],
+      ['HC_A.png', Uint8Array.of(1)],
+      ['HC_A.jpg', jpeg],
+    ]);
+    const scene = await buildW3dScene(
+      buildMesh(0, 'BODY', buildChunk(0x029, shaderBytes()), textureTable('A.tga'), pass([0], [0])),
+      async (name) => files.get(name),
+      createToolRegistry(),
+      () => ({ width: 1, height: 1, pixels: Uint8Array.of(255, 255, 255, 9) }),
+    );
+    const mask = scene.textures[scene.meshes[0].draws?.[0].houseMask ?? -1];
+
+    assert.deepStrictEqual([...(mask.luminanceJpeg ?? [])], [...jpeg]);
+    assert.ok(!Buffer.isBuffer(mask.luminanceJpeg));
+    assert.deepStrictEqual(
+      scene.playerColours?.map(({ name, colour }) => [name, colour.map((channel) => Math.round(channel * 255))]),
+      [
+        ['Blue', [70, 91, 156]],
+        ['Red', [255, 0, 0]],
+      ],
+    );
+  });
+
+  test('a texture compiled to a JPEG of its colour and a PNG of its alpha is drawn, and not reported missing', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const alpha = { width: 1, height: 1, pixels: Uint8Array.of(255, 255, 255, 200) };
+    const files = new Map<string, Uint8Array>([
+      ['Coat.png', Buffer.from([1])],
+      ['Coat.jpg', jpeg],
+    ]);
+    const build = () =>
+      buildW3dScene(
+        buildMesh(0, 'BODY', buildChunk(0x029, shaderBytes()), textureTable('Coat.tga'), pass([0], [0])),
+        async (name) => files.get(name),
+        createToolRegistry(),
+        () => alpha,
+      );
+    const scene = await build();
+    const texture = scene.textures[scene.meshes[0].draws?.[0].texture ?? -1];
+
+    assert.deepStrictEqual(scene.missing, []);
+    assert.strictEqual(texture.pixels, alpha.pixels);
+    assert.deepStrictEqual([...(texture.luminanceJpeg ?? [])], [...jpeg]);
+    assert.ok(!Buffer.isBuffer(texture.luminanceJpeg));
+
+    files.delete('Coat.png');
+    assert.deepStrictEqual((await build()).missing, ['Coat.tga']);
+  });
+
+  test('a normal-mapped material brings its map, highlight and colours, and takes no house colour', () => {
     const colour = (red: number, green: number, blue: number) =>
       encodeFloats(red, green, blue, 1);
     const fx = buildChunk(
       0x050,
       fxMaterial(
-        "NormalMapped.fx",
-        [1, "NormalMap", fxText("Unit_NRM.tga")],
-        [1, "DiffuseTexture", fxText("Unit.tga")],
-        [5, "DiffuseColor", colour(0.5, 0.5, 0.5)],
-        [5, "SpecularColor", colour(0.25, 0.25, 0.25)],
-        [2, "SpecularExponent", encodeFloats(80)],
-        [2, "BumpScale", encodeFloats(2)],
+        'NormalMapped.fx',
+        [1, 'NormalMap', fxText('Unit_NRM.tga')],
+        [1, 'DiffuseTexture', fxText('Unit.tga')],
+        [5, 'DiffuseColor', colour(0.5, 0.5, 0.5)],
+        [5, 'SpecularColor', colour(0.25, 0.25, 0.25)],
+        [2, 'SpecularExponent', encodeFloats(80)],
+        [2, 'BumpScale', encodeFloats(2)],
       ),
       true,
     );
     const [draw] = parseMesh(fx, buildChunk(0x038, buildChunk(0x03f, encodeUints(0)), true)).draws;
 
-    assert.strictEqual(draw.texture?.name, "Unit.tga");
-    assert.strictEqual(draw.normalMap, "Unit_NRM.tga");
+    assert.strictEqual(draw.texture?.name, 'Unit.tga');
+    assert.strictEqual(draw.normalMap, 'Unit_NRM.tga');
     assert.deepStrictEqual(draw.surface.diffuse, [0.5, 0.5, 0.5]);
     assert.deepStrictEqual(draw.surface.specular, [0.25, 0.25, 0.25]);
     assert.strictEqual(draw.surface.shininess, 80);
@@ -628,14 +652,14 @@ suite("W3D materials", () => {
     assert.strictEqual(draw.surface.houseColourable, false);
   });
 
-  test("a parameter cut short is left out rather than read past its chunk", () => {
+  test('a parameter cut short is left out rather than read past its chunk', () => {
     const fx = buildChunk(
       0x050,
       fxMaterial(
-        "NormalMapped.fx",
-        [5, "SpecularColor", encodeFloats(1)],
-        [2, "BumpScale", new Uint8Array(2)],
-        [1, "NormalMap", new Uint8Array(1)],
+        'NormalMapped.fx',
+        [5, 'SpecularColor', encodeFloats(1)],
+        [2, 'BumpScale', new Uint8Array(2)],
+        [1, 'NormalMap', new Uint8Array(1)],
       ),
       true,
     );
@@ -650,31 +674,31 @@ suite("W3D materials", () => {
     const fx = buildChunk(
       0x050,
       fxMaterial(
-        "NormalMapped.fx",
-        [1, "DiffuseTexture", fxText("A.tga")],
-        [1, "NormalMap", fxText("A_NRM.tga")],
+        'NormalMapped.fx',
+        [1, 'DiffuseTexture', fxText('A.tga')],
+        [1, 'NormalMap', fxText('A_NRM.tga')],
       ),
       true,
     );
-    const model = buildMesh(0, "BODY", fx, buildChunk(0x038, buildChunk(0x03f, encodeUints(0)), true));
+    const model = buildMesh(0, 'BODY', fx, buildChunk(0x038, buildChunk(0x03f, encodeUints(0)), true));
     const found = await buildW3dScene(
       model,
-      async (name) => (name.startsWith("A") ? tgaOf(1) : undefined),
+      async (name) => (name.startsWith('A') ? tgaOf(1) : undefined),
       createToolRegistry(),
     );
     const absent = await buildW3dScene(
       model,
-      async (name) => (name === "A.tga" ? tgaOf(1) : undefined),
+      async (name) => (name === 'A.tga' ? tgaOf(1) : undefined),
       createToolRegistry(),
     );
 
     assert.strictEqual(found.meshes[0].draws?.[0].normalMap, 1);
-    assert.deepStrictEqual(absent.missing, ["A_NRM.tga"]);
+    assert.deepStrictEqual(absent.missing, ['A_NRM.tga']);
   });
 
-  test("the sort level of a mesh reaches its surface, and an out of range one is none", () => {
+  test('the sort level of a mesh reaches its surface, and an out of range one is none', () => {
     const withLevel = (level: number) => {
-      const bytes = buildMesh(0, "BODY");
+      const bytes = buildMesh(0, 'BODY');
 
       new DataView(bytes.buffer).setInt32(8 + 8 + 56, level, true);
       return parseW3d(bytes).meshes[0].draws[0].surface.sortLevel;

@@ -1,3 +1,4 @@
+import { DISCLOSURE_ROW_STYLE } from '../../platform/webview/disclosureRowStyle';
 import { renderWebviewPage } from '../../platform/webview/webviewPage';
 import type { WebviewPage } from '../../platform/webview/webviewPage';
 
@@ -26,12 +27,20 @@ export const renderAssetCataloguePage = (
   tr.entries > td { padding: 0 6px 6px 24px; }
   tr.entries table { width: auto; font-family: var(--vscode-editor-font-family, monospace); font-size: 0.9em; }
   .kind { opacity: 0.7; }
-  details.group { margin: 10px 0; }
-  details.group > summary { cursor: pointer; font-weight: 600; }
-  .rows { display: flex; flex-direction: column; gap: 1px; margin-left: 20px; }
+  ${DISCLOSURE_ROW_STYLE}
+  .group { margin: 10px 0; }
+  .group > .disclosure-row { font-weight: 600; }
+  .group > .disclosure-row .muted { font-weight: normal; }
+  .rows { display: flex; flex-direction: column; gap: 1px; margin-left: 2px; }
   label.row { display: flex; gap: 10px; align-items: baseline; }
   label.row .path { font-family: var(--vscode-editor-font-family, monospace); font-size: 0.9em; opacity: 0.8; }
   .status { min-height: 1.2em; }
+  .sync-bar { position: sticky; top: 0; z-index: 1; background: var(--vscode-editor-background, Canvas); border-bottom: 1px solid var(--vscode-panel-border); }
+  .sync-bar .toolbar { margin: 6px 0 2px; }
+  .sync-bar .status { margin: 0 0 4px; }
+  label.origin { display: flex; gap: 6px; align-items: baseline; margin: 8px 0 2px; font-weight: 600; }
+  label.origin:first-child { margin-top: 0; }
+  label.origin ~ label.row { margin-left: 20px; }
 `,
     body: '<div id="root"></div>',
   });

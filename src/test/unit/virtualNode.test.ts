@@ -1,25 +1,9 @@
 import * as assert from 'assert';
-import Module from 'module';
 import type { VirtualNode } from '../../services/archives/virtualNode';
+import { requireWithVscode } from './requireWithVscode';
 
-type Loader = (request: string, ...rest: unknown[]) => unknown;
-
-const internals = Module as unknown as { _load: Loader };
-const original = internals._load;
-
-internals._load = (request, ...rest) =>
-  request === 'vscode'
-    ? { FileType: { File: 1, Directory: 2 } }
-    : original.call(Module, request, ...rest);
-
-let nodes: typeof import('../../services/archives/virtualTree');
-
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  nodes = require('../../services/archives/virtualTree');
-} finally {
-  internals._load = original;
-}
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const nodes = requireWithVscode({ FileType: { File: 1, Directory: 2 } }, () => require('../../services/archives/virtualTree') as typeof import('../../services/archives/virtualTree'));
 
 const archive = {} as VirtualNode['archive'];
 const otherArchive = {} as VirtualNode['archive'];

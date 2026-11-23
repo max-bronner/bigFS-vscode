@@ -2,7 +2,13 @@ import type { ToolBox } from "../../core/toolRegistry";
 import { decodeDdsTool, decodeTgaTool } from "../texture/textureTools";
 import type { RgbaImage } from "../texture/textureTools";
 import { buildBumpOffsets } from "./w3dBumpMap";
-import { HOUSE_COLOR_INI, parseHouseColours } from "./w3dHouseColour";
+import {
+  HOUSE_COLOR_INI,
+  PLAYER_COLOR_INI,
+  parseHouseColours,
+  parsePlayerColours,
+} from "./w3dHouseColour";
+import type { PlayerColour } from "./w3dHouseColour";
 import type { W3dTexture } from "./w3dMaterialChunks";
 import type { W3dMaterialDraw } from "./w3dMaterialTypes";
 import type { W3dMesh } from "./w3dTools";
@@ -25,10 +31,15 @@ export type LoadFile = (fileName: string) => Promise<Uint8Array | undefined>;
 
 export type DecodePng = (bytes: Uint8Array) => RgbaImage;
 
+export interface SceneTexture extends RgbaImage {
+  luminanceJpeg?: Uint8Array;
+}
+
 export interface SceneDraws {
-  textures: RgbaImage[];
+  textures: SceneTexture[];
   addressing: SceneTextureAddressing[];
   missing: string[];
+  playerColours: PlayerColour[];
   draws: SceneDraw[][];
   uvs: (Float32Array | undefined)[];
 }
@@ -36,18 +47,33 @@ export interface SceneDraws {
 const flipV = (uvs: Float32Array): Float32Array =>
   uvs.map((value, index) => (index % 2 ? 1 - value : value));
 
+const bumpOffsets = new WeakMap<RgbaImage, RgbaImage>();
+
+const getBumpOffsets = (image: RgbaImage): RgbaImage => {
+  let offsets = bumpOffsets.get(image);
+
+  if (!offsets) {
+    offsets = buildBumpOffsets(image);
+    bumpOffsets.set(image, offsets);
+  }
+  return offsets;
+};
+
 const removeExtension = (fileName: string): string => fileName.replace(/\.[^.]*$/, "");
 
 const loadTexture = async (
   name: string,
   loadFile: LoadFile,
   tools: ToolBox,
-): Promise<RgbaImage | undefined> => {
+  decodePng: DecodePng | undefined,
+): Promise<SceneTexture | undefined> => {
+  const stem = removeExtension(name);
+
   for (const [extension, tool] of [
     [".dds", decodeDdsTool],
     [".tga", decodeTgaTool],
   ] as const) {
-    const bytes = await loadFile(`${removeExtension(name)}${extension}`);
+    const bytes = await loadFile(`${stem}${extension}`);
 
     if (bytes) {
       try {
@@ -57,20 +83,16 @@ const loadTexture = async (
     }
   }
 
-  return undefined;
-};
+  if (!decodePng) {
+    return undefined;
+  }
 
-const loadMask = async (
-  name: string,
-  loadFile: LoadFile,
-  tools: ToolBox,
-  decodePng: DecodePng | undefined,
-): Promise<RgbaImage | undefined> => {
-  const image = await loadTexture(name, loadFile, tools);
-  const bytes = !image && decodePng && (await loadFile(`${removeExtension(name)}.png`));
+  const [alpha, colour] = await Promise.all([loadFile(`${stem}.png`), loadFile(`${stem}.jpg`)]);
 
   try {
-    return bytes ? decodePng?.(bytes) : image;
+    const image = alpha && decodePng(alpha);
+
+    return image && (colour ? { ...image, luminanceJpeg: Uint8Array.from(colour) } : image);
   } catch {
     return undefined;
   }
@@ -135,18 +157,15 @@ export const loadSceneDraws = async (
   );
   const decoded = new Map(
     await Promise.all(
-      names.map(
-        async (name) =>
-          [
-            name,
-            await (drawnNames.has(name)
-              ? loadTexture(name, loadFile, tools)
-              : loadMask(name, loadFile, tools, decodePng)),
-          ] as const,
-      ),
+      names.map(async (name) => [name, await loadTexture(name, loadFile, tools, decodePng)] as const),
     ),
   );
-  const textures: RgbaImage[] = [];
+  const hasMask = meshes.some((mesh) => mesh.draws.some((draw) => getMaskUse(draw)));
+  const playerColourBytes = hasMask ? await loadFile(PLAYER_COLOR_INI) : undefined;
+  const playerColours = playerColourBytes
+    ? parsePlayerColours(new TextDecoder("windows-1252").decode(playerColourBytes))
+    : [];
+  const textures: SceneTexture[] = [];
   const addressing: SceneTextureAddressing[] = [];
   const indexOfUse = new Map<string, number>();
 
@@ -155,7 +174,7 @@ export const loadSceneDraws = async (
 
     if (image) {
       indexOfUse.set(key, textures.length);
-      textures.push(use.isBumpMap ? buildBumpOffsets(image) : image);
+      textures.push(use.isBumpMap ? getBumpOffsets(image) : image);
       addressing.push({ clampU: use.clampU, clampV: use.clampV });
     }
   }
@@ -177,6 +196,7 @@ export const loadSceneDraws = async (
     textures,
     addressing,
     missing: [...drawnNames].filter((name) => !decoded.get(name)),
+    playerColours,
     draws: meshes.map((mesh, at) =>
       mesh.draws.map((draw) => ({
         ...draw,

@@ -27,6 +27,10 @@ export const createSearchView = (
 
   const open = async (message: Extract<FromSearchPage, { kind: 'open' }>) => {
     try {
+      if (message.isWhole) {
+        await commands.executeCommand('vscode.open', Uri.parse(message.uri));
+        return;
+      }
       await window.showTextDocument(Uri.parse(message.uri), {
         selection: new Range(
           message.line,

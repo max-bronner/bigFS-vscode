@@ -13,12 +13,6 @@ const WIND_ANGLE_CHANGE_DEFAULT = 0.15;
 const TWO_PI = Math.PI * 2;
 const FLT_EPSILON = 2 ** -23;
 
-export interface SimulationOptions {
-  wind: 'retail' | 'off' | 'doubled';
-  hollowBox: 'surface' | 'point';
-  compound: boolean;
-  batchLimit: boolean;
-}
 
 export interface Particle {
   position: Vec3;
@@ -137,11 +131,7 @@ const normalize = (a: Vec3): Vec3 => {
   return size > 1e-12 ? scale(a, 1 / size) : [0, 0, 0];
 };
 
-export const rollVolumeOffset = (
-  volume: Volume,
-  random: Random,
-  hollowBox: SimulationOptions['hollowBox'],
-): Vec3 => {
+export const rollVolumeOffset = (volume: Volume, random: Random): Vec3 => {
   switch (volume.type) {
     case 'line': {
       const t = random.nextUnit();
@@ -159,10 +149,6 @@ export const rollVolumeOffset = (
       if (!volume.hollow) {
         return inside;
       }
-      if (hollowBox === 'point') {
-        return [0, 0, 0];
-      }
-
       const face = random.nextUnit() < 0.5 ? -1 : 1;
       const axis = Math.min(2, Math.floor(random.nextUnit() * 3));
 
@@ -295,12 +281,6 @@ const windFalloff = (distance: number, full: number, zero: number) => {
 
 export class ParticleWorld {
   public readonly systems: LiveSystem[] = [];
-  public options: SimulationOptions = {
-    wind: 'retail',
-    hollowBox: 'surface',
-    compound: true,
-    batchLimit: true,
-  };
   public dropped = 0;
   public frame = 0;
   private random: Random;
@@ -487,7 +467,7 @@ export class ParticleWorld {
           if (!particle) {
             continue;
           }
-          if (def.perParticleSystem && this.options.compound) {
+          if (def.perParticleSystem) {
             particle.attached = this.spawn(
               def.perParticleSystem,
               particle.position,
@@ -550,7 +530,7 @@ export class ParticleWorld {
     this.live -= before - system.particles.length;
     system.age++;
 
-    if (def.event?.fx && this.options.compound) {
+    if (def.event?.fx) {
       for (const at of events) {
         this.fire(def.event.fx, at, system.depth + 1);
       }
@@ -570,7 +550,7 @@ export class ParticleWorld {
     behind: number,
   ): Particle | undefined {
     if (
-      (this.options.batchLimit && system.particles.length >= BATCH_LIMIT) ||
+      system.particles.length >= BATCH_LIMIT ||
       this.live >= WORLD_LIMIT
     ) {
       system.dropped++;
@@ -621,7 +601,6 @@ export class ParticleWorld {
         ? { ...def.volume, radius: cylinderRadius }
         : def.volume,
       random,
-      this.options.hollowBox,
     );
     const velocity = rollBirthVelocity(def, local, random);
     const lifetime = Math.max(0, Math.round(random.rollRange(def.lifetime)));
@@ -725,18 +704,13 @@ export class ParticleWorld {
       }
     }
 
-    const base =
-      this.options.wind === 'off' ? 0 : this.options.wind === 'doubled' ? 2 : 1;
-
-    return base
-      ? {
-          cos: Math.cos(state.angle),
-          sin: Math.sin(state.angle),
-          strength: base * spec.strength,
-          full: spec.fullStrengthDist,
-          zero: spec.zeroStrengthDist,
-        }
-      : undefined;
+    return {
+      cos: Math.cos(state.angle),
+      sin: Math.sin(state.angle),
+      strength: spec.strength,
+      full: spec.fullStrengthDist,
+      zero: spec.zeroStrengthDist,
+    };
   }
 
   private updateParticle(

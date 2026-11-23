@@ -21,6 +21,18 @@ const buildGradient = () => {
 };
 
 suite('Texture encoding', () => {
+  test('a TGA is stored bottom up, as retail TGAs are', () => {
+    const source = buildGradient();
+    const bytes = encodeTga(source, true);
+    const lastRow = (source.height - 1) * source.width * 4;
+
+    assert.strictEqual(bytes[17] & 0x20, 0);
+    assert.deepStrictEqual(
+      [...bytes.subarray(18, 22)],
+      [source.pixels[lastRow + 2], source.pixels[lastRow + 1], source.pixels[lastRow], source.pixels[lastRow + 3]],
+    );
+  });
+
   test('PNG and TGA round-trip exactly', () => {
     const source = buildGradient();
 

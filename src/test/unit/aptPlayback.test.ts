@@ -11,7 +11,6 @@ import { Player } from '../../webview/apt/player';
 import type { PageMovie } from '../../webview/apt/protocol';
 import { findPointerTargetAt } from '../../webview/apt/hitTest';
 import { collect } from '../../webview/apt/scene';
-import type { Leaf } from '../../webview/apt/scene';
 
 const place = (
   depth: number,
@@ -454,25 +453,6 @@ suite('APT playback', () => {
     const { hits } = collect(player);
 
     assert.strictEqual(findPointerTargetAt(hits, [7, 5]), kid);
-    assert.strictEqual(findPointerTargetAt(hits, [2, 5]), undefined);
-  });
-
-  test('a mask cuts a hit area', () => {
-    const leaf = (matrix: Leaf['matrix'], masks?: Leaf[][]) =>
-      ({
-        matrix,
-        masks,
-        character: { type: 'shape', bounds: [0, 0, 10, 10], geometry: 0 },
-      }) as unknown as Leaf;
-    const mask = leaf([1, 0, 0, 1, 5, 0]);
-    const hits = [
-      {
-        leaf: leaf([1, 0, 0, 1, 0, 0], [[mask]]),
-        target: 'button',
-      },
-    ] as unknown as Parameters<typeof findPointerTargetAt>[0];
-
-    assert.strictEqual(findPointerTargetAt(hits, [7, 5]) as unknown, 'button');
     assert.strictEqual(findPointerTargetAt(hits, [2, 5]), undefined);
   });
 

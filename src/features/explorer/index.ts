@@ -1,5 +1,6 @@
 import { ConfigurationTarget, window, workspace } from 'vscode';
 import type { ExtensionContext, Uri } from 'vscode';
+import { followActiveTab } from './followActiveTab';
 import { revealEntry } from './revealEntry';
 import type { Services } from '../../services/createServices';
 import type { ExplorerRow } from '../../services/archives/explorerRow';
@@ -63,7 +64,7 @@ export const registerExplorer = (
     canSelectMany: true,
   });
 
-  context.subscriptions.push(treeView);
+  context.subscriptions.push(treeView, followActiveTab(treeView, archives, gameView));
   explorerSelection.attach(treeView);
 
   const registerNodeCommand = createNodeCommandRegistrar(

@@ -9,7 +9,7 @@ import { findAnimation, parseW3dAnimations } from '../../formats/w3d/w3dAnimatio
 import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
 import { buildW3dScene } from '../../formats/w3d/w3dScene';
 import { createToolRegistry } from '../../core/toolRegistry';
-import { buildChunk, concatBytes, encodeFloats, hierarchy, encodeName } from './w3d.test';
+import { buildChunk, concatBytes, encodeFloats, hierarchy, encodeName } from './w3dSynth';
 
 const u16 = (...values: number[]) =>
   new Uint8Array(Uint16Array.from(values).buffer);

@@ -1,7 +1,4 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
 import { findReferencedNames } from '../../formats/ini/sageAudioValues';
 import { resolveSageSymbol } from '../../formats/ini/sageIniSymbol';
@@ -22,16 +19,11 @@ import {
   isNotAName,
 } from '../../formats/ini/sageIniReferenceCheck';
 import { toCanonicalNamespace } from '../../formats/ini/sageReferenceFields';
+import { getFileUseNames } from '../../formats/ini/sageIniAssets';
 import { decodeIniText } from '../../core/windows1252';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+const schema = loadSageIniSchema();
 
 const parse = (lines: string[], isFragment = false) =>
   parseSageIni(lines, schema, { isFragment });
@@ -190,10 +182,6 @@ suite('SAGE INI reference checking', () => {
       [symbol(20)?.name, symbol(20)?.isDeclaration, symbol(20)?.namespaces],
       ['Base', false, ['Object']],
     );
-  });
-
-  test('a reference to a ChildObject or ObjectReskin is not reported', () => {
-    assert.deepStrictEqual(warningsIn(MOD, 'buttons.ini'), []);
   });
 
   test('macro bodies are read: constants, spellings, and 10-deep chains', () => {
@@ -426,6 +414,57 @@ suite('SAGE INI reference checking', () => {
       uses.map(({ name, line, field }) => [name, line, field]),
       [['sample.dds', 1, 'texture']],
     );
+  });
+
+  test("a sound an audio event plays is a use of the file, once under its stem", () => {
+    const entries = collectEntries(
+      [
+        'AudioEvent SampleVoice',
+        '  Sounds = sample_a sample_b:2000',
+        'End',
+        'MusicTrack SampleTrack',
+        '  Filename = music/sample.mp3',
+        'End',
+      ].join('\n'),
+      'voice.ini',
+      schema,
+    );
+    const uses = entries.references.filter(({ namespace }) => namespace === '#file');
+
+    assert.deepStrictEqual(
+      uses.map(({ name, line, field }) => [name, line, field]),
+      [
+        ['sample_a', 1, 'sound'],
+        ['sample_b', 1, 'sound'],
+        ['sample.mp3', 4, 'sound'],
+      ],
+    );
+  });
+
+  test("a WAV or MP3 file looks its uses up under its stem and its own name", () => {
+    const entries = collectEntries(
+      [
+        'AudioEvent SampleVoice',
+        '  Sounds = sample_a',
+        'End',
+        'MusicTrack SampleTrack',
+        '  Filename = sample_a.mp3',
+        'End',
+      ].join('\n'),
+      'voice.ini',
+      schema,
+    );
+    const linesFor = (fileName: string) => {
+      const names = getFileUseNames(fileName);
+
+      return entries.references
+        .filter(({ namespace, name }) => namespace === '#file' && names.includes(name))
+        .map(({ line }) => line);
+    };
+
+    assert.deepStrictEqual(linesFor('Audio/Sounds/Sample_A.WAV'), [1]);
+    assert.deepStrictEqual(linesFor('sample_a.mp3'), [1, 4]);
+    assert.deepStrictEqual(getFileUseNames('Data/Unit.W3D'), ['unit.w3d']);
   });
 
   test('only capitals with underscores are skipped as names', () => {

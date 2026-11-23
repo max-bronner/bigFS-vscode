@@ -3,7 +3,7 @@ import { parseAptMovie, parseConst } from '../../formats/apt/aptMovie';
 import { applyAptEdit } from '../../formats/apt/writer/applyAptEdit';
 import { AptImage } from '../../formats/apt/writer/aptImage';
 import type { AptEdit } from '../../formats/apt/writer/aptEdit';
-import { buildFullMovie } from './aptFullEdit.test';
+import { buildFullMovie } from './aptMovieFixtures';
 
 const after = (...edits: AptEdit[]) => {
   const { apt, constFile } = buildFullMovie();

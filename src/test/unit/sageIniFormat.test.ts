@@ -1,7 +1,4 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
 import {
   findClosestNames,
@@ -9,15 +6,9 @@ import {
   formatSageIniStable,
   findMissingEndLine,
 } from '../../formats/ini/sageIniFormat';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+const schema = loadSageIniSchema();
 
 suite('SAGE INI formatting and fixes', () => {
   test('indentation follows the blocks, scripts and text stay as written', () => {

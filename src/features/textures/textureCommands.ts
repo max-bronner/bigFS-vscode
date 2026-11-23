@@ -10,6 +10,13 @@ import {
   encodeDds,
   encodeTga,
 } from '../../formats/texture/textureEncode';
+import {
+  TEXTURE_TARGETS,
+  encodeTexture,
+  getTargetExtension,
+  hasPowerOfTwoSides,
+  isDdsTarget,
+} from '../../formats/texture/textureTargets';
 import { decodePng, encodePng } from '../../node/png';
 import { registerCommand } from '../../platform/commands';
 import { describeError } from '../../core/errors';
@@ -164,36 +171,12 @@ export const registerTextureCommands = (
           }
 
           const choice = await vscode.window.showQuickPick(
-            [
-              {
-                label: 'TGA 32-bit',
-                description: 'with alpha',
-                extension: 'tga',
-                encode: (image: Parameters<typeof encodePng>[0]) =>
-                  encodeTga(image, true),
-              },
-              {
-                label: 'TGA 24-bit',
-                description: 'no alpha',
-                extension: 'tga',
-                encode: (image: Parameters<typeof encodePng>[0]) =>
-                  encodeTga(image, false),
-              },
-              ...(['DXT1', 'DXT5', 'DXT3', 'RGBA'] as DdsFormat[]).map(
-                (format) => ({
-                  label: `DDS ${format}`,
-                  description:
-                    format === 'DXT1'
-                      ? 'no or 1-bit alpha, mipmaps'
-                      : format === 'RGBA'
-                        ? 'uncompressed, mipmaps'
-                        : 'with alpha, mipmaps',
-                  extension: 'dds',
-                  encode: (image: Parameters<typeof encodePng>[0]) =>
-                    encodeDds(image, format, true),
-                }),
-              ),
-            ],
+            TEXTURE_TARGETS.map((each) => ({
+              ...each,
+              description: isDdsTarget(each.target)
+                ? `${each.description}, mipmaps`
+                : each.description,
+            })),
             { placeHolder: 'Convert to' },
           );
 
@@ -201,13 +184,10 @@ export const registerTextureCommands = (
             return;
           }
 
+          const extension = getTargetExtension(choice.target);
           const image = decodePng(await vscode.workspace.fs.readFile(source));
 
-          if (
-            choice.extension === 'dds' &&
-            (image.width & (image.width - 1) ||
-              image.height & (image.height - 1))
-          ) {
+          if (extension === 'dds' && !hasPowerOfTwoSides(image)) {
             void vscode.window.showWarningMessage(
               'DDS textures should be a power of two on each side; the game may not load this one.',
             );
@@ -216,11 +196,11 @@ export const registerTextureCommands = (
           const output = await pickOutput(
             archives,
             source,
-            getFileName(source).replace(/\.png$/i, `.${choice.extension}`),
+            getFileName(source).replace(/\.png$/i, `.${extension}`),
           );
 
           if (output) {
-            await vscode.workspace.fs.writeFile(output, choice.encode(image));
+            await vscode.workspace.fs.writeFile(output, encodeTexture(image, choice.target, true));
             void vscode.window.showInformationMessage(
               `Wrote ${getFileName(output)}`,
             );

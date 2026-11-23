@@ -1,5 +1,5 @@
 import type { Vec3 } from '../../formats/w3d/w3dPose';
-import { computeOrbitBasis } from './orbitBasis';
+import { FOCAL_LENGTH, computeOrbitBasis } from './orbitBasis';
 import type { CameraBasis, OrbitPlace } from './orbitBasis';
 import { composeViewProjection } from './viewProjection';
 
@@ -15,7 +15,6 @@ const INITIAL_PITCH = 0.4;
 const FRAMING = 2.6;
 const MIN_ZOOM_LIMIT = 8000;
 const DEPTH_RANGE = 300;
-const FOCAL_LENGTH = 1 / Math.tan(Math.PI / 8);
 const ORBIT_SPEED = 0.01;
 const PAN_SPEED = 1 / 600;
 

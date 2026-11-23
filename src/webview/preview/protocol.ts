@@ -6,10 +6,20 @@ import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
 import type { ForeignClip } from '../../formats/w3d/w3dModelFinder';
 import type { ModelScene, SceneSkeleton } from '../../formats/w3d/w3dScene';
 import type { RelatedModel } from '../../game/objects/findRelatedModels';
+import type { TextureVariant } from '../../game/objects/objectAppearance';
+import type { DetailFiles } from '../../game/objects/detailModels';
+import type { TextureLayers } from '../../formats/w3d/w3dTextureSwaps';
 
 export interface ModelMessage extends ModelScene {
   shownOn?: string;
   relatedFile?: string;
+  detail?: DetailFiles;
+  isRetextured?: boolean;
+}
+
+export interface FileLocation {
+  container: string;
+  detail: string;
 }
 
 export interface FileUse {
@@ -17,6 +27,7 @@ export interface FileUse {
   line: number;
   field: string;
   owner?: string;
+  location?: FileLocation;
 }
 
 export interface TextureMessage {
@@ -35,6 +46,7 @@ export interface TextureRegion {
   editable: boolean;
   note?: string;
   source?: { uri: string; line: number };
+  location?: FileLocation;
 }
 
 export interface RegionsMessage {
@@ -86,6 +98,7 @@ export type ToPreviewPage =
       kind: 'related';
       file: string;
       files: RelatedModel[];
+      textures: TextureVariant[];
     }
   | {
       kind: 'animation';
@@ -107,6 +120,12 @@ export type FromPreviewPage =
       rect: [number, number, number, number];
     }
   | { kind: 'reveal'; uri: string; line: number }
+  | { kind: 'previewObject'; uri: string; line: number }
   | { kind: 'animation'; file: string }
-  | { kind: 'showModel'; file?: string }
-  | { kind: 'videoFrame'; index: number };
+  | {
+      kind: 'showModel';
+      file?: string;
+      textures?: TextureLayers;
+    }
+  | { kind: 'videoFrame'; index: number }
+  | { kind: 'saveCursorFrame'; index: number };

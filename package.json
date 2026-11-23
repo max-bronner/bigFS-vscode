@@ -1,8 +1,8 @@
 {
   "name": "bigfs",
   "displayName": "bigFS",
-  "description": "Mod the Battle for Middle-earth games in VS Code: browse and edit BIG archives, INI, STR and WND language support, and previews for W3D models, APT movies, maps, textures and audio.",
-  "version": "0.2.3",
+  "description": "Mod the Battle for Middle-earth games: edit BIG archives in place, write INI with full language support, and preview models, interface movies, maps, textures and sounds.",
+  "version": "0.3.0",
   "publisher": "max-bronner",
   "icon": "assets/icon.png",
   "galleryBanner": {
@@ -12,7 +12,7 @@
   "license": "GPL-3.0-or-later",
   "repository": {
     "type": "git",
-    "url": "https://github.com/max-bronner/bigFS-vscode.git"
+    "url": "https://github.com/max-bronner/bigfs-vscode.git"
   },
   "capabilities": {
     "untrustedWorkspaces": {
@@ -30,13 +30,13 @@
     "Other"
   ],
   "keywords": [
-    "big",
-    "archive",
-    "battle for middle earth",
     "bfme",
-    "command and conquer",
-    "c&c",
-    "ea games",
+    "bfme2",
+    "rotwk",
+    "battle for middle earth",
+    "sage",
+    "big",
+    "w3d",
     "modding"
   ],
   "activationEvents": [
@@ -58,6 +58,13 @@
           "name": "Search in Archives",
           "type": "webview",
           "icon": "$(search)",
+          "visibility": "collapsed"
+        },
+        {
+          "id": "bigfs.converters",
+          "name": "Converters",
+          "type": "webview",
+          "icon": "$(arrow-swap)",
           "visibility": "collapsed"
         }
       ]
@@ -82,275 +89,298 @@
     "commands": [
       {
         "command": "bigfs.refreshArchives",
-        "title": "Refresh",
+        "title": "Refresh Archives",
+        "category": "bigFS",
         "icon": "$(refresh)"
       },
       {
+        "command": "bigfs.openConverters",
+        "title": "Open Converters",
+        "category": "bigFS"
+      },
+      {
         "command": "bigfs.newArchive",
-        "title": "New Archive...",
+        "title": "New Archive…",
+        "category": "bigFS",
         "icon": "$(new-file)"
       },
       {
         "command": "bigfs.newFile",
-        "title": "New File...",
+        "title": "New File…",
+        "category": "bigFS",
         "icon": "$(new-file)"
       },
       {
         "command": "bigfs.newFolder",
-        "title": "New Folder...",
+        "title": "New Folder…",
+        "category": "bigFS",
         "icon": "$(new-folder)"
       },
       {
         "command": "bigfs.rename",
-        "title": "Rename..."
+        "title": "Rename…",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.delete",
-        "title": "Delete"
+        "title": "Delete",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.addFiles",
-        "title": "Add Files..."
+        "title": "Add Files…",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.extract",
-        "title": "Extract..."
+        "title": "Extract…",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.cut",
-        "title": "Cut"
+        "title": "Cut",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.copy",
-        "title": "Copy"
+        "title": "Copy",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.paste",
-        "title": "Paste"
+        "title": "Paste",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.findGameInstalls",
-        "title": "Find Game Installs",
-        "category": "BIG"
+        "title": "Find Game Installs…",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.duplicate",
-        "title": "Duplicate"
+        "title": "Duplicate",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.copyPath",
-        "title": "Copy Path"
+        "title": "Copy Path",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.copyRelativePath",
-        "title": "Copy Relative Path"
+        "title": "Copy Relative Path",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.overrideInFolder",
-        "title": "Override in Folder..."
+        "title": "Override in Folder…",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.packFolder",
-        "title": "Pack into BIG Archive..."
+        "title": "Pack into BIG Archive…",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.chooseLanguage",
-        "title": "Choose Game Language",
+        "title": "Choose Game Language…",
         "category": "bigFS"
       },
       {
         "command": "bigfs.searchArchives",
-        "title": "Search in BIG Archives...",
-        "category": "BIG"
+        "title": "Search in Archives…",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.goToFile",
-        "title": "Go to File in Archives...",
+        "title": "Go to File in Archives…",
         "category": "bigFS"
       },
       {
         "command": "bigfs.validateIni",
         "title": "Validate INI Files",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.showGameView",
         "title": "Show What the Game Loads",
+        "category": "bigFS",
         "icon": "$(layers)"
       },
       {
         "command": "bigfs.showArchiveView",
         "title": "Show Every Archive",
+        "category": "bigFS",
         "icon": "$(archive)"
       },
       {
         "command": "bigfs.convertStringTable",
         "title": "Convert String Table (.str ⇄ .csf)",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.openStringTable",
         "title": "Open as Table",
-        "category": "BIG",
+        "category": "bigFS",
         "icon": "$(table)"
       },
       {
         "command": "bigfs.showWndPreview",
         "title": "Show Layout Preview",
-        "category": "BIG",
+        "category": "bigFS",
         "icon": "$(open-preview)"
       },
       {
         "command": "bigfs.exportPng",
-        "title": "Export as PNG",
-        "category": "BIG"
+        "title": "Export as PNG…",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.importImage",
         "title": "Replace with PNG…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.convertPng",
         "title": "Convert to Game Texture…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.exportCursorPng",
         "title": "Export Cursor as PNG…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.convertPngToCursor",
         "title": "Convert to Cursor…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.buildAnimatedCursor",
         "title": "Build Animated Cursor…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.previewParticles",
         "title": "Preview Particle System",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.previewObject",
         "title": "Preview Object Here",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.newParticleSystem",
         "title": "New Particle System from Template…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.bulkEditIni",
         "title": "Bulk Edit INI Values…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.showEffectiveObject",
         "title": "Show Effective Definition",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.editMappedImageRegion",
         "title": "Edit MappedImage Region in Texture",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.showRuRegion",
         "title": "Show APT Geometry Texture Region",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.newObject",
         "title": "New Unit, Hero or Building…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.newAptMovie",
         "title": "New APT Movie…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.editCommandSet",
         "title": "Edit CommandSet Slots",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.showArmorTable",
         "title": "Armor Table",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.compareWithBaseGame",
         "title": "Compare with Base Game",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.syncAssetCatalogue",
         "title": "Sync with Assets…",
-        "category": "BIG",
+        "category": "bigFS",
         "icon": "$(sync)"
       },
       {
         "command": "bigfs.packageMod",
         "title": "Package Mod…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.checkTranslations",
         "title": "Check Translations",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.launchGame",
         "title": "Launch Game with Mod",
-        "category": "BIG",
+        "category": "bigFS",
         "icon": "$(play)"
       },
       {
         "command": "bigfs.playAudioEvent",
         "title": "Play Audio Event",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.openBalanceSheet",
         "title": "Open Balance Sheet",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.duplicateDefinition",
         "title": "Duplicate Definition…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.findUnusedDefinitions",
         "title": "Find Unused Definitions",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.clearUnusedDefinitions",
         "title": "Clear Unused Definitions",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.convertToVp6",
         "title": "Convert to VP6 Movie…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.checkAptMovies",
         "title": "Check APT Movies",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.renameAptMovie",
         "title": "Rename APT Movie…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.openAptText",
@@ -367,19 +397,59 @@
       {
         "command": "bigfs.editW3dAnimation",
         "title": "Edit W3D Animation…",
-        "category": "BIG"
+        "category": "bigFS"
       },
       {
         "command": "bigfs.deleteAptMovie",
         "title": "Delete APT Movie…",
-        "category": "BIG"
+        "category": "bigFS"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "bigfs.textureActions",
+        "label": "Texture"
+      },
+      {
+        "id": "bigfs.cursorActions",
+        "label": "Cursor"
+      },
+      {
+        "id": "bigfs.movieActions",
+        "label": "Movie"
+      },
+      {
+        "id": "bigfs.stringTableActions",
+        "label": "String Table"
+      },
+      {
+        "id": "bigfs.aptMovieActions",
+        "label": "APT Movie"
+      },
+      {
+        "id": "bigfs.modelActions",
+        "label": "Model"
+      },
+      {
+        "id": "bigfs.iniActions",
+        "label": "bigFS"
       }
     ],
     "menus": {
       "view/title": [
         {
+          "command": "bigfs.showGameView",
+          "group": "navigation@0",
+          "when": "view == bigArchiveExplorer && !bigfs.gameView"
+        },
+        {
+          "command": "bigfs.showArchiveView",
+          "group": "navigation@0",
+          "when": "view == bigArchiveExplorer && bigfs.gameView"
+        },
+        {
           "command": "bigfs.refreshArchives",
-          "group": "navigation",
+          "group": "navigation@1",
           "when": "view == bigArchiveExplorer"
         },
         {
@@ -394,18 +464,63 @@
         },
         {
           "command": "bigfs.validateIni",
-          "group": "1_search@3",
+          "group": "2_check@1",
           "when": "view == bigArchiveExplorer"
         },
         {
-          "command": "bigfs.showGameView",
-          "group": "navigation@0",
-          "when": "view == bigArchiveExplorer && !bigfs.gameView"
+          "command": "bigfs.findUnusedDefinitions",
+          "group": "2_check@2",
+          "when": "view == bigArchiveExplorer"
         },
         {
-          "command": "bigfs.showArchiveView",
-          "group": "navigation@0",
-          "when": "view == bigArchiveExplorer && bigfs.gameView"
+          "command": "bigfs.checkTranslations",
+          "group": "2_check@3",
+          "when": "view == bigArchiveExplorer"
+        },
+        {
+          "command": "bigfs.checkAptMovies",
+          "group": "2_check@4",
+          "when": "view == bigArchiveExplorer"
+        },
+        {
+          "command": "bigfs.compareWithBaseGame",
+          "group": "2_check@5",
+          "when": "view == bigArchiveExplorer"
+        },
+        {
+          "command": "bigfs.syncAssetCatalogue",
+          "group": "2_check@6",
+          "when": "view == bigArchiveExplorer"
+        },
+        {
+          "command": "bigfs.openBalanceSheet",
+          "group": "3_tables@1",
+          "when": "view == bigArchiveExplorer"
+        },
+        {
+          "command": "bigfs.showArmorTable",
+          "group": "3_tables@2",
+          "when": "view == bigArchiveExplorer"
+        },
+        {
+          "command": "bigfs.packageMod",
+          "group": "4_mod@1",
+          "when": "view == bigArchiveExplorer"
+        },
+        {
+          "command": "bigfs.launchGame",
+          "group": "4_mod@2",
+          "when": "view == bigArchiveExplorer"
+        },
+        {
+          "command": "bigfs.findGameInstalls",
+          "group": "5_game@1",
+          "when": "view == bigArchiveExplorer"
+        },
+        {
+          "command": "bigfs.chooseLanguage",
+          "group": "5_game@2",
+          "when": "view == bigArchiveExplorer"
         }
       ],
       "view/item/context": [
@@ -432,27 +547,52 @@
         {
           "command": "bigfs.extract",
           "group": "3_extract@1",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Archive|Folder|File|GameFolder)(ReadOnly)?$/"
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Archive|Folder|File|GameFolder)(ReadOnly)?(:|$)/"
         },
         {
-          "command": "bigfs.rename",
-          "group": "7_modification@1",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Archive|File|Folder)$/"
+          "command": "bigfs.overrideInFolder",
+          "group": "3_extract@2",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Folder|File|GameFolder)(ReadOnly)?(:|$)/"
         },
         {
-          "command": "bigfs.delete",
-          "group": "7_modification@2",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Archive|File|Folder)$/"
+          "submenu": "bigfs.textureActions",
+          "group": "4_format@1",
+          "when": "view == bigArchiveExplorer && (viewItem =~ /^big(File|FileReadOnly|LooseFile):(tga|dds)$/ || viewItem =~ /^big(File|LooseFile):png$/)"
+        },
+        {
+          "submenu": "bigfs.cursorActions",
+          "group": "4_format@2",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile)(ReadOnly)?:(cur|ani|png)$/"
+        },
+        {
+          "submenu": "bigfs.movieActions",
+          "group": "4_format@3",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):(mp4|m4v|mov|webm|ogv|ogg|mkv|avi|wmv|mpg|mpeg|gif)$/"
+        },
+        {
+          "submenu": "bigfs.stringTableActions",
+          "group": "4_format@4",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):(str|csf)$/"
+        },
+        {
+          "submenu": "bigfs.aptMovieActions",
+          "group": "4_format@5",
+          "when": "view == bigArchiveExplorer && (viewItem =~ /^big(File|LooseFile)(ReadOnly)?:apt$/ || viewItem =~ /^big(Archive|Folder)$/)"
+        },
+        {
+          "submenu": "bigfs.modelActions",
+          "group": "4_format@6",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):w3d$/"
         },
         {
           "command": "bigfs.cut",
           "group": "5_cutcopypaste@1",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|Folder)$/"
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|Folder)(:|$)/"
         },
         {
           "command": "bigfs.copy",
           "group": "5_cutcopypaste@2",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|Folder)(ReadOnly)?$/"
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|Folder)(ReadOnly)?(:|$)/"
         },
         {
           "command": "bigfs.paste",
@@ -462,265 +602,69 @@
         {
           "command": "bigfs.duplicate",
           "group": "5_cutcopypaste@4",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|Folder)$/"
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|Folder)(:|$)/"
         },
         {
           "command": "bigfs.copyPath",
           "group": "6_copypath@1",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Archive|File|Folder)(ReadOnly)?$/"
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Archive|File|Folder)(ReadOnly)?(:|$)/"
         },
         {
           "command": "bigfs.copyRelativePath",
           "group": "6_copypath@2",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|Folder)(ReadOnly)?$/"
-        },
-        {
-          "command": "bigfs.overrideInFolder",
-          "group": "3_extract@2",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Folder|File|GameFolder)(ReadOnly)?$/"
-        },
-        {
-          "command": "bigfs.convertStringTable",
-          "group": "7_modification@10",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(str|csf)$/i && viewItem !~ /ReadOnly$/"
-        },
-        {
-          "command": "bigfs.exportPng",
-          "group": "7_modification@11",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(tga|dds)$/i && viewItem != bigLooseFileReadOnly"
-        },
-        {
-          "command": "bigfs.importImage",
-          "group": "7_modification@12",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(tga|dds)$/i && viewItem !~ /ReadOnly$/"
-        },
-        {
-          "command": "bigfs.convertPng",
-          "group": "7_modification@13",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.png$/i && viewItem !~ /ReadOnly$/"
-        },
-        {
-          "command": "bigfs.exportCursorPng",
-          "group": "7_modification@13",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(cur|ani)$/i"
-        },
-        {
-          "command": "bigfs.convertPngToCursor",
-          "group": "7_modification@13",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.png$/i"
-        },
-        {
-          "command": "bigfs.newAptMovie",
-          "group": "7_modification@14",
-          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Folder|Archive)$/ && viewItem !~ /ReadOnly$/"
-        },
-        {
-          "command": "bigfs.convertToVp6",
-          "group": "7_modification@15",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.(mp4|m4v|mov|webm|ogv|ogg|mkv|avi|wmv|mpg|mpeg|gif)$/i && viewItem !~ /ReadOnly$/"
-        },
-        {
-          "command": "bigfs.renameAptMovie",
-          "group": "7_modification@15",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.apt$/i && viewItem !~ /ReadOnly$/"
-        },
-        {
-          "command": "bigfs.editW3dAnimation",
-          "group": "7_modification@15",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.w3d$/i && viewItem !~ /ReadOnly$/"
-        },
-        {
-          "command": "bigfs.deleteAptMovie",
-          "group": "7_modification@16",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.apt$/i && viewItem !~ /ReadOnly$/"
-        },
-        {
-          "command": "bigfs.openAptText",
-          "group": "navigation@30",
-          "when": "view == bigArchiveExplorer && resourceExtname =~ /^\\.apt$/i"
-        }
-      ],
-      "commandPalette": [
-        {
-          "command": "bigfs.reopenAptVisual",
-          "when": "resourceScheme == bigfs-apt-text"
-        },
-        {
-          "command": "bigfs.editCommandSet",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.newParticleSystem",
-          "when": "editorLangId == sage-ini"
-        },
-        {
-          "command": "bigfs.refreshArchives",
-          "title": "BIG: Refresh Archives"
-        },
-        {
-          "command": "bigfs.newArchive",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.newFile",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.newFolder",
-          "when": "false"
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|Folder)(ReadOnly)?(:|$)/"
         },
         {
           "command": "bigfs.rename",
-          "when": "false"
+          "group": "7_modification@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Archive|File|Folder)(:|$)/"
         },
         {
           "command": "bigfs.delete",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.addFiles",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.extract",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.cut",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.copy",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.paste",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.duplicate",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.copyPath",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.copyRelativePath",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.overrideInFolder",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.packFolder",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.openStringTable",
-          "when": "editorLangId == sage-str"
-        },
-        {
-          "command": "bigfs.showWndPreview",
-          "when": "editorLangId == sage-wnd"
-        },
-        {
-          "command": "bigfs.exportPng",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.importImage",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.convertPng",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.exportCursorPng",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.convertPngToCursor",
-          "when": "false"
+          "group": "7_modification@2",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Archive|File|Folder)(:|$)/"
         }
       ],
       "explorer/context": [
         {
-          "command": "bigfs.packFolder",
-          "group": "7_modification@9",
-          "when": "explorerResourceIsFolder"
+          "submenu": "bigfs.textureActions",
+          "group": "4_format@1",
+          "when": "resourceExtname =~ /^\\.(tga|dds|png)$/i"
         },
         {
-          "command": "bigfs.convertStringTable",
-          "group": "7_modification@10",
+          "submenu": "bigfs.cursorActions",
+          "group": "4_format@2",
+          "when": "resourceExtname =~ /^\\.(cur|ani|png|tga)$/i"
+        },
+        {
+          "submenu": "bigfs.movieActions",
+          "group": "4_format@3",
+          "when": "resourceExtname =~ /^\\.(mp4|m4v|mov|webm|ogv|ogg|mkv|avi|wmv|mpg|mpeg|gif|bik|png|tga|dds)$/i || explorerResourceIsFolder"
+        },
+        {
+          "submenu": "bigfs.stringTableActions",
+          "group": "4_format@4",
           "when": "resourceExtname =~ /^\\.(str|csf)$/i"
         },
         {
-          "command": "bigfs.exportPng",
-          "group": "7_modification@11",
-          "when": "resourceExtname =~ /^\\.(tga|dds)$/i"
+          "submenu": "bigfs.aptMovieActions",
+          "group": "4_format@5",
+          "when": "resourceExtname =~ /^\\.apt$/i || explorerResourceIsFolder"
         },
         {
-          "command": "bigfs.importImage",
-          "group": "7_modification@12",
-          "when": "resourceExtname =~ /^\\.(tga|dds)$/i"
+          "submenu": "bigfs.modelActions",
+          "group": "4_format@6",
+          "when": "resourceExtname =~ /^\\.w3d$/i"
         },
         {
-          "command": "bigfs.convertPng",
-          "group": "7_modification@13",
-          "when": "resourceExtname =~ /^\\.png$/i"
-        },
-        {
-          "command": "bigfs.exportCursorPng",
-          "group": "7_modification@13",
-          "when": "resourceExtname =~ /^\\.(cur|ani)$/i"
-        },
-        {
-          "command": "bigfs.convertPngToCursor",
-          "group": "7_modification@13",
-          "when": "resourceExtname =~ /^\\.png$/i"
-        },
-        {
-          "command": "bigfs.buildAnimatedCursor",
-          "group": "7_modification@13",
-          "when": "resourceExtname =~ /^\\.(png|cur|tga)$/i"
-        },
-        {
-          "command": "bigfs.newAptMovie",
-          "group": "7_modification@14",
+          "command": "bigfs.packFolder",
+          "group": "4_mod@1",
           "when": "explorerResourceIsFolder"
         },
         {
           "command": "bigfs.launchGame",
-          "group": "7_modification@20",
+          "group": "4_mod@2",
           "when": "explorerResourceIsFolder"
-        },
-        {
-          "command": "bigfs.convertToVp6",
-          "group": "7_modification@15",
-          "when": "resourceExtname =~ /^\\.(mp4|m4v|mov|webm|ogv|ogg|mkv|avi|wmv|mpg|mpeg|gif|bik|png|tga|dds)$/i || explorerResourceIsFolder"
-        },
-        {
-          "command": "bigfs.renameAptMovie",
-          "group": "7_modification@15",
-          "when": "resourceExtname =~ /^\\.apt$/i"
-        },
-        {
-          "command": "bigfs.editW3dAnimation",
-          "group": "7_modification@15",
-          "when": "resourceExtname =~ /^\\.w3d$/i"
-        },
-        {
-          "command": "bigfs.deleteAptMovie",
-          "group": "7_modification@16",
-          "when": "resourceExtname =~ /^\\.apt$/i"
-        },
-        {
-          "command": "bigfs.openAptText",
-          "group": "navigation@30",
-          "when": "resourceExtname =~ /^\\.apt$/i"
         }
       ],
       "editor/title": [
@@ -752,39 +696,225 @@
       ],
       "editor/context": [
         {
-          "command": "bigfs.previewParticles",
-          "group": "navigation@20",
+          "submenu": "bigfs.iniActions",
+          "group": "2_bigfs@1",
           "when": "editorLangId == sage-ini"
+        }
+      ],
+      "bigfs.textureActions": [
+        {
+          "command": "bigfs.exportPng",
+          "group": "1_export@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|FileReadOnly|LooseFile):(tga|dds)$/ || view != bigArchiveExplorer && resourceExtname =~ /^\\.(tga|dds)$/i"
         },
+        {
+          "command": "bigfs.importImage",
+          "group": "1_export@2",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):(tga|dds)$/ || view != bigArchiveExplorer && resourceExtname =~ /^\\.(tga|dds)$/i"
+        },
+        {
+          "command": "bigfs.convertPng",
+          "group": "2_convert@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):png$/ || view != bigArchiveExplorer && resourceExtname =~ /^\\.png$/i"
+        }
+      ],
+      "bigfs.cursorActions": [
+        {
+          "command": "bigfs.exportCursorPng",
+          "group": "1_export@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile)(ReadOnly)?:(cur|ani)$/ || view != bigArchiveExplorer && resourceExtname =~ /^\\.(cur|ani)$/i"
+        },
+        {
+          "command": "bigfs.convertPngToCursor",
+          "group": "2_convert@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile)(ReadOnly)?:png$/ || view != bigArchiveExplorer && resourceExtname =~ /^\\.png$/i"
+        },
+        {
+          "command": "bigfs.buildAnimatedCursor",
+          "group": "2_convert@2",
+          "when": "view != bigArchiveExplorer && resourceExtname =~ /^\\.(png|cur|tga)$/i"
+        }
+      ],
+      "bigfs.movieActions": [
+        {
+          "command": "bigfs.convertToVp6",
+          "group": "1_convert@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):(mp4|m4v|mov|webm|ogv|ogg|mkv|avi|wmv|mpg|mpeg|gif)$/ || view != bigArchiveExplorer && (resourceExtname =~ /^\\.(mp4|m4v|mov|webm|ogv|ogg|mkv|avi|wmv|mpg|mpeg|gif|bik|png|tga|dds)$/i || explorerResourceIsFolder)"
+        }
+      ],
+      "bigfs.stringTableActions": [
+        {
+          "command": "bigfs.convertStringTable",
+          "group": "1_convert@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):(str|csf)$/ || view != bigArchiveExplorer && resourceExtname =~ /^\\.(str|csf)$/i"
+        }
+      ],
+      "bigfs.aptMovieActions": [
+        {
+          "command": "bigfs.openAptText",
+          "group": "1_open@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile)(ReadOnly)?:apt$/ || view != bigArchiveExplorer && resourceExtname =~ /^\\.apt$/i"
+        },
+        {
+          "command": "bigfs.renameAptMovie",
+          "group": "2_modification@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):apt$/ || view != bigArchiveExplorer && resourceExtname =~ /^\\.apt$/i"
+        },
+        {
+          "command": "bigfs.deleteAptMovie",
+          "group": "2_modification@2",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):apt$/ || view != bigArchiveExplorer && resourceExtname =~ /^\\.apt$/i"
+        },
+        {
+          "command": "bigfs.newAptMovie",
+          "group": "3_new@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(Archive|Folder)$/ || view != bigArchiveExplorer && explorerResourceIsFolder"
+        }
+      ],
+      "bigfs.modelActions": [
+        {
+          "command": "bigfs.editW3dAnimation",
+          "group": "1_edit@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):w3d$/ || view != bigArchiveExplorer && resourceExtname =~ /^\\.w3d$/i"
+        }
+      ],
+      "bigfs.iniActions": [
         {
           "command": "bigfs.previewObject",
-          "group": "navigation@21",
-          "when": "editorLangId == sage-ini"
+          "group": "1_show@1"
         },
         {
-          "command": "bigfs.newParticleSystem",
-          "group": "1_modification@5",
-          "when": "editorLangId == sage-ini"
-        },
-        {
-          "command": "bigfs.bulkEditIni",
-          "group": "1_modification@6",
-          "when": "editorLangId == sage-ini"
+          "command": "bigfs.previewParticles",
+          "group": "1_show@2"
         },
         {
           "command": "bigfs.showEffectiveObject",
-          "group": "navigation@21",
-          "when": "editorLangId == sage-ini"
+          "group": "1_show@3"
+        },
+        {
+          "command": "bigfs.editMappedImageRegion",
+          "group": "1_show@4"
         },
         {
           "command": "bigfs.newObject",
-          "group": "1_modification@4",
-          "when": "editorLangId == sage-ini"
+          "group": "2_create@1"
+        },
+        {
+          "command": "bigfs.newParticleSystem",
+          "group": "2_create@2"
         },
         {
           "command": "bigfs.duplicateDefinition",
-          "group": "1_modification@10",
+          "group": "2_create@3"
+        },
+        {
+          "command": "bigfs.bulkEditIni",
+          "group": "2_create@4"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "bigfs.reopenAptVisual",
+          "when": "resourceScheme == bigfs-apt-text"
+        },
+        {
+          "command": "bigfs.editCommandSet",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.newParticleSystem",
           "when": "editorLangId == sage-ini"
+        },
+        {
+          "command": "bigfs.refreshArchives"
+        },
+        {
+          "command": "bigfs.newArchive",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.newFile",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.newFolder",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.rename",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.delete",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.addFiles",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.extract",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.cut",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.copy",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.paste",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.duplicate",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.copyRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.overrideInFolder",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.packFolder",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.openStringTable",
+          "when": "editorLangId == sage-str"
+        },
+        {
+          "command": "bigfs.showWndPreview",
+          "when": "editorLangId == sage-wnd"
+        },
+        {
+          "command": "bigfs.exportPng",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.importImage",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.convertPng",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.exportCursorPng",
+          "when": "false"
+        },
+        {
+          "command": "bigfs.convertPngToCursor",
+          "when": "false"
         }
       ]
     },
@@ -823,143 +953,183 @@
         "when": "focusedView == bigArchiveExplorer && bigfs.hasClipboard && !inputFocus"
       }
     ],
-    "configuration": {
-      "title": "bigFS",
-      "properties": {
-        "bigfs.ini.game": {
-          "type": "string",
-          "enum": [
-            "rotwk",
-            "bfme2",
-            "bfme1"
-          ],
-          "enumDescriptions": [
-            "The Rise of the Witch-king",
-            "The Battle for Middle-earth II",
-            "The Battle for Middle-earth: structure only, since no grammar of its own is available; field names are not checked"
-          ],
-          "default": "rotwk",
-          "description": "The game whose INI grammar checks, completion and hovers follow. The two differ in a few dozen field names."
-        },
-        "bigfs.ini.checkReferences": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "on",
-            "off"
-          ],
-          "enumDescriptions": [
-            "Check references into a kind of definition once the workspace holds at least 50 of them, so the base game's files are there",
-            "Always check references, even with only a mod's own files open",
-            "Never check references"
-          ],
-          "default": "auto",
-          "description": "Whether a value naming a Weapon, Upgrade, FXList or other definition that nothing in the workspace defines is reported."
-        },
-        "bigfs.ini.checkAssets": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "on",
-            "off"
-          ],
-          "enumDescriptions": [
-            "Check once a base game folder is set (bigfs.baseGameFolder) and the archives and folders hold its models, so a missing name is a mistake; without one the check stays off and says so once",
-            "Always check, even with only a mod's own files open",
-            "Never check"
-          ],
-          "default": "auto",
-          "description": "Whether a model, animation, texture or sound an INI file names, which no archive or folder holds, is reported."
-        },
-        "bigfs.language": {
-          "type": "string",
-          "default": "auto",
-          "markdownDescription": "The language the game's text is shown in: the `lang/<Language>.big` archive whose string table labels resolve against, such as `English`. `auto` uses the only language installed, and otherwise asks once and remembers the answer for the workspace."
-        },
-        "bigfs.explorer.view": {
-          "type": "string",
-          "enum": [
-            "archives",
-            "game"
-          ],
-          "enumDescriptions": [
-            "Every archive with all of its files",
-            "Only the file the game loads at each path, layered by the engine's archive order: loose files before archives, archives sorted by path with the first winning, workspace folders in order with the first winning"
-          ],
-          "default": "archives",
-          "description": "What the BIG Archives view shows."
-        },
-        "bigfs.baseGameFolder": {
-          "type": "string",
-          "default": "",
-          "scope": "machine",
-          "markdownDescription": "Install folder of the unmodded game, the lowest layer of the game view: a mod-only or ROTWK-only workspace resolves the base files from it, and **BIG: Compare with Base Game** compares against it. Asked for on first use. Each workspace folder resolves against its own game's installs, told by their marker files (`lotrbfme2ep1.exe` = ROTWK, `lotrbfme2.exe` = BFME II) or, for a mod folder, by `#bigfs.folderGame#`: a BFME II folder never sees ROTWK files."
-        },
-        "bigfs.underlyingGameFolder": {
-          "type": "string",
-          "default": "",
-          "scope": "machine",
-          "markdownDescription": "Install folder of the game beneath `#bigfs.baseGameFolder#`, such as BFME II when that is ROTWK, which keeps only what it adds. On Windows, empty finds BFME II from the registry as the game does."
-        },
-        "bigfs.folderGame": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "bfme2",
-            "rotwk"
-          ],
-          "enumDescriptions": [
-            "ROTWK when a ROTWK install is open or named by the settings, otherwise BFME II.",
-            "A BFME II mod: its files resolve against this folder, then BFME II.",
-            "A ROTWK mod: its files resolve against this folder, then ROTWK, then BFME II."
-          ],
-          "default": "auto",
-          "scope": "resource",
-          "markdownDescription": "Which game a mod folder is for, set per workspace folder. It decides the load order the folder's files resolve against: the folder first, then that game's installs (`#bigfs.baseGameFolder#`, `#bigfs.underlyingGameFolder#` or install folders of the workspace). Install folders are told by their marker files (`lotrbfme2ep1.exe` = ROTWK, `lotrbfme2.exe` = BFME II) and ignore this setting: a BFME II install resolves against itself alone, a ROTWK install against itself, then BFME II. Other workspace folders never affect a folder's load order."
-        },
-        "bigfs.game.executable": {
-          "type": "string",
-          "default": "",
-          "scope": "machine",
-          "markdownDescription": "The game program **BIG: Launch Game with Mod** starts, such as `lotrbfme2ep1.exe` for The Rise of the Witch-king or `lotrbfme2.exe` for BFME II. Asked for on first use."
-        },
-        "bigfs.game.arguments": {
-          "type": "array",
-          "items": {
-            "type": "string"
+    "configuration": [
+      {
+        "title": "Game and installs",
+        "order": 1,
+        "properties": {
+          "bigfs.baseGameFolder": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "markdownDescription": "Install folder of the unmodded game, the lowest layer of the game view: a mod-only or ROTWK-only workspace resolves the base files from it, and **bigFS: Compare with Base Game** compares against it. Asked for on first use. Each workspace folder resolves against its own game's installs, told by their marker files (`lotrbfme2ep1.exe` = ROTWK, `lotrbfme2.exe` = BFME II) or, for a mod folder, by `#bigfs.folderGame#`: a BFME II folder never sees ROTWK files.",
+            "order": 1
           },
-          "default": [],
-          "markdownDescription": "Extra arguments passed before `-mod`, such as `-win` or `-noshellmap`."
-        },
-        "bigfs.ini.checkStrings": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "on",
-            "off"
-          ],
-          "enumDescriptions": [
-            "Check once the string tables hold at least 1000 records, so the base game's are there",
-            "Always check, even with only a mod's own files open",
-            "Never check"
-          ],
-          "default": "auto",
-          "description": "Whether a game-text label such as OBJECT:Name that no string table defines is reported."
-        },
-        "bigfs.ffmpegPath": {
-          "type": "string",
-          "default": "",
-          "scope": "machine",
-          "markdownDescription": "FFmpeg program **Convert to VP6 Movie** reads videos with. Empty: `ffmpeg` on the PATH; without one, only WebM and Ogg videos (and image frames) can be read."
-        },
-        "bigfs.vp6.keyFrameSeconds": {
-          "type": "number",
-          "default": 2,
-          "minimum": 0,
-          "markdownDescription": "Seconds between forced key frames when **Convert to VP6 Movie** encodes; scene changes add their own. 0 makes every frame a key frame, which seeks fastest and is largest."
+          "bigfs.underlyingGameFolder": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "markdownDescription": "Install folder of the game beneath `#bigfs.baseGameFolder#`, such as BFME II when that is ROTWK, which keeps only what it adds. On Windows, empty finds BFME II from the registry as the game does.",
+            "order": 2
+          },
+          "bigfs.folderGame": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "bfme2",
+              "rotwk"
+            ],
+            "enumDescriptions": [
+              "ROTWK when a ROTWK install is open or named by the settings, otherwise BFME II.",
+              "A BFME II mod: its files resolve against this folder, then BFME II.",
+              "A ROTWK mod: its files resolve against this folder, then ROTWK, then BFME II."
+            ],
+            "default": "auto",
+            "scope": "resource",
+            "markdownDescription": "Which game a mod folder is for, set per workspace folder. It decides the load order the folder's files resolve against: the folder first, then that game's installs (`#bigfs.baseGameFolder#`, `#bigfs.underlyingGameFolder#` or install folders of the workspace). Install folders are told by their marker files (`lotrbfme2ep1.exe` = ROTWK, `lotrbfme2.exe` = BFME II) and ignore this setting: a BFME II install resolves against itself alone, a ROTWK install against itself, then BFME II. Other workspace folders never affect a folder's load order.",
+            "order": 3
+          },
+          "bigfs.language": {
+            "type": "string",
+            "default": "auto",
+            "markdownDescription": "The language the game's text is shown in: the `lang/<Language>.big` archive whose string table labels resolve against, such as `English`. `auto` uses the only language installed, and otherwise asks once and remembers the answer for the workspace.",
+            "order": 4
+          },
+          "bigfs.game.executable": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "markdownDescription": "The game program **bigFS: Launch Game with Mod** starts, such as `lotrbfme2ep1.exe` for The Rise of the Witch-king or `lotrbfme2.exe` for BFME II. Asked for on first use.",
+            "order": 5
+          },
+          "bigfs.game.arguments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "markdownDescription": "Extra arguments passed before `-mod`, such as `-win` or `-noshellmap`.",
+            "order": 6
+          }
+        }
+      },
+      {
+        "title": "Archives",
+        "order": 2,
+        "properties": {
+          "bigfs.explorer.view": {
+            "type": "string",
+            "enum": [
+              "archives",
+              "game"
+            ],
+            "enumDescriptions": [
+              "Every archive with all of its files",
+              "Only the file the game loads at each path, layered by the engine's archive order: loose files before archives, archives sorted by path with the first winning, workspace folders in order with the first winning"
+            ],
+            "default": "archives",
+            "description": "What the BIG Archives view shows.",
+            "order": 1
+          },
+          "bigfs.protectGameArchives": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Keep the archives that came with the game read-only, so looking around an install opened in the workspace changes nothing by accident: in a BFME II or ROTWK install folder, the retail archives at its root (`INI.big`, `W3D.big`, ...) and every archive in its `apt` and `lang` folders. Your own archives beside them stay writable. An install outside the workspace is read-only whatever this says.",
+            "order": 2
+          }
+        }
+      },
+      {
+        "title": "INI",
+        "order": 3,
+        "properties": {
+          "bigfs.ini.game": {
+            "type": "string",
+            "enum": [
+              "rotwk",
+              "bfme2",
+              "bfme1"
+            ],
+            "enumDescriptions": [
+              "The Rise of the Witch-king",
+              "The Battle for Middle-earth II",
+              "The Battle for Middle-earth: structure only, since no grammar of its own is available; field names are not checked"
+            ],
+            "default": "rotwk",
+            "description": "The game whose INI grammar checks, completion and hovers follow. The two differ in a few dozen field names.",
+            "order": 1
+          },
+          "bigfs.ini.checkReferences": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "on",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Check references into a kind of definition once the workspace holds at least 50 of them, so the base game's files are there",
+              "Always check references, even with only a mod's own files open",
+              "Never check references"
+            ],
+            "default": "auto",
+            "description": "Whether a value naming a Weapon, Upgrade, FXList or other definition that nothing in the workspace defines is reported.",
+            "order": 2
+          },
+          "bigfs.ini.checkAssets": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "on",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Check once a base game folder is set (bigfs.baseGameFolder) and the archives and folders hold its models, so a missing name is a mistake; without one the check stays off and says so once",
+              "Always check, even with only a mod's own files open",
+              "Never check"
+            ],
+            "default": "auto",
+            "description": "Whether a model, animation, texture or sound an INI file names, which no archive or folder holds, is reported.",
+            "order": 3
+          },
+          "bigfs.ini.checkStrings": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "on",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Check once the string tables hold at least 1000 records, so the base game's are there",
+              "Always check, even with only a mod's own files open",
+              "Never check"
+            ],
+            "default": "auto",
+            "description": "Whether a game-text label such as OBJECT:Name that no string table defines is reported.",
+            "order": 4
+          }
+        }
+      },
+      {
+        "title": "Media tools",
+        "order": 4,
+        "properties": {
+          "bigfs.ffmpegPath": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "markdownDescription": "FFmpeg program **Convert to VP6 Movie** reads videos with. Empty: `ffmpeg` on the PATH; without one, only WebM and Ogg videos (and image frames) can be read.",
+            "order": 1
+          },
+          "bigfs.vp6.keyFrameSeconds": {
+            "type": "number",
+            "default": 2,
+            "minimum": 0,
+            "markdownDescription": "Seconds between forced key frames when **Convert to VP6 Movie** encodes; scene changes add their own. 0 makes every frame a key frame, which seeks fastest and is largest.",
+            "order": 2
+          }
         }
       }
-    },
+    ],
     "customEditors": [
       {
         "viewType": "bigfs.preview",
@@ -1163,7 +1333,7 @@
     "check-types": "tsc --noEmit && tsc --noEmit -p src/webview",
     "watch:esbuild": "node esbuild.mjs --watch",
     "watch:tsc": "tsc --noEmit --watch --preserveWatchOutput --project tsconfig.json",
-    "compile-tests": "tsc -p ./ --outDir out",
+    "compile-tests": "tsc -p ./ --outDir out --noCheck",
     "lint": "eslint src",
     "pretest": "npm run compile && npm run lint",
     "test": "npm run test:unit",

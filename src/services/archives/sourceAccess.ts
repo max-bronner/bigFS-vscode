@@ -19,6 +19,17 @@ export class ReadOnlySourceError extends Error {
   }
 }
 
+export class ProtectedArchiveError extends Error {
+  constructor(name: string) {
+    super(
+      `${name} came with the game, and bigFS keeps the game's own archives read-only ` +
+        `so that looking around changes nothing by accident. Put your change in your mod's archive, ` +
+        `or turn off the bigfs.protectGameArchives setting.`,
+    );
+    this.name = 'ProtectedArchiveError';
+  }
+}
+
 export const isReadOnlySource = (source: WritableSource): boolean =>
   source.external;
 

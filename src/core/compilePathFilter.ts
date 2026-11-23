@@ -74,12 +74,14 @@ export const compilePathFilter = (
   const included = compileList(include);
   const excluded = compileList(exclude);
 
-  return (entryPath, archiveName) => {
-    const paths = [entryPath, `${archiveName}/${entryPath}`];
+  if (!included && !excluded) {
+    return () => true;
+  }
 
-    return (
-      (!included || paths.some((path) => included.test(path))) &&
-      !(excluded && paths.some((path) => excluded.test(path)))
-    );
-  };
+  const isMatch = (list: RegExp, entryPath: string, archiveName: string): boolean =>
+    list.test(entryPath) || list.test(`${archiveName}/${entryPath}`);
+
+  return (entryPath, archiveName) =>
+    (!included || isMatch(included, entryPath, archiveName)) &&
+    !(excluded && isMatch(excluded, entryPath, archiveName));
 };

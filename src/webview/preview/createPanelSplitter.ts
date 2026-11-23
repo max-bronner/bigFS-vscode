@@ -19,7 +19,7 @@ export const createPanelSplitter = (
     panel.style.width = `${Math.min(Math.max(MIN_WIDTH, width), widest)}px`;
   };
 
-  bar.title = 'Drag to resize the references';
+  bar.title = 'Drag to resize the list of what uses this texture';
   bar.onpointerdown = (down) => {
     bar.setPointerCapture(down.pointerId);
     bar.onpointermove = (move) => {

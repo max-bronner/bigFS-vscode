@@ -4,15 +4,9 @@ import { join } from 'path';
 import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
 import { findSageIniProblems } from '../../formats/ini/sageIniProblems';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+const schema = loadSageIniSchema();
 
 const problemsOf = (lines: string[], isFragment = false): string[] =>
   findSageIniProblems(parseSageIni(lines, schema, { isFragment }), schema).map(

@@ -9,55 +9,24 @@ import {
 } from '../../core/entryName';
 
 suite('Entry names', () => {
-  test('accepts ordinary names, any casing, and Latin-1 letters', () => {
-    for (const name of ['a.ini', 'Data', 'My Mod.ini', 'a.b.c', 'café.tga', '.hidden']) {
+  test('accepts ordinary names, any casing, Latin-1 letters and names that only start like a device', () => {
+    for (const name of ['a.ini', 'Data', 'My Mod.ini', 'a.b.c', 'café.tga', '.hidden', 'console.ini', 'com10']) {
       assert.strictEqual(validateEntryName(name), undefined, name);
     }
   });
 
-  test('refuses empty and whitespace-only names', () => {
-    assert.ok(validateEntryName(''));
-    assert.ok(validateEntryName('   '));
-    assert.ok(validateEntryName('\t'));
-  });
+  test('refuses names Windows or the entry table cannot hold', () => {
+    const refused = [
+      ...['', '   ', '\t', '.', '..', 'a.', ' a.ini', 'a.ini '],
+      ...['a/b', 'a\\b', '/a'],
+      ...[...'<>:"|?*\u0001'].map((char) => `a${char}b`),
+      ...['CON', 'nul', 'Aux.txt', 'com1', 'LPT9.ini', 'prn.big'],
+      ...['€.ini', '日本.ini', 'a\u0085b', 'a\u{1f600}'],
+    ];
 
-  test('refuses dot names and names that end in a dot', () => {
-    assert.ok(validateEntryName('.'));
-    assert.ok(validateEntryName('..'));
-    assert.ok(validateEntryName('a.'));
-  });
-
-  test('refuses leading and trailing spaces', () => {
-    assert.ok(validateEntryName(' a.ini'));
-    assert.ok(validateEntryName('a.ini '));
-  });
-
-  test('refuses both separators', () => {
-    assert.ok(validateEntryName('a/b'));
-    assert.ok(validateEntryName('a\\b'));
-    assert.ok(validateEntryName('/a'));
-  });
-
-  test('refuses characters Windows forbids', () => {
-    for (const char of '<>:"|?*\u0001') {
-      assert.ok(validateEntryName(`a${char}b`), JSON.stringify(char));
+    for (const name of refused) {
+      assert.ok(validateEntryName(name), JSON.stringify(name));
     }
-  });
-
-  test('refuses Windows device names with or without an extension', () => {
-    for (const name of ['CON', 'nul', 'Aux.txt', 'com1', 'LPT9.ini', 'prn.big']) {
-      assert.ok(validateEntryName(name), name);
-    }
-
-    assert.strictEqual(validateEntryName('console.ini'), undefined);
-    assert.strictEqual(validateEntryName('com10'), undefined);
-  });
-
-  test('refuses characters the entry table cannot store', () => {
-    assert.ok(validateEntryName('€.ini'));
-    assert.ok(validateEntryName('日本.ini'));
-    assert.ok(validateEntryName('a\u0085b'));
-    assert.ok(validateEntryName('a\u{1f600}'));
   });
 
   test('checks every segment of a path and both separators', () => {
@@ -98,42 +67,33 @@ suite('Path clashes', () => {
     ]);
   });
 
-  test('reports a file and a folder claiming one path, in either order', () => {
-    assert.strictEqual(findPathClashes(['a', 'a/b.ini']).length, 1);
-    assert.strictEqual(findPathClashes(['a/b.ini', 'a']).length, 1);
-    assert.strictEqual(findPathClashes(['A', 'a/b.ini']).length, 1);
-  });
-
-  test('reports a path that needs an existing file as a folder, but not one that replaces it', () => {
+  test('reports a file and a folder claiming one path, among the paths added or against an existing file', () => {
+    for (const paths of [['a', 'a/b.ini'], ['a/b.ini', 'a'], ['A', 'a/b.ini']]) {
+      assert.strictEqual(findPathClashes(paths).length, 1, paths.join(' '));
+    }
     assert.strictEqual(findPathClashes(['a/b.ini'], ['A']).length, 1);
     assert.deepStrictEqual(findPathClashes(['a'], ['a']), []);
-  });
-
-  test('leaves siblings and cousins alone', () => {
-    assert.deepStrictEqual(
-      findPathClashes(['a/b.ini', 'a/c.ini', 'ab/b.ini', 'a/d/e.ini']),
-      [],
-    );
+    assert.deepStrictEqual(findPathClashes(['a/b.ini', 'a/c.ini', 'ab/b.ini', 'a/d/e.ini']), []);
   });
 });
 
 suite('Move refusals', () => {
-  test('refuses a move onto itself or into its own child', () => {
-    assert.strictEqual(getMoveRefusal('a/b', 'a/b'), 'itself');
-    assert.strictEqual(getMoveRefusal('a/b', 'A/B'), 'itself');
-    assert.strictEqual(getMoveRefusal('a/b', 'a/b/c'), 'inside');
-    assert.strictEqual(getMoveRefusal('a', 'a/b/c'), 'inside');
-  });
+  test('refuses a move onto itself, into its own child or into the folder it is in', () => {
+    const refusals: [string, string, string | undefined][] = [
+      ['a/b', 'a/b', 'itself'],
+      ['a/b', 'A/B', 'itself'],
+      ['a/b', 'a/b/c', 'inside'],
+      ['a', 'a/b/c', 'inside'],
+      ['a/b.ini', 'a', 'sameFolder'],
+      ['b.ini', '', 'sameFolder'],
+      ['a', '', 'sameFolder'],
+      ['a/b.ini', '', undefined],
+      ['a', 'ab', undefined],
+      ['a/b', 'c', undefined],
+    ];
 
-  test('refuses a move into the folder the entry is already in', () => {
-    assert.strictEqual(getMoveRefusal('a/b.ini', 'a'), 'sameFolder');
-    assert.strictEqual(getMoveRefusal('b.ini', ''), 'sameFolder');
-  });
-
-  test('allows a move elsewhere, and into a folder that merely shares a prefix', () => {
-    assert.strictEqual(getMoveRefusal('a/b.ini', ''), undefined);
-    assert.strictEqual(getMoveRefusal('a', 'ab'), undefined);
-    assert.strictEqual(getMoveRefusal('a', ''), 'sameFolder');
-    assert.strictEqual(getMoveRefusal('a/b', 'c'), undefined);
+    for (const [from, into, refusal] of refusals) {
+      assert.strictEqual(getMoveRefusal(from, into), refusal, `${from} into ${into}`);
+    }
   });
 });

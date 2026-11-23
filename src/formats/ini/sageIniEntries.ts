@@ -1,4 +1,4 @@
-import { findAssetReferences } from './sageIniAssets';
+import { findAssetReferences, getSoundUseName } from './sageIniAssets';
 import { findReferencedNames } from './sageAudioValues';
 import { getDeclaration } from './sageIniNames';
 import { CONSTANT_NAME } from './sageReferenceFields';
@@ -160,27 +160,14 @@ export const collectEntries = (
   }
 
   for (const asset of findAssetReferences(parsed)) {
-    if (asset.kind === 'model' || asset.kind === 'animation') {
-      for (const candidate of asset.candidates) {
-        entries.references.push({
-          namespace: FILE_USES,
-          name: candidate,
-          line: asset.line,
-          start: asset.start,
-          end: asset.end,
-          field: asset.kind,
-        });
-      }
-    } else if (asset.kind === 'texture') {
-      entries.references.push({
-        namespace: FILE_USES,
-        name: asset.candidates[0],
-        line: asset.line,
-        start: asset.start,
-        end: asset.end,
-        field: asset.kind,
-      });
-    }
+    entries.references.push({
+      namespace: FILE_USES,
+      name: asset.kind === 'sound' ? getSoundUseName(asset) : asset.candidates[0],
+      line: asset.line,
+      start: asset.start,
+      end: asset.end,
+      field: asset.kind,
+    });
   }
 
   return entries;

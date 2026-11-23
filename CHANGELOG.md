@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.3.0
+
+### New
+
+- **Appearance** in the object preview: snow, levels, upgrades, faction, random skins, damage, construction, build variations and other forms, each switched as the game does, with model, textures, parts, house colour, effects and animation following. Composed parts and the upgrades or levels that add them tick each other, and **Reset look** goes back to the object as created.
+- **Abilities and effects** in the object preview lists everything an object can play: its abilities by button label, the improvements it sells, its weapons, level-ups and what it plays when damaged or dying. **▶** plays an entry once on the model with the unit's own animation, each effect at the time the INI gives it.
+- The object preview's composition groups parts of one kind into a row that unfolds to a checkbox per part and per sub-object. A group whose parts have states of their own gets a **State** list, a siege crew follows its engine's state, and what `GrantUpgradeCreate`, `OCLUpdate` and `SpawnBehavior` place is drawn, so trebuchet towers carry their trebuchet and Mallorn trees their archer.
+- **Shadows** in the object and FX previews draws a ground with the game's cast shadows and shadow textures, in a ground colour you choose.
+- The wheels of porters, siege engines and Grond turn in their moving states.
+- **Detail** switches a model to the game's medium and low models, and **Parts** shows and hides each mesh, with Show all and Hide all.
+- **Textures** draws a model in one plain colour, and **House colour** picks a player colour, none or a custom one.
+- A `.w3d` preview opens on **Used in**, the INI lines that name the model, each with **▶ Preview object**; **Related files** and **Texture sets** list the models, animations and skins that go with it.
+- A sound's preview lists the audio events, music tracks and streams that play it, and shows a waveform you click to move the playhead.
+- A cursor's preview saves any of its images as PNG.
+- The **Converters** view brings the image, cursor, VP6 and string table converters together.
+- **Search in Archives** searches file names too, from the archives' index tables, with the same filters.
+- The archive tree follows the active editor, as VS Code's Explorer does (`explorer.autoReveal`).
+- In a BFME II or ROTWK install opened in the workspace, the archives that came with the game are read-only (`bigfs.protectGameArchives`).
+- Lists of INI uses (a texture's **Used by**, a model's or sound's **Used in**) show the archive each line comes from.
+
+### Changed
+
+- The 3D viewer has one bar: playback, the animation list, the time slider, speed, **Bones**, **Shadows** and **Move**. **⚙** opens a second row with the settings used less often, and controls a page cannot use are hidden instead of greyed.
+- The object preview's panel starts with the object's name, kind, file, **Go to definition** and chips for what differs from the object as created, then folds Appearance, states, effects, abilities, composition, voices and parts into sections. States are grouped by purpose and searchable, the same effect on several bones is one row, voices are grouped by when they play, and labels are shorter.
+- **Move** (or Shift+drag) moves the model or emitter over the ground in place of the Emitter motion list; the Readings switches are gone.
+- The object preview loads the looks one press away ahead of time, composes large objects several times faster and shows changed model and texture files by itself.
+- The FX preview keeps **Apply to INI** and **Reset** at the top of its panel with the number of values changed.
+- A texture's **Used by** panel also lists the INI lines that name the texture outside `MappedImage` blocks, such as particle systems.
+- The asset sync panel groups its rows by archive and keeps Apply in view.
+- Rows that group others open by their arrow, as in a VS Code tree; their checkbox or name switches every member.
+- The archive tree's menu has one submenu per file kind (Texture, Cursor, Movie, String Table, APT Movie, Model), also in VS Code's Explorer; the mod-wide tasks moved into the tree's **…** menu, and the INI editor's items into one **bigFS** submenu.
+- Every command is listed under **bigFS:** in the Command Palette, and the settings show in four groups. Command ids, keybindings and setting keys are unchanged.
+- **Search in Archives** answers a file name search within milliseconds, runs contents searches up to three times faster, and folds its filters under a **…** toggle.
+- The APT editor is laid out like VS Code: an **Inspect | Interact** switch, an **Overlays** menu, **Frames**, **Motion** and **Placement** menus on the timeline, and Character, Inspector and Engine tabs. A movie plays from frame 0 as it opens, and the toolbar's choices carry over to the next movie.
+- **Convert to Game Texture…** and the image converter offer only what the games use: TGA 24 and 32-bit, DDS DXT1 and DXT5.
+
+### Fixed
+
+- A state picked in the object preview and Appearance work together: the state's look shows in Appearance, a look switched afterwards keeps the state's animation, and a mounted hero's states on foot play without the horse.
+- Textures stored as a JPEG with a PNG alpha are drawn, so Shadowfax wears his coat and house colour keeps the cloth's shading.
+- Composed parts hide and show their sub-objects as the game does (Grond's trolls without trunks, the mumak's howdah), parts added by upgrades wait for their upgrade, and troops whose levels name a macro show their levels.
+- An object preview opens on the object's idle, an expansion in the build variation its plots give it, and keeps what you picked through an INI edit.
+- Nothing in the 3D previews switches back on by itself, and the viewer's keys keep working after a checkbox is clicked.
+- Flames and glows built to face the camera do so in every 3D preview.
+- The object preview's voice buttons play, and a sound played from an INI lens or hover opens the Sound panel ready to play with Enter.
+- The archive tree's menu shows file actions by the row's own kind instead of the file open in the editor, and no longer offers writing actions on read-only rows.
+
 ## 0.2.3
 
 - Fix: after the game language changes, hotkey clash warnings on CommandSets are checked again in the new language, and the `$KEY` text of APT movies a script loaded follows the new language too instead of keeping the old one.

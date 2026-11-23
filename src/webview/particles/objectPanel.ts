@@ -1,48 +1,72 @@
 import type { Vec3 } from '../../formats/w3d/w3dPose';
 import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
-import { findHidingSources } from '../../formats/w3d/w3dScene';
 import type { SceneSkeleton } from '../../formats/w3d/w3dScene';
+import {
+  findIdleState,
+  findOpeningAnimation,
+  readStateConditions,
+} from '../../game/objects/objectScene';
 import type {
   ObjectScene,
   SceneFocus,
   SceneState,
 } from '../../game/objects/objectScene';
+import { listConditionalSubObjects } from '../../game/objects/subObjectRules';
 import {
-  listConditionalSubObjects,
-  listSubObjectRules,
-} from '../../game/objects/subObjectRules';
-import { createSoundButton } from '../shared/createSoundButton';
-import { setShownDraw } from './composedParts';
-import { $, post, viewer } from './page';
-
-export interface Effect {
-  kind: 'fxList' | 'system';
-  name: string;
-  bone?: string;
-}
-
-interface Element extends Effect {
-  label: string;
-  on: boolean;
-}
+  findBodyDraw,
+  isBodyShown,
+  listWornRules,
+  pickDrawShadow,
+  pickPlayingClip,
+  pickPlayingState,
+} from '../../game/objects/drawStates';
+import { listSubObjectSwitches } from '../../game/objects/partBindings';
+import { findStandingState, pickShownModelState } from '../../game/objects/statePicks';
+import { isSubObjectNamed } from '../../formats/w3d/w3dScene';
+import { listHeldConditions, listTextureLayers } from '../../game/objects/objectAppearance';
+import { listStateEffects } from '../../game/objects/listStateEffects';
+import {
+  changeBoundAppearance,
+  followAppearance,
+  getAppearance,
+  isFollowingAppearance,
+  listChangedLooks,
+  pickStateLook,
+  showAppearance,
+} from './appearancePanel';
+import { describeState } from '../../game/objects/groupStates';
+import { showLookChips } from './lookChips';
+import { showObjectHeader } from './objectHeader';
+import type { ObjectDefinitionPlace } from './protocol';
+import { listOwnChanges, listSwitchChanges } from './boundSwitches';
+import { createClipRequests } from './createClipRequests';
+import { findRedrawnState } from './findRedrawnState';
+import { holdParts, setShownDraw } from './composedParts';
+import { showMainModel } from './mainModel';
+import { findClip, receiveClip } from './modelStore';
+import { setMainShadow } from './shadowsView';
+import { setMovement } from './turningWheels';
+import { getDetail, offerDetail, onDetailPicked } from './detailLevel';
+import type { EventClip } from './clipEvents';
+import { showEffects } from './effectsPanel';
+import { showStates } from './statePicker';
+import { showVoices } from './voicesPanel';
+import { $, onClipPicked, post, viewer } from './page';
 
 export const objectView = {
   scene: undefined as ObjectScene | undefined,
   state: undefined as SceneState | undefined,
-  elements: [] as Element[],
+  picked: undefined as SceneState | undefined,
+  actions: [] as string[],
+  playing: undefined as SceneState | undefined,
+  worn: undefined as SceneState | undefined,
+  standing: undefined as string | undefined,
+  clip: undefined as string | undefined,
+  clipTiming: undefined as EventClip | undefined,
 };
-
-const element = <K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  properties: Partial<HTMLElementTagNameMap[K]> = {},
-): HTMLElementTagNameMap[K] =>
-  Object.assign(document.createElement(tag), properties);
 
 const isSameName = (a: string | undefined, b: string | undefined) =>
   a?.toLowerCase() === b?.toLowerCase();
-
-export const listEnabledEffects = (): Effect[] =>
-  objectView.elements.filter((each) => each.on);
 
 export const getBonePosition = (name: string | undefined): Vec3 => {
   const skeleton = viewer.getModel()?.skeleton;
@@ -56,24 +80,22 @@ export const getBonePosition = (name: string | undefined): Vec3 => {
 
 const renderHiddenParts = () => {
   const { scene, state } = objectView;
-  const model = viewer.getModel();
-  const meshes = model?.meshes ?? [];
-  const hiding = findHidingSources(
-    meshes,
-    scene ? listSubObjectRules(scene, state) : [],
-    model?.skeleton?.parents,
-  );
-  const hidden = meshes.flatMap((mesh, at) =>
-    hiding[at] ? [`${mesh.name} (${hiding[at]})`] : [],
-  );
   const conditional = scene ? listConditionalSubObjects(scene, state) : [];
 
-  $('objectParts').textContent = [
-    ...(hidden.length ? [`Hidden parts: ${hidden.join(', ')}`] : []),
-    ...(conditional.length
-      ? [`Not applied, depends on the running game: ${conditional.join(', ')}`]
+  $('objectParts').textContent = conditional.length
+    ? `Parts left as they are, for the running game decides: ${conditional.join(', ')}`
+    : '';
+};
+
+const refreshLookChips = () => {
+  const { picked } = objectView;
+
+  showLookChips([
+    ...listChangedLooks(),
+    ...(picked
+      ? [{ title: 'State', value: describeState(picked), fold: $<HTMLDetailsElement>('objectStatesSection') }]
       : []),
-  ].join('. ');
+  ]);
 };
 
 export const refreshShownModel = (): void => {
@@ -81,11 +103,12 @@ export const refreshShownModel = (): void => {
   viewer.restart();
 };
 
-export const setLoadedAnimation = (
+const setLoadedAnimation = (
   name: string,
   animation: W3dAnimation | undefined,
   skeleton?: SceneSkeleton,
 ): void => {
+  objectView.clipTiming = animation;
   if (animation) {
     viewer.playClip({ id: name, animation, skeleton });
   } else {
@@ -93,158 +116,301 @@ export const setLoadedAnimation = (
   }
 };
 
+const clipRequests = createClipRequests((name) => post({ kind: 'loadAnimation', name }));
+const clipListeners: (() => void)[] = [];
+
+export const onPanelClip = (listener: () => void): void => {
+  clipListeners.push(listener);
+};
+
 const playAnimation = (name: string | undefined) => {
-  if (name) {
-    post({ kind: 'loadAnimation', name });
-  } else {
+  clipListeners.forEach((listener) => listener());
+  objectView.clip = name;
+  objectView.clipTiming = undefined;
+  if (!name) {
     viewer.clearClip();
+    return;
+  }
+
+  const loaded = findClip(name);
+
+  if (loaded !== undefined) {
+    setLoadedAnimation(name, loaded?.animation, loaded?.skeleton);
+  } else {
+    clipRequests.ask(name);
   }
 };
 
-const listElements = (
-  scene: ObjectScene,
-  state: SceneState | undefined,
-  focus: SceneFocus,
-): Element[] => {
-  const carrier =
-    state?.kind === 'animation'
-      ? scene.states.find(
-          (each) =>
-            each.kind === 'model' &&
-            each.draw === state.draw &&
-            isSameName(each.model, state.model),
-        )
-      : undefined;
-  const own: Element[] = [
-    ...[...(carrier?.particles ?? []), ...(state?.particles ?? [])].map((each): Element => ({
-      kind: 'system',
-      name: each.system,
-      bone: each.bone,
-      label: `${each.system} on ${each.bone}`,
-      on: !focus.system || isSameName(focus.system, each.system),
-    })),
-    ...(state?.fx ?? []).map((name): Element => ({
-      kind: 'fxList',
-      name,
-      label: `${name} (entering the state)`,
-      on: !focus.fx || isSameName(focus.fx, name),
-    })),
-  ];
-  const others = scene.fx
-    .filter((each) => !own.some((mine) => isSameName(mine.name, each.name)))
-    .map((each): Element => ({
-      kind: 'fxList',
-      name: each.name,
-      label: `${each.name} (${each.field})`,
-      on: isSameName(focus.fx, each.name),
-    }));
+export const replayShownClip = (): void => playAnimation(objectView.clip);
 
-  return [...own, ...others];
+export const receiveAnimation = (
+  name: string,
+  animation: W3dAnimation | undefined,
+  skeleton: SceneSkeleton | undefined,
+): void => {
+  receiveClip(name, animation, skeleton);
+  if (clipRequests.receive(name, objectView.clip)) {
+    setLoadedAnimation(name, animation, skeleton);
+  }
 };
 
-const renderElements = () => {
-  const list = $('objectElements');
-  const toggle = (
-    label: string,
-    checked: boolean,
-    change: (on: boolean) => void,
-  ) => {
-    const box = element('input', { type: 'checkbox', checked });
-    const row = element('label');
+export const listShownConditions = (scene: ObjectScene): string[] => [
+  ...new Set([...listHeldConditions(scene, getAppearance()), ...objectView.actions]),
+];
 
-    box.onchange = () => change(box.checked);
-    const line = element('div', { className: 'row' });
+const listEffects = (focus: SceneFocus = {}) => {
+  const { scene, worn, playing } = objectView;
 
-    row.append(box, ` ${label}`);
-    line.append(row);
-    return line;
+  if (scene) {
+    const held = listShownConditions(scene);
+
+    showEffects(listStateEffects(scene, worn, playing, held), focus);
+    setMovement(scene, worn?.draw, [...held, ...(playing ? readStateConditions(playing) : [])]);
+    viewer.restart();
+  }
+};
+
+const hasModel = (state: SceneState | undefined) =>
+  !!state?.model && !/^none$/i.test(state.model);
+
+const resolveShown = (scene: ObjectScene, picked: SceneState | undefined) => {
+  const bodyDraw = picked?.draw ?? findBodyDraw(scene);
+  const body =
+    scene.states.find(
+      (each) => each.draw === bodyDraw && each.kind === 'model' && hasModel(each),
+    ) ??
+    picked ??
+    scene.states[0];
+
+  if (!body) {
+    return {};
+  }
+
+  const held = listShownConditions(scene);
+  const worn = pickShownModelState(scene, body.draw, held) ?? body;
+
+  return {
+    shown: picked?.kind === 'animation' ? { ...picked, model: worn.model } : worn,
+    worn,
+    held,
   };
-
-  list.replaceChildren(
-    ...objectView.elements.map((each) =>
-      toggle(each.label, each.on, (on) => {
-        each.on = on;
-        viewer.restart();
-      }),
-    ),
-  );
 };
 
-const renderVoices = (scene: ObjectScene) => {
-  const list = $('objectVoices');
+const showLook = (scene: ObjectScene) => {
+  const { picked } = objectView;
+  const { shown, worn, held = [] } = resolveShown(scene, picked);
+  const choice = getAppearance();
+  const playing =
+    picked?.kind === 'animation' ? picked : shown && pickPlayingState(scene, shown.draw, held);
 
-  list.hidden = !scene.voices.length;
-  list.replaceChildren(
-    ...(scene.voices.length
-      ? [element('div', { className: 'muted', textContent: 'Voices' })]
-      : []),
-    ...scene.voices.map((voice) => {
-      const play = createSoundButton(voice.name, post);
-      const line = element('div', { className: 'row' });
-
-      line.append(play, ` ${voice.field} = ${voice.name}`);
-      return line;
-    }),
+  objectView.state = shown;
+  objectView.worn = worn;
+  setShownDraw(shown?.draw);
+  objectView.standing = shown && pickPlayingClip(scene, shown.draw, held);
+  viewer.setSubObjectRules(
+    listWornRules(scene, worn, playing, held, choice.upgrades),
+    !isFollowingAppearance(),
   );
+  const hasDetailModels = !!shown && !!scene.detailDraws?.includes(shown.draw);
+
+  offerDetail('mainHas', hasDetailModels);
+  const isOn =
+    !!picked || !shown || isBodyShown(scene, shown.draw, held, choice.upgrades);
+
+  setMainShadow(
+    shown && isOn ? pickDrawShadow(scene, shown.draw, worn) : undefined,
+    scene.sun,
+  );
+  if (shown && isOn && hasModel(shown)) {
+    showMainModel({
+      name: shown.model!,
+      textures: listTextureLayers(scene, shown.draw, worn, choice),
+      detail: getDetail(hasDetailModels),
+    });
+  } else {
+    showMainModel(undefined);
+  }
+  return shown;
+};
+
+const postShownState = (state: number | undefined) =>
+  post({ kind: 'showState', state, conditions: objectView.actions });
+
+const changeAppearance = () => {
+  const scene = objectView.scene!;
+  const { picked, state: before, standing, actions } = objectView;
+  const choice = getAppearance();
+  const held = listShownConditions(scene);
+
+  post({ kind: 'setAppearance', choice });
+  if (picked) {
+    const next = findStandingState(scene, picked, held, actions);
+    const at = next ? scene.states.indexOf(next) : undefined;
+
+    if (next !== picked && at !== -1) {
+      showStates(scene, at, pickByHand);
+      pickState({ state: at });
+      return;
+    }
+  }
+
+  const shown = showLook(scene);
+
+  if (
+    !picked &&
+    shown &&
+    (!isSameName(shown.model, before?.model) || !isSameName(objectView.standing, standing))
+  ) {
+    const state = pickPlayingState(scene, shown.draw, held);
+    const clip = objectView.standing;
+
+    objectView.playing = state;
+    viewer.showClipChoice(clip);
+    playAnimation(clip);
+  }
+  listEffects();
+  renderHiddenParts();
+  refreshLookChips();
 };
 
 const pickState = (focus: SceneFocus) => {
   const scene = objectView.scene!;
   const state =
     focus.state === undefined ? undefined : scene.states[focus.state];
-  const shown =
-    state ??
-    scene.states.find((each) => each.kind === 'model' && each.model) ??
-    scene.states[0];
   const choices = state
     ? state.animations
     : scene.states.flatMap((each) => each.animations);
+  objectView.picked = state;
+  objectView.actions = [];
+  if (state) {
+    const { actions, isChanged } = pickStateLook(state);
+
+    objectView.actions = actions;
+    if (isChanged) {
+      post({ kind: 'setAppearance', choice: getAppearance() });
+    }
+  }
+  postShownState(focus.state);
+
+  const shown = showLook(scene);
+  const choice = getAppearance();
+  const isChanged = !!(choice.upgrades?.length || choice.conditions?.length || choice.isSnowy);
   const first =
     focus.animation ??
     (state
       ? state.animations[0]
-      : scene.states.find((each) => /idle/i.test(each.label))?.animations[0]);
+      : isChanged
+        ? objectView.standing
+        : findOpeningAnimation(scene, shown?.draw));
 
-  objectView.state = shown;
-  setShownDraw(shown?.draw);
-  viewer.setSubObjectRules(listSubObjectRules(scene, shown));
-  objectView.elements = listElements(scene, state ?? shown, focus);
+  const idle = shown && findIdleState(scene, shown.draw);
+  const playsFirst = (each: SceneState | undefined) =>
+    !!each?.animations.some((clip) => isSameName(clip, first));
+
+  objectView.playing =
+    state ??
+    (!first || playsFirst(idle)
+      ? idle
+      : scene.states.find((each) => each.kind === 'animation' && playsFirst(each)));
   viewer.setClips({
     own: [...new Set(choices)].map((name) => ({ id: name, label: name })),
   });
   viewer.showClipChoice(first);
-  if (shown?.model) {
-    post({ kind: 'loadModel', name: shown.model });
-  }
   playAnimation(first);
-  renderElements();
+  listEffects(focus);
   renderHiddenParts();
+  refreshLookChips();
 };
 
-export const showObject = (scene: ObjectScene, focus: SceneFocus): void => {
-  const states = $<HTMLSelectElement>('objectState');
+const pickByHand = (state: number | undefined) => {
+  followAppearance();
+  pickState({ state });
+};
 
+onClipPicked((name) => {
+  const { scene, playing } = objectView;
+
+  if (scene && !playing?.animations.some((each) => isSameName(each, name))) {
+    objectView.playing = scene.states.find(
+      (each) =>
+        each.kind === 'animation' && each.animations.some((clip) => isSameName(clip, name)),
+    );
+  }
+  playAnimation(name);
+  listEffects();
+});
+
+onDetailPicked(() => {
+  if (objectView.scene) {
+    showLook(objectView.scene);
+  }
+});
+
+viewer.onPartSwitched((mesh, on, othersShown) => {
+  const { scene } = objectView;
+
+  if (!scene) {
+    return;
+  }
+
+  const bound = listSubObjectSwitches(scene, getAppearance().upgrades);
+  const changes = listOwnChanges(
+    listSwitchChanges(bound.filter((each) => isSubObjectNamed(mesh, each.pattern)), on),
+    bound.flatMap((each) =>
+      each.hide && othersShown.some((other) => isSubObjectNamed(other, each.pattern))
+        ? [each.hide]
+        : [],
+    ),
+  );
+
+  if (changes.length) {
+    holdParts();
+    viewer.holdParts();
+  }
+  changeBoundAppearance(changes);
+});
+
+let openedFocus = '';
+
+const findRedrawnFocus = (before: ObjectScene, scene: ObjectScene, focus: SceneFocus): SceneFocus => {
+  const { picked, clip } = objectView;
+  const state = picked && findRedrawnState(before.states, picked, scene.states);
+  const clips = state === undefined
+    ? scene.states.flatMap((each) => each.animations)
+    : scene.states[state].animations;
+
+  return {
+    ...focus,
+    state,
+    animation: clips.find((each) => isSameName(each, clip)),
+  };
+};
+
+export const showObject = (
+  scene: ObjectScene,
+  focus: SceneFocus,
+  definition?: ObjectDefinitionPlace,
+): void => {
+  const before = objectView.scene;
+  const isRedrawn =
+    isSameName(before?.name, scene.name) && openedFocus === JSON.stringify(focus);
+  const shown = before && isRedrawn ? findRedrawnFocus(before, scene, focus) : focus;
+
+  openedFocus = JSON.stringify(focus);
   objectView.scene = scene;
+  $('objectLoading').hidden = true;
   $('object').hidden = false;
   $('editing').hidden = true;
   $('pickModel').hidden = true;
   $('bone').hidden = true;
-  $('title').textContent = scene.name;
-  renderVoices(scene);
-  states.replaceChildren(
-    new Option('Object', ''),
-    ...scene.states.map(
-      (each, at) =>
-        new Option(
-          `${each.label}${scene.states.some((other) => other !== each && other.draw !== each.draw) ? ` (${each.draw})` : ''}`,
-          String(at),
-        ),
-    ),
-  );
-  states.value = focus.state === undefined ? '' : String(focus.state);
-  states.onchange = () =>
-    pickState({
-      state: states.value === '' ? undefined : Number(states.value),
-    });
-  pickState(focus);
+  $('effectView').hidden = true;
+  $<HTMLInputElement>('showVolume').checked = false;
+  showObjectHeader(scene, definition);
+  showVoices(scene);
+  showAppearance(scene, changeAppearance);
+  if (getAppearance().upgrades?.length) {
+    post({ kind: 'setAppearance', choice: getAppearance() });
+  }
+  showStates(scene, shown.state, pickByHand, !isRedrawn);
+  pickState(shown);
 };

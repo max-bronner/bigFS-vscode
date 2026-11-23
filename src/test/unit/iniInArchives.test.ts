@@ -1,5 +1,4 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
@@ -21,17 +20,10 @@ import {
   chooseNewObjectEntryPath,
 } from '../../game/objects/newObject';
 import { parseSageIni } from '../../formats/ini/sageIniParser';
-import { createSageIniSchema } from '../../formats/ini/sageIniSchema';
 import { findUndefinedLabels } from '../../game/text/translations';
+import { loadSageIniSchema } from './loadSageIniSchema';
 
-const schema = createSageIniSchema(
-  JSON.parse(
-    readFileSync(
-      path.join(__dirname, '..', '..', '..', 'assets', 'sageIniSchema.json'),
-      'utf8',
-    ),
-  ),
-);
+const schema = loadSageIniSchema();
 
 suite('INI inside archives', () => {
   let directory: string;

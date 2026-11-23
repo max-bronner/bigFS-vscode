@@ -1,6 +1,7 @@
 import type { ParticleDef } from '../../formats/particles/particleDef';
 import type { Particle } from '../../formats/particles/particleSimulation';
 import type { CameraBasis } from '../shared/orbitBasis';
+import { BATCH_LIMIT } from '../../formats/particles/particleSimulation';
 import { library, viewer, world } from './page';
 
 const FLOATS = 15;
@@ -167,20 +168,35 @@ const graphics = (() => {
 export const hasGraphics = graphics !== undefined;
 
 const textures = new Map<string, WebGLTexture>();
+const loadedFrom = new Map<string, string>();
 
 export const loadTextures = (sources: Record<string, string | null>): void => {
   if (!graphics) {
     return;
   }
   for (const [name, uri] of Object.entries(sources)) {
-    if (textures.has(name) || !uri) {
+    if (!uri || loadedFrom.get(name) === uri) {
       continue;
     }
-    textures.set(name, graphics.fallbackTexture);
+    loadedFrom.set(name, uri);
+    if (!textures.has(name)) {
+      textures.set(name, graphics.fallbackTexture);
+    }
 
     const image = new Image();
 
-    image.onload = () => textures.set(name, graphics.makeTexture(image));
+    image.onload = () => {
+      if (loadedFrom.get(name) !== uri) {
+        return;
+      }
+
+      const before = textures.get(name);
+
+      textures.set(name, graphics.makeTexture(image));
+      if (before && before !== graphics.fallbackTexture) {
+        graphics.gl.deleteTexture(before);
+      }
+    };
     image.src = uri;
   }
 };
@@ -245,7 +261,6 @@ export const drawSystems = (
   matrix: Float32Array,
   basis: CameraBasis,
   blend: number,
-  colourKeys: boolean,
 ): void => {
   if (!graphics) {
     return;
@@ -318,10 +333,7 @@ export const drawSystems = (
     gl.uniform1i(uniforms.uTexture, 0);
 
     const readsAlpha = def!.shader !== 'ADDITIVE';
-    const particles = system.particles.slice(
-      0,
-      world.options.batchLimit ? 512 : undefined,
-    );
+    const particles = system.particles.slice(0, BATCH_LIMIT);
 
     drawn += particles.length;
     for (let first = 0; first < particles.length; first += CHUNK) {
@@ -345,17 +357,11 @@ export const drawSystems = (
           covered += pixels * pixels;
         }
 
-        let red = 1;
-        let green = 1;
-        let blue = 1;
-
-        if (colourKeys) {
-          red = p.previousColor[0] + (p.color[0] - p.previousColor[0]) * blend;
-          green = p.previousColor[1] + (p.color[1] - p.previousColor[1]) * blend;
-          blue = p.previousColor[2] + (p.color[2] - p.previousColor[2]) * blend;
-        }
+        const red = p.previousColor[0] + (p.color[0] - p.previousColor[0]) * blend;
+        const green = p.previousColor[1] + (p.color[1] - p.previousColor[1]) * blend;
+        const blue = p.previousColor[2] + (p.color[2] - p.previousColor[2]) * blend;
         const alpha =
-          !colourKeys || !readsAlpha
+          !readsAlpha
             ? 1
             : p.previousAlpha + (p.alpha - p.previousAlpha) * blend;
         const uv = computeFlipbookUv(def!.flipbook, p, blend);

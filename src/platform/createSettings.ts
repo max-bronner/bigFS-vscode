@@ -41,6 +41,7 @@ export const createSettings = (source: ConfigurationSource) => {
     baseGameFolder: define<string>('bigfs.baseGameFolder', ''),
     underlyingGameFolder: define<string>('bigfs.underlyingGameFolder', ''),
     folderGame: define<FolderGame>('bigfs.folderGame', 'auto'),
+    protectGameArchives: define<boolean>('bigfs.protectGameArchives', true),
     gameExecutable: define<string>('bigfs.game.executable', ''),
     gameArguments: define<string[]>('bigfs.game.arguments', []),
     ffmpegPath: define<string>('bigfs.ffmpegPath', ''),

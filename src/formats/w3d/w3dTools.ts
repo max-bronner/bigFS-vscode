@@ -1,3 +1,4 @@
+import type { W3dFacing } from "./w3dFacing";
 import type { Tool } from "../../core/toolRegistry";
 import { createView, readChunks, readFloats, readName } from "./w3dChunks";
 import { readMeshMaterials } from "./w3dMaterialChunks";
@@ -9,6 +10,7 @@ export interface W3dMesh {
   name: string;
   container: string;
   isSkin: boolean;
+  facing?: W3dFacing;
   positions: Float32Array;
   normals?: Float32Array;
   uvs?: Float32Array;
@@ -17,6 +19,7 @@ export interface W3dMesh {
   weights?: Uint16Array;
   secondPositions?: Float32Array;
   secondNormals?: Float32Array;
+  castsShadow?: boolean;
   hidden: boolean;
   texture?: string;
   alphaTest: boolean;
@@ -95,8 +98,11 @@ const CHUNK = {
 
 const GEOMETRY_TYPE_MASK = 0x00ff0000;
 const GEOMETRY_TYPE_SKIN = 0x00020000;
+const GEOMETRY_TYPE_CAMERA_ALIGNED = 0x00010000;
+const GEOMETRY_TYPE_CAMERA_ORIENTED = 0x00060000;
 const MESH_FLAG_HIDDEN = 0x00001000;
 const MESH_FLAG_TWO_SIDED = 0x00002000;
+const MESH_FLAG_CAST_SHADOW = 0x00008000;
 const MESH_HEADER_SORT_LEVEL = 56;
 const BOX_ATTRIBUTE_ORIENTED = 0x1;
 const BOX_SIZE = 68;
@@ -112,6 +118,17 @@ const padTo = (values: Float32Array | undefined, length: number) => {
 };
 
 const isPickProxy = (name: string) => name.slice(0, 4).toUpperCase() === "PICK";
+
+const readFacing = (attributes: number): W3dFacing | undefined => {
+  switch (attributes & GEOMETRY_TYPE_MASK) {
+    case GEOMETRY_TYPE_CAMERA_ORIENTED:
+      return "oriented";
+    case GEOMETRY_TYPE_CAMERA_ALIGNED:
+      return "aligned";
+    default:
+      return undefined;
+  }
+};
 
 const readMesh = (payload: Uint8Array): W3dMesh | undefined => {
   let header: Uint8Array | undefined;
@@ -202,7 +219,9 @@ const readMesh = (payload: Uint8Array): W3dMesh | undefined => {
     name,
     container: readName(header, 24, 16),
     isSkin: (attributes & GEOMETRY_TYPE_MASK) === GEOMETRY_TYPE_SKIN,
+    facing: readFacing(attributes),
     hidden: (attributes & MESH_FLAG_HIDDEN) !== 0,
+    castsShadow: (attributes & MESH_FLAG_CAST_SHADOW) !== 0 || undefined,
     positions,
     normals: normals?.length === positions.length ? normals : undefined,
     uvs: firstPass[0]?.uvs,

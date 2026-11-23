@@ -2,18 +2,30 @@ import type { W3dAnimation } from '../../formats/w3d/w3dAnimation';
 import type { ForeignClip } from '../../formats/w3d/w3dModelFinder';
 import type { SceneSkeleton } from '../../formats/w3d/w3dScene';
 import type { RelatedModel } from '../../game/objects/findRelatedModels';
+import type { TextureVariant } from '../../game/objects/objectAppearance';
 import { element } from '../shared/element';
 import { createViewer } from '../shared/viewer/createViewer';
 import type { ClipChoice } from '../shared/viewer/createClipPicker';
 import { chooseRelatedStep } from './chooseRelatedStep';
 import { createRelatedPicker } from './createRelatedPicker';
+import { createTexturePicker } from './createTexturePicker';
+import { createDetailPicker } from '../shared/viewer/createDetailPicker';
+import type { DetailLevel } from '../../game/objects/detailModels';
 import { listFileClips } from './listFileClips';
+import { listFileUses } from './listFileUses';
 import { readPageState, savePageState } from './pageState';
 import type { FileUse, FromPreviewPage, ModelMessage } from './protocol';
 
 const OWN = '#own';
 const PARTS_HINT =
-  "A .w3d alone knows only its own HIDDEN flags. The game hides more from the object's INI and scripts: use Preview object on its INI to see those.";
+  "A .w3d alone knows only its own HIDDEN flags. The game hides more from the object's INI and scripts: use ▶ Preview object under Used in to see those.";
+const OBJECT_DEFINITION = /^(Object|ChildObject|ObjectReskin)\s/i;
+
+type SectionKey = 'uses' | 'related' | 'textures';
+
+const setSectionTitle = (section: HTMLDetailsElement, title: string) => {
+  section.querySelector('summary')!.textContent = title;
+};
 
 export interface ModelPage {
   show(message: ModelMessage): void;
@@ -25,8 +37,8 @@ export interface ModelPage {
   }): void;
   showNotice(text: string): void;
   showModelError(text: string): void;
-  setUses(uses: FileUse[]): void;
-  setRelated(openedFile: string, files: RelatedModel[]): void;
+  setUses(uses: readonly FileUse[]): void;
+  setRelated(openedFile: string, files: RelatedModel[], textures: TextureVariant[]): void;
 }
 
 export const createModelPage = (
@@ -34,11 +46,11 @@ export const createModelPage = (
   post: (
     message: Extract<
       FromPreviewPage,
-      { kind: 'animation' | 'reveal' | 'showModel' }
+      { kind: 'animation' | 'reveal' | 'previewObject' | 'showModel' }
     >,
   ) => void,
 ): ModelPage => {
-  const usedIn = element('p');
+  const usedIn = element('div', 'Looking for the INI lines that name this file…', 'uses');
   let thisFile: ClipChoice[] = [];
   let message: ModelMessage | undefined;
   let openedFile = '';
@@ -77,6 +89,35 @@ export const createModelPage = (
     }
   };
   const related = createRelatedPicker(pickRelated);
+  const texturePicker = createTexturePicker({
+    onPick: (textures) => {
+      viewer.showStatus('Loading textures…');
+      post({ kind: 'showModel', file: message?.relatedFile, textures });
+    },
+    onListed: (count) => {
+      texturesSection.hidden = !count;
+      setSectionTitle(texturesSection, `Texture sets (${count + 1})`);
+    },
+  });
+  let detailSwitch: { file?: string } | undefined;
+  const detailPicker = createDetailPicker((level) => {
+    const file = message?.detail?.files[level];
+
+    if (file) {
+      const shown = file === openedFile.toLowerCase() ? undefined : file;
+
+      detailSwitch = { file: shown };
+      requestModel(shown);
+    }
+  });
+  const listTextures = () => {
+    if (message) {
+      texturePicker.showModel(
+        (message.relatedFile ?? message.shownOn ?? openedFile).toLowerCase(),
+        message.textureNames ?? [],
+      );
+    }
+  };
 
   const pickClip = (id: string) => {
     if (id === OWN && message?.animation) {
@@ -101,20 +142,67 @@ export const createModelPage = (
     },
   });
 
-  viewer.side.append(usedIn);
-  viewer.bar.prepend(related.select);
+  const addSection = (key: SectionKey, title: string, content: Node[]) => {
+    const section = viewer.addSection(
+      title,
+      content,
+      !readPageState().foldedSections?.includes(key),
+    );
+
+    section.ontoggle = () => {
+      const folded = new Set(readPageState().foldedSections);
+
+      if (section.open) {
+        folded.delete(key);
+      } else {
+        folded.add(key);
+      }
+      savePageState({ foldedSections: [...folded] });
+    };
+    return section;
+  };
+  const usesSection = addSection('uses', 'Used in', [usedIn]);
+  const relatedSection = addSection('related', 'Related files', [related.list]);
+  const texturesSection = addSection('textures', 'Texture sets', [texturePicker.list]);
+
+  relatedSection.hidden = true;
+  texturesSection.hidden = true;
+  viewer.side.prepend(usesSection, relatedSection, texturesSection);
+  viewer.viewBar.prepend(detailPicker.select);
 
   return {
     show: (next) => {
-      const isFirst = !message;
+      if (next.isRetextured) {
+        if (next.relatedFile !== message?.relatedFile) {
+          return;
+        }
+        viewer.setModel(next, true);
+        viewer.showStatus(
+          next.missing.length ? `Not found: ${next.missing.join(', ')}` : '',
+        );
+        return;
+      }
 
+      const isFirst = !message;
+      const keepsClip = !!detailSwitch && detailSwitch.file === next.relatedFile;
+
+      detailSwitch = undefined;
       message = next;
-      viewer.setModel(next);
+      detailPicker.show(
+        Object.keys(next.detail?.files ?? {}) as DetailLevel[],
+        next.detail?.level ?? 'high',
+      );
+      viewer.setModel(next, true);
       related.show(next.relatedFile);
+      listTextures();
       thisFile =
         next.animation && next.skeleton
           ? [{ id: OWN, label: `${next.animation.name} (this file)` }]
           : [];
+      if (keepsClip) {
+        viewer.showStatus('');
+        return;
+      }
       if (!isFirst) {
         viewer.clearClip();
       }
@@ -140,30 +228,37 @@ export const createModelPage = (
     showNotice: viewer.showStatus,
     showModelError: (text) => {
       pendingClip = undefined;
+      detailSwitch = undefined;
       related.show(message?.relatedFile);
       viewer.showStatus(text);
     },
-    setRelated: (opened, files) => {
+    setRelated: (opened, files, textures) => {
       openedFile = opened;
+      texturePicker.setList(textures);
+      listTextures();
       related.setList(opened, files);
       related.show(message?.relatedFile);
+      relatedSection.hidden = !files.length;
+      setSectionTitle(relatedSection, `Related files (${files.length})`);
     },
     setUses: (uses) => {
+      setSectionTitle(usesSection, uses.length ? `Used in (${uses.length})` : 'Used in');
       usedIn.replaceChildren(
-        uses.length ? 'Used in: ' : 'No INI file the index holds uses this file',
-        ...uses.flatMap((use, at) => {
-          const link = element(
-            'a',
-            `${use.owner ?? use.uri.slice(use.uri.lastIndexOf('/') + 1)} (${use.field}, line ${use.line + 1})`,
-          );
+        ...listFileUses(
+          uses,
+          (use) => post({ kind: 'reveal', uri: use.uri, line: use.line }),
+          (use) => {
+            if (!use.owner || !OBJECT_DEFINITION.test(use.owner)) {
+              return [];
+            }
 
-          link.href = '#';
-          link.onclick = (event) => {
-            event.preventDefault();
-            post({ kind: 'reveal', uri: use.uri, line: use.line });
-          };
-          return at ? [' · ', link] : [link];
-        }),
+            const preview = element('button', '▶ Preview object');
+
+            preview.title = 'Open the object preview on this line: the model as the game draws the object';
+            preview.onclick = () => post({ kind: 'previewObject', uri: use.uri, line: use.line });
+            return [' ', preview];
+          },
+        ),
       );
     },
   };

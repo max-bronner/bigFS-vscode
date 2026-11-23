@@ -12,12 +12,35 @@ export const post = (message: FromPage): void => api.postMessage(message);
 export const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
 
+let pickClip: (name: string) => void = () => {};
+
+export const onClipPicked = (pick: (name: string) => void): void => {
+  pickClip = pick;
+};
+
 export const viewer = createViewer($('viewer'), {
-  onPickClip: (name) => post({ kind: 'loadAnimation', name }),
+  onPickClip: (name) => pickClip(name),
+  settings: {
+    initial: $('viewer').dataset.settingsOpen === 'true',
+    onChange: (isOpen) => post({ kind: 'setViewerSettingsOpen', isOpen }),
+  },
 });
 
+export const isObjectPage = $('context').classList.contains('preview-object');
+
 viewer.stage.append($('handles'), $('flash'), $('hud'));
-viewer.side.append($('context'));
+viewer.side.prepend($('context'));
+if (isObjectPage) {
+  const { modelSection } = viewer;
+
+  modelSection.open = false;
+  modelSection.querySelector('summary')!.textContent = 'Model and particle load';
+  modelSection.append($('stats'), $('notes'));
+  $('loadSection').remove();
+  viewer.side.append(modelSection);
+} else {
+  viewer.side.append($('loadSection'));
+}
 
 export const state = {
   scene: undefined as SceneMessage | undefined,

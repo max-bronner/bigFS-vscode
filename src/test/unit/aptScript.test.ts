@@ -9,7 +9,7 @@ import {
 } from '../../formats/apt/aptScript';
 import { parseScript } from '../../formats/apt/aptScriptParser';
 import { AptImage } from '../../formats/apt/writer/aptImage';
-import { buildMovie } from './apt.test';
+import { buildMovie } from './aptMovieFixtures';
 
 const roundTrip = (source: string) => {
   const image = new AptImage(new Uint8Array(0));
@@ -129,6 +129,7 @@ suite('APT scripts', () => {
     assert.deepStrictEqual(
       constBytes.subarray(0x20, constFile.length),
       constFile.subarray(0x20),
+      'bytes before the moved item array are untouched',
     );
   });
 

@@ -52,7 +52,7 @@ export const registerIniLanguage = (
 
   context.subscriptions.push(
     ...registerAssetLinks(selector, documents, locator),
-    ...registerFileUses(documents, index),
+    ...registerFileUses(documents, index, archives),
     ...registerUnusedDefinitions(index),
     watchHotkeyClashes(documents, index, gameLanguage),
     registerMappedImageLens(selector),

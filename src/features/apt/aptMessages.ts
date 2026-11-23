@@ -20,6 +20,7 @@ import {
 } from './aptDocumentEdits';
 import type { RecordChange } from './aptDocumentEdits';
 import { keepEngineAnswers } from './aptEngineAnswers';
+import { keepAptToolbar } from './aptToolbar';
 import type { AptLibrary } from './aptLibrary';
 import { resolveMappedImages } from './aptMappedImages';
 import type { AptGameServices, AptMovieImports } from './aptMovieImports';
@@ -27,7 +28,6 @@ import type { AptSelections } from './aptSelections';
 import type { AptScripts } from './aptScripts';
 import { resolveRenderObject } from './aptRenderObjects';
 import { resolveSuggestions } from './aptSuggestions';
-import type { AptTextView } from './aptTextView';
 import { APT_VIEW_TYPE } from './viewTypes';
 
 export interface AptPageSession {
@@ -44,7 +44,6 @@ export interface AptPageSession {
   locator: EntryLocator;
   tools: ToolBox;
   scriptTabs: AptScripts;
-  textView: AptTextView;
 }
 
 type PageMessage<K extends FromPage['kind']> = Extract<FromPage, { kind: K }>;
@@ -59,6 +58,10 @@ const HANDLERS: {
 
   engineAnswers: (message, { document, game }) =>
     keepEngineAnswers(game.state, document.name, message.values),
+
+  toolbar: async (message, { game }) => {
+    await keepAptToolbar(game.state, message.toolbar);
+  },
 
   async script(message, { document, post }) {
     const block = Number(message.block);
@@ -107,10 +110,6 @@ const HANDLERS: {
     await record(document, 'constant', async () =>
       document.changeConstItem(message.change),
     );
-  },
-
-  async openTextView(_, { document, textView }) {
-    await textView.open(document.uri);
   },
 
   async removeCharacter(message, { document, record }) {

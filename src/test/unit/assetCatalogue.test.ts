@@ -11,6 +11,7 @@ import type { AssetCatalogue } from '../../formats/asset/assetCatalogue';
 import { describeAssetPath, getAssetKey } from '../../formats/asset/assetPaths';
 import { readW3dAssetEntries } from '../../formats/asset/readW3dAssetEntries';
 import { applyAssetChanges } from '../../game/asset/applyAssetChanges';
+import { groupSyncRows } from '../../webview/assetCatalogue/groupSyncRows';
 import {
   compareAssetCatalogue,
   findCatalogueLayer,
@@ -280,6 +281,26 @@ suite('Asset catalogue sync', () => {
     assert.deepStrictEqual(
       writeAssetCatalogue(applyAssetChanges(catalogue(), { put: [], remove: [] })),
       writeAssetCatalogue(catalogue()),
+    );
+  });
+});
+
+suite('Asset sync panel', () => {
+  test('rows are grouped by the archive their file comes from, in the order each first appears', () => {
+    const groups = groupSyncRows([
+      { id: 'a', name: 'a.w3d', origin: 'W3D.big' },
+      { id: 'b', name: 'b.tga', origin: 'Textures.big' },
+      { id: 'c', name: 'c.w3d', origin: 'W3D.big' },
+      { id: 'd', name: 'd.w3d' },
+    ]);
+
+    assert.deepStrictEqual(
+      groups.map(({ origin, rows }) => [origin, rows.map((row) => row.id)]),
+      [
+        ['W3D.big', ['a', 'c']],
+        ['Textures.big', ['b']],
+        ['', ['d']],
+      ],
     );
   });
 });

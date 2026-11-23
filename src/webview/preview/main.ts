@@ -6,7 +6,7 @@ import { createRegionEditor } from './createRegionEditor';
 import { showCursor } from './cursor';
 import { showMovie } from './movie';
 import type { MovieControl } from './movie';
-import type { FromPreviewPage, ToPreviewPage } from './protocol';
+import type { FileUse, FromPreviewPage, ToPreviewPage } from './protocol';
 import { createTexturePage } from './texture';
 
 const vscode = getVsCodeApi<FromPreviewPage>();
@@ -18,6 +18,7 @@ const showTexture = createTexturePage(main, regions, {
   onPopOut: () => vscode.postMessage({ kind: 'popOut' }),
 });
 let modelPage: ModelPage | undefined;
+let showUses: ((uses: readonly FileUse[]) => void) | undefined;
 let movie: MovieControl | undefined;
 let frameError: HTMLParagraphElement | undefined;
 
@@ -26,6 +27,7 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPreviewPage>) => {
     case 'model':
       modelPage ??= createModelPage(main, (message) => vscode.postMessage(message));
       modelPage.show(data);
+      showUses = modelPage.setUses;
       break;
     case 'video':
       frameError = undefined;
@@ -46,10 +48,10 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPreviewPage>) => {
       break;
     }
     case 'uses':
-      modelPage?.setUses(data.uses);
+      showUses?.(data.uses);
       break;
     case 'related':
-      modelPage?.setRelated(data.file, data.files);
+      modelPage?.setRelated(data.file, data.files, data.textures);
       break;
     case 'animations':
       modelPage?.setAnimations(data.own, data.foreign);
@@ -65,15 +67,18 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPreviewPage>) => {
       break;
     case 'texture':
       showTexture(data);
+      showUses = regions.showUses;
       break;
     case 'regions':
       regions.show(data);
       break;
     case 'audio':
-      showAudio(main, data);
+      showUses = showAudio(main, data, ({ uri, line }) =>
+        vscode.postMessage({ kind: 'reveal', uri, line }),
+      );
       break;
     case 'cursor':
-      showCursor(main, data);
+      showCursor(main, data, (index) => vscode.postMessage({ kind: 'saveCursorFrame', index }));
       break;
     case 'error': {
       const error = document.createElement('p');

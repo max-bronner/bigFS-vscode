@@ -7,6 +7,8 @@ import type {
   SceneUpgrade,
 } from './objectScene';
 import type { ScriptedRule } from './subObjectScripts';
+import { walkUpgrades } from './walkUpgrades';
+import type { UpgradeWalk } from './walkUpgrades';
 
 const DAMAGE_CONDITIONS: readonly [RegExp, BodyDamageState][] = [
   [/\bRUBBLE\b/i, 'rubble'],
@@ -41,13 +43,13 @@ const listUpgradeWrites = ({ triggers, hides, shows }: SceneUpgrade) => {
   ]);
 };
 
-const listCreatedWrites = (scene: ObjectScene): ScriptedRule[] => {
+const listCreatedWrites = (scene: ObjectScene, walk: UpgradeWalk): ScriptedRule[] => {
   const { rules, grantedUpgrades } = scene.created;
   const listGrantedAt = (at: number) =>
     grantedUpgrades
       .filter((upgrade) => upgrade.at === at)
       .flatMap(({ name }) =>
-        scene.upgrades
+        walk.firedByScripts
           .filter(({ triggers }) =>
             triggers.some((each) => each.toLowerCase() === name.toLowerCase()),
           )
@@ -68,21 +70,41 @@ const dropsPlainWrites = (state: SceneState, idle: SceneState | undefined) =>
   !state.retainsSubObjects &&
   state.model?.toLowerCase() !== (idle ?? state).model?.toLowerCase();
 
-const findDamageState = (state: SceneState | undefined) =>
-  DAMAGE_CONDITIONS.find(([condition]) => state && condition.test(state.label))?.[1];
+const listCreationWrites = (walk: UpgradeWalk, isAfterScripts: boolean): ScriptedRule[] => {
+  const isLater = (upgrade: SceneUpgrade) =>
+    upgrade.waitsBeforeShowing || walk.firedOnCompletion.includes(upgrade);
+
+  return walk.created
+    .filter(
+      (upgrade) =>
+        !upgrade.startsActive &&
+        !walk.firedByScripts.includes(upgrade) &&
+        isLater(upgrade) === isAfterScripts,
+    )
+    .flatMap(listUpgradeWrites);
+};
+
+const findDamageState = (state: SceneState | undefined, held: readonly string[]) => {
+  const conditions = `${state?.label ?? ''} ${held.join(' ')}`;
+
+  return DAMAGE_CONDITIONS.find(([condition]) => condition.test(conditions))?.[1];
+};
 
 export const listSubObjectRules = (
   scene: ObjectScene,
   state: SceneState | undefined,
+  picked: readonly string[] = [],
+  held: readonly string[] = [],
 ): SubObjectRule[] => {
   const scripted = state && findScriptState(scene, state);
   const idle = state && findIdleState(scene, state.draw);
   const calls = [
-    ...(idle && idle !== scripted ? idle.subObjects.rules : []),
+    ...(idle && idle !== scripted && idle.line !== scripted?.line ? idle.subObjects.rules : []),
     ...(scripted?.subObjects.rules ?? []),
-  ];
-  const created = listCreatedWrites(scene);
-  const damage = findDamageState(state);
+  ].filter((rule) => rule.target !== 'module');
+  const walk = walkUpgrades(scene, picked);
+  const created = listCreatedWrites(scene, walk);
+  const damage = findDamageState(state, held);
 
   return [
     ...keepOneWritePerName(
@@ -95,7 +117,10 @@ export const listSubObjectRules = (
       ...scene.upgrades
         .filter((upgrade) => upgrade.startsActive)
         .flatMap(listUpgradeWrites),
+      ...listCreationWrites(walk, false),
       ...created.filter((rule) => rule.isPermanent),
+      ...listCreationWrites(walk, true),
+      ...walk.added.flatMap(listUpgradeWrites),
       ...(damage ? listDamageWrites(scene, damage) : []),
       ...calls.filter((rule) => rule.isPermanent),
     ]),

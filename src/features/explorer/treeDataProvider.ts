@@ -92,8 +92,8 @@ const createGameItem = (
   ].join('\n');
   item.contextValue =
     winner.ref.kind === 'entry'
-      ? getContextValue('file', isReadOnly(winner.ref.node))
-      : getContextValue('looseFile', isLooseFileReadOnly(uri));
+      ? getContextValue('file', isReadOnly(winner.ref.node), node.name)
+      : getContextValue('looseFile', isLooseFileReadOnly(uri), node.name);
   item.command = { command: 'vscode.open', title: 'Open', arguments: [uri] };
 
   return item;
@@ -116,7 +116,7 @@ export class BigTreeItem extends TreeItem {
     this.tooltip = getNodePath(node);
 
     if (node.type === FileType.File) {
-      this.contextValue = getContextValue('file', isReadOnly);
+      this.contextValue = getContextValue('file', isReadOnly, node.name);
       this.command = {
         command: 'vscode.open',
         title: 'Open',

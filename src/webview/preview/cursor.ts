@@ -7,10 +7,20 @@ import { drawCursorFrame, pickCursorScale } from '../shared/drawCursorFrame';
 import { element } from '../shared/element';
 import type { CursorMessage } from './protocol';
 
+export type SaveFrame = (index: number) => void;
+
+const createSaveButton = (title: string, save: () => void) => {
+  const button = element('button', 'Save as PNG');
+
+  button.title = title;
+  button.onclick = save;
+  return button;
+};
+
 const describeFrame = ({ width, height, hotspotX, hotspotY }: CursorFrame) =>
   `${width} × ${height} · hotspot ${hotspotX}, ${hotspotY}`;
 
-const createFrameCard = (frame: CursorFrame, caption: string) => {
+const createFrameCard = (frame: CursorFrame, caption: string, saveButton: HTMLButtonElement) => {
   const card = element('figure');
   const stage = element('div', undefined, 'stage checker');
   const canvas = element('canvas', undefined, 'pixelated');
@@ -18,7 +28,8 @@ const createFrameCard = (frame: CursorFrame, caption: string) => {
   card.style.margin = '0';
   drawCursorFrame(canvas, frame, pickCursorScale(frame));
   stage.append(canvas);
-  card.append(stage, element('figcaption', caption));
+  saveButton.style.marginTop = '4px';
+  card.append(stage, element('figcaption', caption), saveButton);
 
   return card;
 };
@@ -26,6 +37,7 @@ const createFrameCard = (frame: CursorFrame, caption: string) => {
 const createPlayer = (
   frames: CursorFrame[],
   steps: NonNullable<CursorMessage['steps']>,
+  saveFrame: SaveFrame,
 ) => {
   const canvas = element('canvas', undefined, 'pixelated');
   const stage = element('div', undefined, 'stage checker');
@@ -41,7 +53,12 @@ const createPlayer = (
   slider.min = '0';
   slider.max = String(steps.length - 1);
   stage.append(canvas);
-  bar.append(play, slider, label);
+  bar.append(
+    play,
+    slider,
+    label,
+    createSaveButton('Save the frame shown as PNG', () => saveFrame(steps[step].frame)),
+  );
 
   const show = (index: number) => {
     step = index;
@@ -85,6 +102,7 @@ const createPlayer = (
 export const showCursor = (
   main: HTMLElement,
   { frames, steps }: CursorMessage,
+  saveFrame: SaveFrame,
 ) => {
   const list = element('div');
   const loopJiffies = steps?.reduce((sum, step) => sum + step.jiffies, 0) ?? 0;
@@ -106,11 +124,15 @@ export const showCursor = (
         steps
           ? `frame ${index + 1} · hotspot ${frame.hotspotX}, ${frame.hotspotY}`
           : describeFrame(frame),
+        createSaveButton(
+          frames.length > 1 ? `Save frame ${index + 1} as PNG` : 'Save this image as PNG',
+          () => saveFrame(index),
+        ),
       ),
     ),
   );
   main.replaceChildren(
-    ...(steps ? createPlayer(frames, steps) : []),
+    ...(steps ? createPlayer(frames, steps, saveFrame) : []),
     facts,
     list,
   );

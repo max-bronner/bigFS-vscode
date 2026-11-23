@@ -60,6 +60,7 @@ export type ToPage =
       origins: Record<string, string>;
       texts?: Record<string, string>;
       answers?: EngineValues;
+      toolbar?: unknown;
     }
   | {
       kind: 'movieLoaded';
@@ -99,12 +100,12 @@ export type ToPage =
 
 export type FromPage =
   | { kind: 'ready' }
-  | { kind: 'openTextView' }
   | { kind: 'mappedImages'; names: string[] }
   | { kind: 'suggestions'; field: SuggestionKind }
   | { kind: 'renderObject'; name: string }
   | { kind: 'script'; block: number }
   | { kind: 'engineAnswers'; values: EngineValues }
+  | { kind: 'toolbar'; toolbar: AptToolbar }
   | { kind: 'loadMovie'; name: string }
   | PlaySoundRequest
   | { kind: 'edit'; edit: AptEdit }
@@ -131,5 +132,18 @@ export type FromPage =
       pixels: Uint8Array;
       assign?: { shape: number; run: number; runs: RuRun[] };
     };
+
+export interface AptToolbar {
+  zoom: string;
+  speed: number;
+  origin: boolean;
+  boxes: boolean;
+  masks: boolean;
+  scripts: boolean;
+  interact: boolean;
+  wireframe: boolean;
+}
+
+export const ZOOMS = ['fit', '0.5', '1', '2'];
 
 export const SPEEDS = [0.05, 0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 8];

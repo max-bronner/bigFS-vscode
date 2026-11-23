@@ -1,4 +1,4 @@
-import * as assert from "assert";
+import * as assert from 'assert';
 import {
   Crc32,
   POWER_SLOTS,
@@ -8,8 +8,8 @@ import {
   createEmptyCahRecord,
   parseCah,
   writeCah,
-} from "../../formats/cah/cah";
-import type { CahRecord } from "../../formats/cah/cah";
+} from '../../formats/cah/cah';
+import type { CahRecord } from '../../formats/cah/cah';
 
 const referenceCrc = (bytes: number[]): number => {
   let state = 0xffffffff;
@@ -40,17 +40,17 @@ const buildSampleRecord = (): CahRecord => {
   const record = createEmptyCahRecord();
 
   record.objectId = 7;
-  record.name = "Aragwen é";
+  record.name = 'Aragwen é';
   record.classIndex = 2;
   record.subclassIndex = 1;
   record.colors = [0xff112233, 0x80445566, 0xffffffff];
-  record.powers[0] = { button: "Command_PowerOne", level: 0, slot: 3 };
-  record.powers[4] = { button: "Command_PowerTwo", level: 2, slot: 5 };
+  record.powers[0] = { button: 'Command_PowerOne', level: 0, slot: 3 };
+  record.powers[4] = { button: 'Command_PowerTwo', level: 2, slot: 5 };
   record.blings = [
-    { group: "HELM", index: 2 },
-    { group: "ARMOR", index: 4 },
+    { group: 'HELM', index: 2 },
+    { group: 'ARMOR', index: 4 },
   ];
-  record.id = "ABC123";
+  record.id = 'ABC123';
   return record;
 };
 
@@ -73,7 +73,7 @@ const buildByHand = (record: CahRecord): number[] => {
     0,
   ];
   const out = [
-    ...toAsciiCodes("ALAE2STR"),
+    ...toAsciiCodes('ALAE2STR'),
     ...toLittleEndian(1),
     ...toLittleEndian(0),
     8,
@@ -100,8 +100,8 @@ const buildByHand = (record: CahRecord): number[] => {
       ...toAsciiCodes(b.group),
       ...toLittleEndian(b.index),
     ]),
-    (record.id ?? "").length,
-    ...toAsciiCodes(record.id ?? ""),
+    (record.id ?? '').length,
+    ...toAsciiCodes(record.id ?? ''),
     0,
     ...toLittleEndian(referenceCrc(hashed)),
   ];
@@ -109,15 +109,15 @@ const buildByHand = (record: CahRecord): number[] => {
   return out;
 };
 
-suite("Create-a-Hero file", () => {
-  test("the CRC-32 is the standard one", () => {
+suite('Create-a-Hero file', () => {
+  test('the CRC-32 is the standard one', () => {
     const crc = new Crc32();
 
-    crc.update(toAsciiCodes("123456789"));
+    crc.update(toAsciiCodes('123456789'));
     assert.strictEqual(crc.finish(), 0xcbf43926);
   });
 
-  test("the table CRC equals the bit-by-bit reference over odd chunks", () => {
+  test('the table CRC equals the bit-by-bit reference over odd chunks', () => {
     const bytes = Array.from({ length: 1000 }, (_, i) => (i * 37 + 11) & 0xff);
     const crc = new Crc32();
 
@@ -126,13 +126,13 @@ suite("Create-a-Hero file", () => {
     assert.strictEqual(crc.finish(), referenceCrc(bytes));
   });
 
-  test("write produces the hand-built file with the trailer mint computes", () => {
+  test('write produces the hand-built file with the trailer mint computes', () => {
     const record = buildSampleRecord();
 
     assert.deepStrictEqual(Array.from(writeCah(record)), buildByHand(record));
   });
 
-  test("a written file parses back to the same record with a matching checksum", () => {
+  test('a written file parses back to the same record with a matching checksum', () => {
     const record = buildSampleRecord();
     const parsed = parseCah(writeCah(record));
 
@@ -149,25 +149,25 @@ suite("Create-a-Hero file", () => {
     );
   });
 
-  test("a string longer than 254 bytes uses the long length form", () => {
+  test('a string longer than 254 bytes uses the long length form', () => {
     const record = buildSampleRecord();
 
-    record.powers[1].button = "B".repeat(300);
+    record.powers[1].button = 'B'.repeat(300);
     const parsed = parseCah(writeCah(record));
 
     assert.strictEqual(parsed.record.powers[1].button.length, 300);
     assert.strictEqual(parsed.crcMatches, true);
   });
 
-  test("strings stop at a NUL when hashed, as the game reads them", () => {
+  test('strings stop at a NUL when hashed, as the game reads them', () => {
     const record = buildSampleRecord();
     const other = cloneCahRecord(record);
 
-    other.powers[0].button = "Command_PowerOne\0junk";
+    other.powers[0].button = 'Command_PowerOne\0junk';
     assert.strictEqual(computeCahCrc(other), computeCahCrc(record));
   });
 
-  test("an edit changes the checksum and a stale trailer is reported", () => {
+  test('an edit changes the checksum and a stale trailer is reported', () => {
     const bytes = writeCah(buildSampleRecord());
     const edited = Uint8Array.from(bytes);
 
@@ -176,18 +176,18 @@ suite("Create-a-Hero file", () => {
 
     const record = buildSampleRecord();
 
-    record.name = "Other";
+    record.name = 'Other';
     assert.notStrictEqual(computeCahCrc(record), computeCahCrc(buildSampleRecord()));
   });
 
-  test("bytes after the record are counted and ignored", () => {
+  test('bytes after the record are counted and ignored', () => {
     const bytes = writeCah(buildSampleRecord());
     const longer = Uint8Array.from([...bytes, 1, 2, 3]);
 
     assert.strictEqual(parseCah(longer).trailing, 3);
   });
 
-  test("an older record version parses without id, flag or checksum", () => {
+  test('an older record version parses without id, flag or checksum', () => {
     const v8 = Array.from(writeCah(buildSampleRecord()));
     const headerLength = 16;
     const bytes = Uint8Array.from(v8);
@@ -202,15 +202,15 @@ suite("Create-a-Hero file", () => {
     assert.strictEqual(parsed.crcMatches, true);
   });
 
-  test("a bad header, version or truncation fails with a message", () => {
+  test('a bad header, version or truncation fails with a message', () => {
     const good = Array.from(writeCah(buildSampleRecord()));
 
     assert.throws(
-      () => parseCah(Uint8Array.from(toAsciiCodes("NOPE"))),
+      () => parseCah(Uint8Array.from(toAsciiCodes('NOPE'))),
       /bad container magic|runs past/,
     );
     assert.throws(
-      () => parseCah(Uint8Array.from(toAsciiCodes("XXXX2STR"))),
+      () => parseCah(Uint8Array.from(toAsciiCodes('XXXX2STR'))),
       /bad container magic/,
     );
     assert.throws(
@@ -238,7 +238,7 @@ suite("Create-a-Hero file", () => {
     );
   });
 
-  test("a huge bling count is refused before anything is allocated", () => {
+  test('a huge bling count is refused before anything is allocated', () => {
     const record = createEmptyCahRecord();
     const bytes = Array.from(writeCah(record));
     const countAt = 16 + 1 + 4 + 1 + 8 + 8 + 12 + POWER_SLOTS * 9;
@@ -250,27 +250,27 @@ suite("Create-a-Hero file", () => {
     );
   });
 
-  test("a huge wide-string length is refused against the bytes present", () => {
+  test('a huge wide-string length is refused against the bytes present', () => {
     const bytes = Array.from(writeCah(buildSampleRecord()));
 
     bytes.splice(21, 1, 0xff, 0xff, 0xff, 0xff, 0x7f);
     assert.throws(() => parseCah(Uint8Array.from(bytes)), /runs past the end/);
   });
 
-  test("an empty bling group is refused", () => {
+  test('an empty bling group is refused', () => {
     const record = buildSampleRecord();
 
-    record.blings[0].group = "";
+    record.blings[0].group = '';
     assert.ok(describeCahRecordProblem(record));
     assert.throws(() => parseCah(writeCah(record)), /Empty bling group/);
   });
 
-  test("a fresh record has all power slots", () => {
+  test('a fresh record has all power slots', () => {
     assert.strictEqual(createEmptyCahRecord().powers.length, POWER_SLOTS);
     assert.strictEqual(describeCahRecordProblem(createEmptyCahRecord()), undefined);
   });
 
-  test("every truncation of a file fails with a message naming the offset", () => {
+  test('every truncation of a file fails with a message naming the offset', () => {
     const good = writeCah(buildSampleRecord());
 
     for (let length = 0; length < good.length; length++) {

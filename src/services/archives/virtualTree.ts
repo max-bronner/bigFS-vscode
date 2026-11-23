@@ -250,15 +250,20 @@ export const countFileNodes = <TArchive>(node: TreeNode<TArchive>): number => {
 };
 
 export const getFileNodes = <TArchive>(node: TreeNode<TArchive>): TreeNode<TArchive>[] => {
-  if (node.type === FileType.File) {
-    return [node];
-  }
-
   const fileNodes: TreeNode<TArchive>[] = [];
 
-  for (const child of node.children?.values() ?? []) {
-    fileNodes.push(...getFileNodes(child));
-  }
+  const collect = (current: TreeNode<TArchive>): void => {
+    if (current.type === FileType.File) {
+      fileNodes.push(current);
+      return;
+    }
+
+    for (const child of current.children?.values() ?? []) {
+      collect(child);
+    }
+  };
+
+  collect(node);
 
   return fileNodes;
 };

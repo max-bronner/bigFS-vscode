@@ -25,11 +25,14 @@ export const revealEntry = async (
   treeView: TreeView<ExplorerRow>,
   archives: ArchiveModel,
   gameView: GameViewModel,
+  asked = true,
 ): Promise<void> => {
   const node = await archives.resolveNode(uri);
 
   if (!node) {
-    void window.showWarningMessage('That entry is not in a BIG archive.');
+    if (asked) {
+      void window.showWarningMessage('That entry is not in a BIG archive.');
+    }
     return;
   }
 
@@ -42,6 +45,6 @@ export const revealEntry = async (
     : node;
 
   if (row) {
-    await treeView.reveal(row, { select: true, focus: true });
+    await treeView.reveal(row, { select: true, focus: asked });
   }
 };

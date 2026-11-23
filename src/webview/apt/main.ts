@@ -5,7 +5,10 @@ import { keepAnswers } from './engineState';
 import { setGameText } from './gameText';
 import { movieArrived, storeTextures } from './movieLoads';
 import { byId, escapeHtml } from './dom';
-import { describeCharacter } from './describeCharacter';
+import { markSelected, onCharacterSelect, showList } from './characterList';
+import { attachMenu } from './popupMenu';
+import type { MenuEntry } from './popupMenu';
+import { getSideTab, showSideTab } from './sideTabs';
 import { showScript } from './blocks/scriptBlock';
 import { GO_TO_FRAME, showDetails } from './details';
 import { send } from './send';
@@ -33,11 +36,12 @@ import {
   render,
   restart,
   setInspectorView,
-  showMode,
   view,
 } from './stage';
 import { SPEEDS } from './protocol';
-import { movie, state } from './state';
+import type { AptToolbar } from './protocol';
+import { readToolbar } from './readToolbar';
+import { state } from './state';
 
 const vscode = getVsCodeApi<FromPage>();
 
@@ -47,8 +51,6 @@ const showPanels = () => {
   showTimeline();
 };
 
-const list = byId('list');
-const filter = byId<HTMLInputElement>('filter');
 const frameInput = byId<HTMLInputElement>('frame');
 const zoomSelect = byId<HTMLSelectElement>('zoom');
 const playFromSelect = byId<HTMLSelectElement>('play-from');
@@ -75,11 +77,7 @@ const select = (id: number) => {
   restart();
   showPlayFrom();
   showPanels();
-  list
-    .querySelectorAll<HTMLElement>('.row')
-    .forEach((each) =>
-      each.classList.toggle('selected', Number(each.dataset.id) === id),
-    );
+  markSelected();
   showDetails();
   render();
 };
@@ -99,33 +97,7 @@ const showPlayFrom = () => {
   );
 };
 
-const showList = () => {
-  const needle = filter.value.toLowerCase();
-
-  list.replaceChildren(
-    ...movie()
-      .characters.filter(
-        (character) =>
-          !needle || describeCharacter(character).toLowerCase().includes(needle),
-      )
-      .map((character) => {
-        const element = document.createElement('div');
-
-        element.className =
-          'row' + (character.id === state.selected ? ' selected' : '');
-        element.dataset.id = String(character.id);
-        element.textContent = describeCharacter(character);
-        element.onclick = () => select(character.id);
-        element.draggable = character.type !== 'movie';
-        element.ondragstart = (event) =>
-          event.dataTransfer?.setData(
-            'application/x-apt-character',
-            String(character.id),
-          );
-        return element;
-      }),
-  );
-};
+onCharacterSelect(select);
 
 const goTo = (frame: number) => {
   goToFrame(frame);
@@ -138,13 +110,43 @@ const step = (by: number) => {
   goTo(state.frame + by);
 };
 
-const toggle = (
-  key: 'origin' | 'boxes' | 'masks' | 'scripts' | 'interact' | 'wireframe',
-  id: string,
-) => {
+type Switch = 'origin' | 'boxes' | 'masks' | 'scripts' | 'interact' | 'wireframe';
+
+const SWITCHES: Switch[] = ['origin', 'boxes', 'masks', 'scripts', 'interact', 'wireframe'];
+
+const inspectButton = byId('mode-inspect');
+const interactButton = byId('mode-interact');
+const scriptsButton = byId('scripts');
+const overlaysButton = byId<HTMLButtonElement>('overlays');
+
+const showSwitches = () => {
+  const overlays = [view.origin, view.boxes, !view.masks, view.wireframe, view.onion > 0].filter(Boolean).length;
+
+  inspectButton.setAttribute('aria-pressed', String(!view.interact));
+  interactButton.setAttribute('aria-pressed', String(view.interact));
+  scriptsButton.setAttribute('aria-pressed', String(!view.scripts));
+  overlaysButton.textContent = overlays ? `Overlays (${overlays})` : 'Overlays';
+};
+
+const keepToolbar = () => {
+  const toolbar: AptToolbar = {
+    zoom: zoomSelect.value,
+    speed: view.speed,
+    origin: view.origin,
+    boxes: view.boxes,
+    masks: view.masks,
+    scripts: view.scripts,
+    interact: view.interact,
+    wireframe: view.wireframe,
+  };
+
+  vscode.postMessage({ kind: 'toolbar', toolbar });
+};
+
+const toggle = (key: Switch) => {
   view[key] = !view[key];
-  byId<HTMLInputElement>(id).checked =
-    key === 'masks' || key === 'scripts' ? !view[key] : view[key];
+  showSwitches();
+  keepToolbar();
   if (key === 'masks') {
     remeasure();
   }
@@ -159,7 +161,6 @@ const toggle = (
     }
     showPanels();
   }
-  showMode();
   render();
 };
 
@@ -196,8 +197,10 @@ stage.addEventListener('drop', (event) => {
   });
 });
 
-filter.oninput = showList;
-zoomSelect.onchange = render;
+zoomSelect.onchange = () => {
+  keepToolbar();
+  render();
+};
 frameInput.oninput = () => goTo(Number(frameInput.value));
 byId('play').onclick = () => play(!view.playing);
 byId('back').onclick = () => step(-1);
@@ -206,22 +209,72 @@ const speedSelect = byId<HTMLSelectElement>('speed');
 const setSpeed = (speed: number) => {
   view.speed = speed;
   speedSelect.value = String(speed);
-  showMode();
 };
 
-speedSelect.onchange = () => setSpeed(Number(speedSelect.value));
+speedSelect.onchange = () => {
+  setSpeed(Number(speedSelect.value));
+  keepToolbar();
+};
 const stepSpeed = (by: number) => {
   const at = SPEEDS.indexOf(view.speed);
 
   setSpeed(SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, at + by))]);
+  keepToolbar();
 };
-byId('show-origin').onchange = () => toggle('origin', 'show-origin');
-byId('show-boxes').onchange = () => toggle('boxes', 'show-boxes');
-byId('show-masks').onchange = () => toggle('masks', 'show-masks');
-byId('scripts').onchange = () => toggle('scripts', 'scripts');
-byId('interact').onchange = () => toggle('interact', 'interact');
-byId('wireframe').onchange = () => toggle('wireframe', 'wireframe');
-setInspectorView(showPanels, () => {
+inspectButton.onclick = () => view.interact && toggle('interact');
+interactButton.onclick = () => !view.interact && toggle('interact');
+scriptsButton.onclick = () => toggle('scripts');
+
+const changeOnion = (frames: number) => {
+  setOnion(frames);
+  showSwitches();
+};
+
+const overlayEntries = (): MenuEntry[] => [
+  { label: 'Origin', key: 'O', checked: view.origin, title: "The shown character's 0, 0", run: () => toggle('origin') },
+  { label: 'Boxes', key: 'B', checked: view.boxes, title: 'The bounds of what is drawn', run: () => toggle('boxes') },
+  {
+    label: 'Show Masks',
+    key: 'M',
+    checked: !view.masks,
+    title: 'Draw everything, what a clip mask hides faintly, with the masks outlined; off draws the masks applied, as the game does',
+    run: () => toggle('masks'),
+  },
+  {
+    label: 'Wireframe',
+    key: 'W',
+    checked: view.wireframe,
+    title: "Draw the triangles of what is picked; a shape's vertices can then be dragged",
+    run: () => toggle('wireframe'),
+  },
+  'separator',
+  { heading: 'Onion skin (N steps through)' },
+  ...[0, 1, 2, 3].map((frames) => ({
+    label: frames ? `±${frames} Frame${frames > 1 ? 's' : ''}` : 'Off',
+    title: 'Frames either side of the shown one, drawn faintly while paused',
+    checked: view.onion === frames,
+    run: () => changeOnion(frames),
+  })),
+];
+
+attachMenu(overlaysButton, overlayEntries);
+
+const applyToolbar = (kept: unknown) => {
+  const toolbar = readToolbar(kept);
+
+  zoomSelect.value = toolbar.zoom;
+  setSpeed(toolbar.speed);
+  for (const key of SWITCHES) {
+    view[key] = toolbar[key];
+  }
+  showSwitches();
+};
+setInspectorView(() => {
+  if (state.inspected !== undefined && getSideTab() === 'details') {
+    showSideTab('inspector');
+  }
+  showPanels();
+}, () => {
   updateInspector();
   markPlayhead();
 });
@@ -241,7 +294,7 @@ document.addEventListener('keydown', (event) => {
     event.metaKey ||
     event.altKey ||
     ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
-    target.closest('#details, .bk-popup')
+    target.closest('#details, .bk-popup, .menu')
   ) {
     return;
   }
@@ -254,15 +307,15 @@ document.addEventListener('keydown', (event) => {
     ArrowDown: () => void nudge(0, event.shiftKey ? 10 : 1),
     ',': () => step(-1),
     '.': () => step(1),
-    o: () => toggle('origin', 'show-origin'),
-    b: () => toggle('boxes', 'show-boxes'),
-    m: () => toggle('masks', 'show-masks'),
-    s: () => toggle('scripts', 'scripts'),
-    i: () => toggle('interact', 'interact'),
-    w: () => toggle('wireframe', 'wireframe'),
+    o: () => toggle('origin'),
+    b: () => toggle('boxes'),
+    m: () => toggle('masks'),
+    s: () => toggle('scripts'),
+    i: () => toggle('interact'),
+    w: () => toggle('wireframe'),
     '[': () => stepSpeed(-1),
     ']': () => stepSpeed(1),
-    n: () => setOnion((view.onion + 1) % 4),
+    n: () => changeOnion((view.onion + 1) % 4),
   };
   const action = actions[event.key];
 
@@ -287,6 +340,9 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPage>) => {
       }
       storeTextures(data.textures);
       byId('summary').textContent = data.summary;
+      if (isFirst) {
+        applyToolbar(data.toolbar);
+      }
       if (isFirst || !data.movie.characters[state.selected]) {
         state.selected = 0;
         state.frame = 0;
@@ -302,6 +358,9 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPage>) => {
       showList();
       showDetails();
       render();
+      if (isFirst) {
+        play(true);
+      }
       break;
     }
     case 'movieLoaded':
@@ -356,10 +415,7 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPage>) => {
   }
 });
 
-byId('toggleTextView').onclick = () =>
-  vscode.postMessage({ kind: 'openTextView' });
-
 installBlockStyles();
-showMode();
+showSwitches();
 showEngine();
 vscode.postMessage({ kind: 'ready' });

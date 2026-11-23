@@ -24,13 +24,16 @@ export const createClipPicker = (
   let hasBones = false;
 
   select.title = 'Animation';
+  select.className = 'viewer-clips';
   select.append(none);
   select.disabled = true;
+  select.hidden = true;
   select.onchange = () => onPick(select.value || undefined);
 
   const refresh = () => {
     none.textContent = hasBones || hasChoices ? 'Bind pose' : 'No skeleton';
     select.disabled = !hasBones && !hasChoices;
+    select.hidden = select.disabled;
   };
   const toOption = ({ id, label }: ClipChoice) => new Option(label, id);
 

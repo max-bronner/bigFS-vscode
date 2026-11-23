@@ -19,6 +19,7 @@ import { renderWebviewPage } from '../../platform/webview/webviewPage';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
 import { EffectLibrary } from '../../services/effectLibrary';
 import { createSingletonPanel } from '../../platform/webview/singletonPanel';
+import { DISCLOSURE_ROW_STYLE } from '../../platform/webview/disclosureRowStyle';
 import { registerCommand } from '../../platform/commands';
 import { describeError } from '../../core/errors';
 
@@ -43,7 +44,10 @@ interface FromParticlePage {
   on?: boolean;
   name?: string;
   keys?: KeyValue[];
+  isOpen?: boolean;
 }
+
+const SETTINGS_OPEN_KEY = 'bigfs.particlePreview.viewerSettingsOpen';
 
 const createParticlePreview = (
   context: vscode.ExtensionContext,
@@ -80,6 +84,10 @@ const createParticlePreview = (
         webview
           .asWebviewUri(vscode.Uri.joinPath(scripts, 'particles.js'))
           .toString(),
+        {
+          isObject: false,
+          isSettingsOpen: context.globalState.get<boolean>(SETTINGS_OPEN_KEY) === true,
+        },
       );
       return [
         vscode.workspace.onDidChangeTextDocument((event) => {
@@ -141,6 +149,9 @@ const createParticlePreview = (
       case 'reset':
         values.clear();
         update();
+        break;
+      case 'setViewerSettingsOpen':
+        await context.globalState.update(SETTINGS_OPEN_KEY, !!message.isOpen);
         break;
       case 'apply':
         await apply();
@@ -451,7 +462,16 @@ const showParticlePreview = (
   return preview;
 };
 
-export const renderParticlePage = (source: string, script: string): string =>
+export interface ParticlePageOptions {
+  isObject: boolean;
+  isSettingsOpen: boolean;
+}
+
+export const renderParticlePage = (
+  source: string,
+  script: string,
+  { isObject, isSettingsOpen }: ParticlePageOptions,
+): string =>
   renderWebviewPage({
     allow: { img: 'data:', script: source },
     scriptFiles: [script],
@@ -475,65 +495,160 @@ button.on { background: var(--vscode-button-background); color: var(--vscode-but
 #handles { position: absolute; inset: 0; pointer-events: none; cursor: default; }
 #flash { position: absolute; inset: 0; pointer-events: none; }
 #notes div { opacity: 0.8; margin: 2px 0; }
-.stats-lines { white-space: pre; font: 11px var(--vscode-editor-font-family); }
+.stats-lines { white-space: pre-wrap; overflow-wrap: anywhere; font: 11px var(--vscode-editor-font-family); }
 .stats-table { border-collapse: collapse; font-size: 11px; margin-top: 4px; }
 .stats-table td { padding: 1px 6px 1px 0; }
 .stats-table thead td { opacity: 0.7; }
 #stats .over { color: var(--vscode-errorForeground, #f66); }
 #stats .within { color: var(--vscode-testing-iconPassed, #73c991); }
 #stats .row span { margin-left: 4px; }
-.curve { display: block; margin: 2px 0 4px; cursor: crosshair; touch-action: none; }
+.curve { display: block; max-width: 100%; margin: 2px 0 4px; cursor: crosshair; touch-action: none; }
 .curve-heading { margin: 8px 0 2px; font-weight: 600; }
 .curve-heading .muted { font-weight: normal; font-size: 11px; }
 #curves input[type=number] { width: 52px; }
 #curves input[type=color] { width: 36px; height: 20px; padding: 0; }
 #notice { color: var(--vscode-errorForeground); }
 .muted { opacity: 0.7; }
+#objectAppearance label, #objectAppearance summary { overflow-wrap: anywhere; min-width: 0; }
+.appearance-group { margin: 2px 0; }
+.appearance-group > summary { cursor: pointer; padding: 2px 0; }
+.appearance-value { float: right; max-width: 55%; opacity: 0.7; text-align: right; }
+.appearance-option { display: flex; gap: 5px; align-items: flex-start; margin: 2px 0 2px 14px; }
+.appearance-option > input { flex: none; }
+.appearance-group > select { margin-left: 14px; }
+.appearance-note { display: block; font-size: 11px; opacity: 0.7; }
+#objectAppearanceReset { margin-top: 5px; }
+#objectAppearanceReset:disabled { display: none; }
+#objectRandomTexture { max-width: 100%; }
+.state-group > summary, .effect-rest > summary, .effect-occasion > summary { cursor: pointer; padding: 2px 0; overflow-wrap: anywhere; }
+.state-row { display: block; box-sizing: border-box; width: 100%; margin: 1px 0; padding: 3px 6px; border: none; border-radius: 2px; text-align: left; color: inherit; background: none; }
+.state-group > .state-row { padding-left: 18px; }
+.state-row:hover { background: var(--vscode-list-hoverBackground); }
+.state-row[aria-pressed="true"] { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.state-title, .state-detail { display: block; overflow-wrap: anywhere; }
+.state-title::first-letter { text-transform: uppercase; }
+.state-detail, .effect-detail { font-size: 11px; opacity: 0.7; }
+.effect { display: flex; gap: 4px; align-items: flex-start; margin: 2px 0; }
+.effect > input { flex: none; }
+.effect-text > span { display: block; overflow-wrap: anywhere; }
+.effect-rest { margin-top: 4px; }
+.effect-occasion { margin-left: 10px; }
+.voice-group { margin: 2px 0; }
+.voice-group > summary { cursor: pointer; padding: 2px 0; }
+.voice { display: flex; gap: 6px; align-items: center; margin: 2px 0 2px 12px; }
+.voice > button { flex: none; width: 26px; }
+.voice-text { min-width: 0; }
+.voice-name { font-size: 11px; overflow-wrap: anywhere; }
+.ability-group { margin: 2px 0; }
+.ability-group > summary { cursor: pointer; padding: 2px 0; }
+.ability { display: flex; gap: 6px; align-items: flex-start; margin: 3px 0 3px 12px; }
+.ability-play { flex: none; width: 26px; }
+.ability-play[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.ability-text { min-width: 0; }
+.ability-title { overflow-wrap: anywhere; }
+.ability-trigger, .ability-effects, .ability-sound { font-size: 11px; overflow-wrap: anywhere; }
+.ability-effects > summary { cursor: pointer; opacity: 0.8; }
+.ability-effect > span { display: block; }
+.ability-effect { margin: 2px 0 2px 12px; }
+.ability-sound { display: flex; gap: 4px; align-items: center; margin-top: 2px; }
+.ability-sound > button { flex: none; width: 22px; padding: 0 2px; }
+${DISCLOSURE_ROW_STYLE}
+.panel-filter { width: 100%; box-sizing: border-box; margin-bottom: 4px; padding: 3px 5px; }
+.panel-filter[hidden] { display: none; }
+.composition-group { margin: 2px 0; }
+.composition-source, .composition-binding { display: block; font-size: 11px; }
+.composition-part, .composition-sub { padding-left: 4px; }
+.composition-group .disclosure-members > .muted { padding-left: 4px; margin-top: 2px; }
 kbd { font-size: 10px; opacity: 0.7; }
+#context, #context > * { min-width: 0; }
+.preview-object .effect-only, .preview-effect .object-only { display: none !important; }
+#header { padding-bottom: 4px; }
+.preview-effect #header { position: sticky; top: -8px; z-index: 1; margin-top: -8px; padding-top: 8px; background: var(--vscode-sideBar-background, #fff); border-bottom: 1px solid var(--vscode-panel-border); }
+#title { overflow-wrap: anywhere; }
+#objectSource { font-size: 11px; overflow-wrap: anywhere; }
+#objectSource:empty, #objectKind:empty { display: none; }
+.section-count { margin-left: 6px; padding: 0 6px; border-radius: 9px; font-size: 11px; font-weight: normal; color: var(--vscode-badge-foreground, #fff); background: var(--vscode-badge-background, #616161); }
+.section-count:empty { display: none; }
+.section-hint { font-size: 11px; font-weight: normal; }
+.look-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 2px; }
+.look-chips:empty { display: none; }
+.look-chip { padding: 1px 8px; border: 1px solid var(--vscode-panel-border, #8886); border-radius: 10px; font-size: 11px; color: inherit; background: none; cursor: pointer; }
+.look-chip:hover { background: var(--vscode-list-hoverBackground); }
+.look-chip > b { font-weight: 600; }
+.state-advanced { margin-top: 6px; }
+.state-advanced > summary { cursor: pointer; padding: 2px 0; opacity: 0.8; }
+.state-advanced > .state-group { margin-left: 10px; }
+.see-also { margin-left: 6px; padding: 0 4px; border: none; font-size: 11px; color: var(--vscode-textLink-foreground, #3794ff); background: none; cursor: pointer; }
+.see-also:hover { text-decoration: underline; }
+.ini-name { font-family: var(--vscode-editor-font-family); font-size: 11px; opacity: 0.7; }
+.effect-count { opacity: 0.7; font-size: 11px; }
+#objectLoading { margin: 8px 0; }
 `,
-    body: `<div id="viewer"></div>
+    body: `<div id="viewer" data-settings-open="${isSettingsOpen}"></div>
 <canvas id="handles"></canvas><div id="flash"></div><div id="hud"></div>
-<div id="context">
-  <div class="row"><strong id="title"></strong></div>
-  <div id="object" hidden>
-    <div class="row">State <select id="objectState"></select></div>
-    <div id="objectElements"></div>
-    <div id="objectComposition" hidden></div>
-    <div id="objectVoices" hidden></div>
-    <div id="objectNotice" class="muted"></div>
-    <div id="objectParts" class="muted"></div>
+<div id="context" class="${isObject ? 'preview-object' : 'preview-effect'}">
+  <div id="header">
+    <div class="row"><strong id="title"></strong><span id="objectKind" class="muted object-only"></span></div>
+    <div id="objectSource" class="muted object-only"></div>
+    <div class="row object-only">
+      <button id="revealDefinition" title="Open the INI at the object's header" hidden>Go to definition</button>
+      <button id="effectiveDefinition" title="The object as the game builds it from its parent, read-only" hidden>Effective definition</button>
+      <button id="objectAppearanceReset" title="Back to the object as it is created: no upgrade, no damage, normal weather">Reset look</button>
+    </div>
+    <div id="lookChips" class="look-chips object-only" aria-label="The look shown"></div>
+    <div class="row effect-only"><button id="apply" class="primary" disabled title="Write the changed values into the block, as one edit">Apply to INI</button><button id="reset" disabled title="Forget the changed values">Reset</button><span id="pendingCount" class="muted"></span></div>
   </div>
-  <h3>View</h3>
-  <div class="row">
-    <label><input type="checkbox" id="showVolume" checked> Emitter volume</label>
-    <label><input type="checkbox" id="keys" checked> Colour keys</label>
-  </div>
-  <div class="row">
-    Emitter <select id="motion"><option value="still">still</option><option value="circle">circling</option><option value="line">back and forth</option></select>
-    <button id="pickModel" title="Show the effect on a model, started at one of its bones">On a model…</button> <select id="bone" hidden></select>
-  </div>
-  <h3>Readings <span class="muted">where the game's rule is open</span></h3>
-  <div class="row">Wind <select id="wind" title="W"><option value="retail">as written</option><option value="doubled">doubled</option><option value="off">off</option></select></div>
-  <div class="row">Hollow box <select id="hollowBox" title="H"><option value="surface">surface</option><option value="point">point (EA release)</option></select></div>
-  <div class="row">
-    <label><input type="checkbox" id="compound" checked> Attached systems and events</label>
-    <label><input type="checkbox" id="batchLimit" checked> 512 per system</label>
-  </div>
-  <div class="row muted"><kbd>Space</kbd> play · <kbd>R</kbd> restart · <kbd>.</kbd> step · <kbd>W</kbd> wind · <kbd>H</kbd> hollow box · <kbd>C</kbd> as written or with changes · drag the yellow handles to size the emission volume</div>
   <div id="notice"></div>
-  <div id="notes"></div>
-  <h3>Load</h3>
-  <div id="stats"></div>
-  <div id="editing">
-  <div id="timeline"></div>
-  <div id="curves"></div>
-  <h3>Values <span class="muted">preview only until applied</span></h3>
-  <div class="row"><button id="apply" class="primary" disabled>Apply to INI</button><button id="reset" disabled>Reset</button></div>
-  <div class="row" title="Scales every length, speed and duration together, so the effect stays the same effect: previewed until applied">Scale: size × <input id="scaleSpace" type="number" value="1" step="0.1" min="0.05"> time × <input id="scaleTime" type="number" value="1" step="0.1" min="0.05"> <button id="scale">Scale</button></div>
-  <div class="row"><button id="compare" title="C: show the block as written, then with the values here, to compare">A/B: as written</button> <button id="vary" title="Nudge every value up to the amount either way, to try variations">Vary ±</button><input id="varyAmount" type="number" value="15" step="5" min="1">% <button id="variant" title="Write the values here as a new system after this one; this one keeps its values">Save as variant…</button></div>
-  <div id="fields"></div>
+  <div id="objectLoading" class="muted object-only">Loading the object…</div>
+  <div id="object" hidden>
+    <details class="viewer-section" open hidden id="objectAppearanceSection"><summary>Appearance</summary>
+      <div id="objectAppearance"></div>
+    </details>
+    <details class="viewer-section" open id="objectStatesSection"><summary>State and animation<span id="objectStatesCount" class="section-count"></span></summary>
+      <input id="objectStateFilter" class="panel-filter" type="search" placeholder="Search states, animations and effects">
+      <div id="objectStates"></div>
+      <div id="objectNotice" class="muted"></div>
+      <div id="objectParts" class="muted"></div>
+    </details>
+    <details class="viewer-section" open hidden id="objectEffectsSection"><summary>Effects<span id="objectEffectsCount" class="section-count"></span> <span class="muted section-hint">playing now</span></summary>
+      <div id="objectElements"></div>
+    </details>
+    <details class="viewer-section" hidden id="objectAbilitiesSection"><summary>Abilities and effects<span id="objectAbilitiesCount" class="section-count"></span> <span class="muted section-hint">all it can play</span></summary>
+      <input id="objectAbilityFilter" class="panel-filter" type="search" placeholder="Filter abilities, weapons and effects">
+      <div id="objectAbilities"></div>
+    </details>
+    <details class="viewer-section" open hidden id="objectCompositionSection"><summary>Composition<span id="objectCompositionCount" class="section-count"></span></summary>
+      <div id="objectComposition"></div>
+    </details>
+    <details class="viewer-section" hidden id="objectVoicesSection"><summary>Voices<span id="objectVoicesCount" class="section-count"></span></summary>
+      <input id="objectVoiceFilter" class="panel-filter" type="search" placeholder="Filter voices and sounds">
+      <div id="objectVoices"></div>
+    </details>
   </div>
-</div>`,
+  <details class="viewer-section effect-only" open id="effectView"><summary>Emitter</summary>
+    <div class="row">
+      <label title="The shape particles are born in; drag its yellow handles to size it"><input type="checkbox" id="showVolume" checked> Show the emitter's shape</label>
+    </div>
+    <div class="row">
+      <button id="pickModel" title="Show the effect on a model, started at one of its bones">On a model…</button> <select id="bone" hidden></select>
+    </div>
+  </details>
+  <div id="editing" class="effect-only">
+  <details class="viewer-section" open><summary>Timeline and curves</summary>
+    <div id="timeline"></div>
+    <div id="curves"></div>
+  </details>
+  <details class="viewer-section" open><summary>Values <span class="muted section-hint">preview only until applied</span></summary>
+  <div class="row" title="Scales every length, speed and duration together, so the effect stays the same effect: previewed until applied">Scale: size × <input id="scaleSpace" type="number" value="1" step="0.1" min="0.05"> time × <input id="scaleTime" type="number" value="1" step="0.1" min="0.05"> <button id="scale">Scale</button></div>
+  <div class="row"><button id="compare" title="Show the block as written, then with the values here, to compare (C)">A/B: as written</button> <button id="vary" title="Nudge every value up to the amount either way, to try variations">Vary ±</button><input id="varyAmount" type="number" value="15" step="5" min="1">% <button id="variant" title="Write the values here as a new system after this one; this one keeps its values">Save as variant…</button></div>
+  <div id="fields"></div>
+  </details>
+  </div>
+</div>
+<details class="viewer-section" id="loadSection"><summary>Particle load <span class="muted section-hint">how heavy the effects are</span></summary>
+  <div id="stats"></div>
+  <div id="notes"></div>
+</details>`,
   });
 
 const createParticleLensProvider = (): vscode.CodeLensProvider => ({

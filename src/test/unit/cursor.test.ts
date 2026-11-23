@@ -12,6 +12,7 @@ import { parseCursorFile } from '../../formats/cursor/parseCursorFile';
 import { writeAni } from '../../formats/cursor/writeAni';
 import { writeCur } from '../../formats/cursor/writeCur';
 import { decodePng, encodePng } from '../../node/png';
+import { encodeCursorFramePng, getFramePngName } from '../../features/cursors/cursorFramePng';
 
 const makeFrame = (
   width: number,
@@ -122,19 +123,7 @@ suite('parseCur', () => {
     assert.strictEqual(withoutAlpha[0].pixels[3], 255);
   });
 
-  test('hands a PNG-compressed entry to the decoder and refuses it without one', () => {
-    const png = [137, 80, 78, 71, 13, 10, 26, 10, ...new Array(16).fill(0)];
-    const bytes = buildCur(png, [2, 3]);
-    const [frame] = parseCur(bytes, {
-      decodePng: () => ({ width: 4, height: 4, pixels: new Uint8Array(64) }),
-    });
-
-    assert.strictEqual(frame.width, 4);
-    assert.strictEqual(frame.hotspotY, 3);
-    assert.throws(() => parseCur(bytes), /PNG decoder/);
-  });
-
-  test('fails with a message on every truncation instead of throwing out of range', () => {
+  test('fails with a message on every truncation', () => {
     const bytes = writeCur([makeFrame(4, 4, 1, 1)]);
 
     for (let length = 0; length < bytes.length; length++) {
@@ -144,6 +133,43 @@ suite('parseCur', () => {
         `length ${length}`,
       );
     }
+  });
+
+  test('decodes a PNG entry through the decoder it is given, and refuses one without', () => {
+    const bytes = buildCur([...encodePng(makeFrame(3, 2))], [1, 1]);
+    const [frame] = parseCur(bytes, { decodePng });
+
+    assert.deepStrictEqual([frame.width, frame.height, frame.hotspotX], [3, 2, 1]);
+    assert.throws(() => parseCur(bytes), /PNG decoder/);
+  });
+
+  test('refuses a PNG entry too large before decoding it', () => {
+    const png = new Uint8Array(24);
+
+    png.set([137, 80, 78, 71]);
+    new DataView(png.buffer).setUint32(16, 100000);
+    assert.throws(
+      () => parseCur(buildCur([...png]), { decodePng: () => assert.fail('it must not be decoded') }),
+      /outside 1 to/,
+    );
+  });
+
+  test('refuses directory entries that share bytes to decode more than the file holds', () => {
+    const file = writeCur([
+      { width: 2, height: 2, hotspotX: 0, hotspotY: 0, pixels: new Uint8Array(16) },
+    ]);
+    const twice = new Uint8Array(file.length + 16);
+
+    twice.set(file.subarray(0, 22));
+    twice.set(file.subarray(6, 22), 22);
+    twice.set(file.subarray(22), 38);
+
+    const view = new DataView(twice.buffer);
+
+    view.setUint16(4, 2, true);
+    view.setUint32(18, 38, true);
+    view.setUint32(34, 38, true);
+    assert.throws(() => parseCur(twice), /more bytes than the file holds/);
   });
 
   test('refuses a size that the bytes present cannot hold', () => {
@@ -267,6 +293,16 @@ suite('animated cursors', () => {
     }
   });
 
+  test('reads a step of no time as one jiffy', () => {
+    const frame = { width: 1, height: 1, hotspotX: 0, hotspotY: 0, pixels: new Uint8Array(4) };
+    const file = writeAni({ frames: [frame], steps: [{ frame: 0, jiffies: 1 }] });
+    const text = String.fromCharCode(...file);
+    const rate = text.indexOf('rate') + 8;
+
+    new DataView(file.buffer, file.byteOffset).setUint32(rate, 0, true);
+    assert.strictEqual(parseAni(file).steps[0].jiffies, 1);
+  });
+
   test('refuses frames of different sizes and a step that names no frame', () => {
     assert.throws(
       () =>
@@ -300,17 +336,6 @@ suite('cursor conversion', () => {
     );
 
     assert.deepStrictEqual(back, original);
-  });
-
-  test('a PNG-compressed cursor entry opens through the host decoder', () => {
-    const png = encodePng(makeFrame(3, 2));
-    const bytes = buildCur([...png], [1, 1]);
-    const [frame] = parseCur(bytes, { decodePng });
-
-    assert.deepStrictEqual(
-      [frame.width, frame.height, frame.hotspotX],
-      [3, 2, 1],
-    );
   });
 
   test('a typed hotspot is checked against the image', () => {
@@ -367,54 +392,37 @@ suite('animation builder', () => {
     );
   });
 
-  test('directory entries cannot share bytes to decode more than the file holds', () => {
-    const file = writeCur([
-      { width: 2, height: 2, hotspotX: 0, hotspotY: 0, pixels: new Uint8Array(16) },
-    ]);
-    const twice = new Uint8Array(file.length + 16);
+});
 
-    twice.set(file.subarray(0, 22));
-    twice.set(file.subarray(6, 22), 22);
-    twice.set(file.subarray(22), 38);
-
-    const view = new DataView(twice.buffer);
-
-    view.setUint16(4, 2, true);
-    view.setUint32(18, 38, true);
-    view.setUint32(34, 38, true);
-    assert.throws(() => parseCur(twice), /more bytes than the file holds/);
+suite('saving a cursor image as PNG', () => {
+  const frames = [makeFrame(3, 3, 1, 1), makeFrame(3, 3, 2, 0), makeFrame(3, 3, 0, 2)].map((frame, index) => ({
+    ...frame,
+    pixels: frame.pixels.map((value, at) => (at % 4 === 0 && at > 0 ? value + index * 40 : value)),
+  }));
+  const animation = writeAni({
+    frames,
+    steps: frames.map((_, frame) => ({ frame, jiffies: 5 })),
   });
 
-  test('a PNG image too large is refused before it is decoded', () => {
-    const png = new Uint8Array(24);
-
-    png.set([137, 80, 78, 71]);
-    new DataView(png.buffer).setUint32(16, 100000);
-
-    const file = new Uint8Array(22 + png.length);
-    const view = new DataView(file.buffer);
-
-    view.setUint16(2, 2, true);
-    view.setUint16(4, 1, true);
-    view.setUint32(14, png.length, true);
-    view.setUint32(18, 22, true);
-    file.set(png, 22);
-    assert.throws(
-      () =>
-        parseCur(file, {
-          decodePng: () => assert.fail('it must not be decoded'),
-        }),
-      /outside 1 to/,
-    );
+  test('names a frame by its number from 1, and the only image of a cursor after the cursor', () => {
+    assert.strictEqual(getFramePngName('Arrow.ani', 2, 3), 'Arrow_frame03.png');
+    assert.strictEqual(getFramePngName('busy.ani', 9, 120), 'busy_frame010.png');
+    assert.strictEqual(getFramePngName('SCCPointer.cur', 0, 1), 'SCCPointer.png');
   });
 
-  test('a step of no time lasts one jiffy', () => {
-    const frame = { width: 1, height: 1, hotspotX: 0, hotspotY: 0, pixels: new Uint8Array(4) };
-    const file = writeAni({ frames: [frame], steps: [{ frame: 0, jiffies: 1 }] });
-    const text = String.fromCharCode(...file);
-    const rate = text.indexOf('rate') + 8;
+  test('encodes the frame asked for, not the first', () => {
+    const { name, frame, png } = encodeCursorFramePng(animation, 'busy.ani', 1);
+    const decoded = decodePng(png);
 
-    new DataView(file.buffer, file.byteOffset).setUint32(rate, 0, true);
-    assert.strictEqual(parseAni(file).steps[0].jiffies, 1);
+    assert.strictEqual(name, 'busy_frame02.png');
+    assert.deepStrictEqual([frame.hotspotX, frame.hotspotY], [2, 0]);
+    assert.deepStrictEqual([decoded.width, decoded.height], [3, 3]);
+    assert.deepStrictEqual([...decoded.pixels], [...frames[1].pixels]);
+  });
+
+  test('refuses a frame the file does not hold', () => {
+    assert.throws(() => encodeCursorFramePng(animation, 'busy.ani', 3), /no frame 4; it holds 3/);
+    assert.throws(() => encodeCursorFramePng(animation, 'busy.ani', 0.5), /no frame/);
+    assert.throws(() => encodeCursorFramePng(writeCur([frames[0]]), 'one.cur', -1), /no frame/);
   });
 });

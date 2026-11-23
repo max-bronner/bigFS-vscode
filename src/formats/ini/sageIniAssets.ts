@@ -30,6 +30,19 @@ export const getTextureCandidates = (name: string): string[] => {
   return TEXTURE_EXTENSIONS.map((extension) => `${stem}.${extension}`);
 };
 
+export const getSoundUseName = (reference: AssetReference): string =>
+  reference.candidates.length > 1
+    ? stemOf(reference.candidates[0])
+    : reference.candidates[0];
+
+export const getFileUseNames = (fileName: string): string[] => {
+  const name = lower(baseOf(fileName));
+
+  return SOUND_EXTENSIONS.some((extension) => name.endsWith(`.${extension}`))
+    ? [stemOf(name), name]
+    : [name];
+};
+
 export const findAssetReferences = (parsed: SageDocument): AssetReference[] => {
   const references: AssetReference[] = [];
 

@@ -12,6 +12,7 @@ import type { SubObjectRule } from '../../formats/w3d/w3dScene';
 
 export interface ScriptedRule extends SubObjectRule {
   isPermanent: boolean;
+  target?: 'module';
 }
 
 export interface ScriptedSubObjects {
@@ -33,6 +34,7 @@ interface SubObjectCall {
   isPermanent: boolean;
   nameAt: number;
   flagAt?: number;
+  target?: 'module';
 }
 
 const DRAWABLE_CALLS = new Map<string, SubObjectCall>([
@@ -40,6 +42,8 @@ const DRAWABLE_CALLS = new Map<string, SubObjectCall>([
   ['CurDrawableShowSubObject', { hide: false, isPermanent: false, nameAt: 0 }],
   ['CurDrawableHideSubObjectPermanently', { hide: true, isPermanent: true, nameAt: 0 }],
   ['CurDrawableShowSubObjectPermanently', { hide: false, isPermanent: true, nameAt: 0 }],
+  ['CurDrawableHideModule', { hide: true, isPermanent: false, nameAt: 0, target: 'module' }],
+  ['CurDrawableShowModule', { hide: false, isPermanent: false, nameAt: 0, target: 'module' }],
 ]);
 
 const OBJECT_CALLS = new Map<string, SubObjectCall>([
@@ -162,6 +166,7 @@ const readCall = (
         hide: call.hide === flag,
         isPermanent: call.isPermanent,
         source: scan.source,
+        ...(call.target ? { target: call.target } : {}),
       });
     } else {
       scan.found.conditional.push(`${pattern ?? 'a computed name'} (${scan.source})`);
@@ -305,7 +310,7 @@ export const readStateScript = (
 ): ScriptedSubObjects => {
   const found = createFound();
 
-  if (!/SubObject/.test(body)) {
+  if (!/SubObject|(Hide|Show)Module/.test(body)) {
     return found;
   }
 

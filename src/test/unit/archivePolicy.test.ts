@@ -1,5 +1,4 @@
 import * as assert from 'assert';
-import Module from 'module';
 import type { LogOutputChannel, Uri } from 'vscode';
 import type { Archive, EntryChange } from '../../services/archives/archive';
 import type { ArchivePolicy } from '../../services/archives/archivePolicy';
@@ -7,8 +6,7 @@ import type { ArchiveOperations } from '../../services/archives/archiveOperation
 import type { ArchiveRegistry } from '../../services/archives/archiveRegistry';
 import type { ArchiveSource } from '../../services/archives/archiveSource';
 import type { VirtualNode } from '../../services/archives/virtualNode';
-
-type Loader = (request: string, ...rest: unknown[]) => unknown;
+import { requireWithVscode } from './requireWithVscode';
 
 class FakeFileSystemError extends Error {
   constructor(
@@ -37,27 +35,14 @@ const fakeVscode = {
   },
 };
 
-const internals = Module as unknown as { _load: Loader };
-const original = internals._load;
-
-internals._load = (request, ...rest) =>
-  request === 'vscode' ? fakeVscode : original.call(Module, request, ...rest);
-
-let policies: typeof import('../../services/archives/archivePolicy');
-let operationsModule: typeof import('../../services/archives/archiveOperations');
-let registries: typeof import('../../services/archives/archiveRegistry');
-let nodes: typeof import('../../services/archives/virtualTree');
-
-try {
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  policies = require('../../services/archives/archivePolicy');
-  operationsModule = require('../../services/archives/archiveOperations');
-  registries = require('../../services/archives/archiveRegistry');
-  nodes = require('../../services/archives/virtualTree');
-  /* eslint-enable @typescript-eslint/no-require-imports */
-} finally {
-  internals._load = original;
-}
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { policies, operationsModule, registries, nodes } = requireWithVscode(fakeVscode, () => ({
+  policies: require('../../services/archives/archivePolicy') as typeof import('../../services/archives/archivePolicy'),
+  operationsModule: require('../../services/archives/archiveOperations') as typeof import('../../services/archives/archiveOperations'),
+  registries: require('../../services/archives/archiveRegistry') as typeof import('../../services/archives/archiveRegistry'),
+  nodes: require('../../services/archives/virtualTree') as typeof import('../../services/archives/virtualTree'),
+}));
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 const log = {
   info: () => undefined,
@@ -66,8 +51,8 @@ const log = {
 
 const uriOf = (path: string) => ({ path }) as unknown as Uri;
 
-const sourceOf = (id: string, external: boolean): ArchiveSource =>
-  ({ id, label: id, external, base: external }) as unknown as ArchiveSource;
+const sourceOf = (id: string, external: boolean, kind = 'mod'): ArchiveSource =>
+  ({ id, label: id, external, base: external, kind }) as unknown as ArchiveSource;
 
 const fakeArchive = (sourceId: string, entryPaths: string[]) => {
   const applied: (readonly EntryChange[])[] = [];
@@ -75,6 +60,7 @@ const fakeArchive = (sourceId: string, entryPaths: string[]) => {
   const archive = {
     name: 'data.big',
     sourceId,
+    pathInSource: 'data.big',
     archivePath: `${sourceId}/data.big`,
     rootPath,
     rootKey: rootPath.toLowerCase(),
@@ -115,6 +101,14 @@ const recordPolicy = (inner: ArchivePolicy) => {
     ensureWritable: (sourceId) => {
       asked.push(sourceId);
       inner.ensureWritable(sourceId);
+    },
+    isArchiveReadOnly: (archive) => {
+      asked.push(archive.sourceId);
+      return inner.isArchiveReadOnly(archive);
+    },
+    ensureArchiveWritable: (archive) => {
+      asked.push(archive.sourceId);
+      inner.ensureArchiveWritable(archive);
     },
   };
 
@@ -213,6 +207,33 @@ suite('archive policy', () => {
     );
     assert.doesNotThrow(() => policy.ensureWritable('mod'));
     assert.doesNotThrow(() => policy.ensureWritable('unknown'));
+  });
+
+  test("the game's own archives in an install of the workspace are read-only while protected", () => {
+    let isProtecting = true;
+    const policy = policies.createArchivePolicy(
+      () => [sourceOf('install', false, 'rotwk')],
+      () => isProtecting,
+    );
+    const game = { sourceId: 'install', pathInSource: 'INI.big', name: 'INI.big' };
+    const mod = { sourceId: 'install', pathInSource: '___mymod.big', name: '___mymod.big' };
+
+    assert.deepStrictEqual(
+      [policy.isArchiveReadOnly(game), policy.isArchiveReadOnly(mod), policy.isReadOnly('install')],
+      [true, false, false],
+    );
+    assert.throws(
+      () => policy.ensureArchiveWritable(game),
+      (error: unknown) =>
+        error instanceof FakeFileSystemError &&
+        error.code === 'NoPermissions' &&
+        error.message.includes('bigfs.protectGameArchives'),
+    );
+    assert.doesNotThrow(() => policy.ensureArchiveWritable(mod));
+
+    isProtecting = false;
+    assert.strictEqual(policy.isArchiveReadOnly(game), false);
+    assert.doesNotThrow(() => policy.ensureArchiveWritable(game));
   });
 
   for (const [name, write] of Object.entries(WRITES_INTO_BASE)) {

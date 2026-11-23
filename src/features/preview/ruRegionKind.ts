@@ -13,6 +13,7 @@ import type {
 } from '../../formats/apt/aptGeometry';
 import type { TextureRegion } from '../../webview/preview/protocol';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
+import { describeFileLocation } from '../../services/archives/describeFileLocation';
 import { isEditable, offerOverride } from '../../services/ini/archiveText';
 import { readWorkspaceText } from '../../services/ini/workspaceText';
 import { applyRegionEdit } from './applyRegionEdit';
@@ -88,6 +89,7 @@ const describeRegion = (
         .filter((each) => each)
         .join(' ') || undefined,
     source: { uri: source.uri.toString(), line: source.line },
+    location: describeFileLocation(archives, source.uri),
   };
 };
 

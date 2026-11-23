@@ -1,5 +1,4 @@
 import type { ToolBox } from "../../core/toolRegistry";
-import type { RgbaImage } from "../texture/textureTools";
 import { parseW3dTool } from "./w3dTools";
 import type {
   W3dBox,
@@ -13,11 +12,16 @@ import type { W3dAnimation } from "./w3dAnimation";
 import { skinVertices, toBoneMatrix } from "./w3dSkin";
 import type { BoneSpaceMesh, Matrix } from "./w3dSkin";
 import type { W3dBlend } from "./w3dMaterialTypes";
+import type { PlayerColour } from "./w3dHouseColour";
+import type { W3dFacing } from "./w3dFacing";
 import { loadSceneDraws } from "./w3dSceneDraws";
+import { swapTextures } from "./w3dTextureSwaps";
+import type { HasFile, TextureLayers } from "./w3dTextureSwaps";
 import type {
   DecodePng,
   LoadFile,
   SceneDraw,
+  SceneTexture,
   SceneTextureAddressing,
 } from "./w3dSceneDraws";
 
@@ -32,10 +36,16 @@ export interface SceneMesh {
   alphaTest: boolean;
   blend: W3dBlend;
   hidden: boolean;
+  castsShadow?: boolean;
   pickProxy?: boolean;
   draws?: SceneDraw[];
   local?: BoneSpaceMesh;
   bone?: number;
+  facing?: {
+    kind: W3dFacing;
+    origin: [number, number, number];
+    stored: { positions: Float32Array; normals?: Float32Array };
+  };
 }
 
 export interface SceneSkeleton {
@@ -68,9 +78,11 @@ export interface ModelScene {
   meshes: SceneMesh[];
   boxes: SceneBox[];
   hlod?: SceneHlod;
-  textures: RgbaImage[];
+  textures: SceneTexture[];
   addressing?: SceneTextureAddressing[];
   missing: string[];
+  textureNames?: string[];
+  playerColours?: PlayerColour[];
   hierarchy?: string;
   skeleton?: SceneSkeleton;
   animation?: W3dAnimation;
@@ -384,12 +396,30 @@ export const loadSkeleton = async (
   return hierarchy && toSceneSkeleton(hierarchy);
 };
 
+const loadOnce = (loadFile: LoadFile): LoadFile => {
+  const loads = new Map<string, Promise<Uint8Array | undefined>>();
+
+  return (fileName) => {
+    const key = fileName.toLowerCase();
+    let loading = loads.get(key);
+
+    if (!loading) {
+      loading = loadFile(fileName);
+      loads.set(key, loading);
+    }
+    return loading;
+  };
+};
+
 export const buildW3dScene = async (
   bytes: Uint8Array,
-  loadFile: LoadFile,
+  loadAnyFile: LoadFile,
   tools: ToolBox,
   decodePng?: DecodePng,
+  layers: TextureLayers = [],
+  hasFile?: HasFile,
 ): Promise<ModelScene> => {
+  const loadFile = layers.length && !hasFile ? loadOnce(loadAnyFile) : loadAnyFile;
   const parse = tools.use(parseW3dTool);
   const file = await parse(bytes);
   const [animation] = parseW3dAnimations(bytes);
@@ -410,8 +440,11 @@ export const buildW3dScene = async (
   }
 
   const matrices = computeBoneMatrices(hierarchy);
-  const { textures, addressing, missing, draws, uvs } = await loadSceneDraws(
-    file.meshes,
+  const worn = layers.length
+    ? await swapTextures(file.meshes, layers, loadFile, isSubObjectNamed, hasFile)
+    : { meshes: file.meshes, missing: [] };
+  const { textures, addressing, missing, playerColours, draws, uvs } = await loadSceneDraws(
+    worn.meshes,
     loadFile,
     tools,
     decodePng,
@@ -421,6 +454,7 @@ export const buildW3dScene = async (
 
   const meshes = file.meshes.map((mesh, at): SceneMesh => {
     const local = bindToBones(mesh, file, matrices.length);
+    const firstBoneMatrix: Matrix | undefined = local && matrices[local.bones[0]];
     const positions = mesh.positions.slice();
     const normals = mesh.normals?.slice();
 
@@ -446,10 +480,16 @@ export const buildW3dScene = async (
       alphaTest: mesh.alphaTest,
       blend: mesh.blend,
       hidden: mesh.hidden,
+      castsShadow: mesh.castsShadow,
       pickProxy: mesh.pickProxy || undefined,
       draws: draws[at],
       local,
       bone: mesh.isSkin ? undefined : local?.bones[0],
+      facing: mesh.facing && {
+        kind: mesh.facing,
+        origin: firstBoneMatrix ? [firstBoneMatrix[12], firstBoneMatrix[13], firstBoneMatrix[14]] : [0, 0, 0],
+        stored: { positions: mesh.positions, normals: mesh.normals },
+      },
     };
   });
 
@@ -480,7 +520,15 @@ export const buildW3dScene = async (
     hlod: sceneHlod,
     textures,
     addressing,
-    missing,
+    missing: [...new Set([...missing, ...worn.missing])],
+    textureNames: [
+      ...new Set(
+        file.meshes.flatMap((mesh) =>
+          mesh.draws.flatMap((draw) => (draw.texture ? [draw.texture.name] : [])),
+        ),
+      ),
+    ],
+    playerColours,
     hierarchy: hierarchy?.name,
     skeleton: hierarchy && toSceneSkeleton(hierarchy),
     animation,
