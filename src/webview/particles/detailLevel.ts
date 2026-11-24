@@ -1,10 +1,10 @@
 import { DETAIL_LEVELS } from '../../game/objects/detailModels';
 import type { DetailLevel } from '../../game/objects/detailModels';
 import { createDetailPicker } from '../shared/viewer/createDetailPicker';
-import { viewer } from './page';
+import { pageSettings, viewer } from './page';
 
 const detail = {
-  picked: 'high' as DetailLevel,
+  picked: pageSettings.values.detail,
   mainHas: false,
   partsHave: false,
   listeners: [] as (() => void)[],
@@ -12,6 +12,7 @@ const detail = {
 
 const picker = createDetailPicker((level) => {
   detail.picked = level;
+  pageSettings.set('detail', level);
   detail.listeners.forEach((listener) => listener());
 });
 

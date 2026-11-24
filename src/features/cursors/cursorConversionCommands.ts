@@ -1,6 +1,13 @@
 import * as vscode from 'vscode';
 import type { ArchiveModel } from '../../services/archives/archiveModel';
-import { toUri } from '../../services/archives/commandTarget';
+import { toUri, toUris } from '../../services/archives/commandTarget';
+import { OUTPUT_FIELD, createReview } from '../../core/converterDialog';
+import { CONVERTER_FILE_TYPES } from '../../core/converterFileTypes';
+import type { ConverterValues } from '../../core/converterDialog';
+import type { RgbaImage } from '../../formats/texture/textureTools';
+import { collectConverterFiles } from '../../platform/collectConverterFiles';
+import { resolveOutputUris } from '../../platform/resolveOutputUris';
+import { openConverterDialog } from '../../platform/webview/openConverterDialog';
 import type { CommandTarget } from '../../services/archives/commandTarget';
 import type { CursorFrame } from '../../formats/cursor/cursorFrame';
 import { parseCursorFile } from '../../formats/cursor/parseCursorFile';
@@ -147,52 +154,117 @@ const exportCursorAsPng = async (archives: ArchiveModel, target: CommandTarget, 
   );
 };
 
-const convertPngToCursor = async (target: CommandTarget) => {
-  const source = resolveTargetUri(target);
+const convertPngsToCursors = async (
+  extensionUri: vscode.Uri,
+  archives: ArchiveModel,
+  target: unknown,
+  selection: unknown,
+  values?: ConverterValues,
+) => {
+  const given = toUris(target, selection);
+  const active = vscode.window.activeTextEditor?.document.uri;
+  const files = await collectConverterFiles(
+    given.length || !active ? given : [active],
+    CONVERTER_FILE_TYPES.cursor,
+  );
 
-  if (!source) {
+  if (!files) {
     return;
   }
 
-  const image = decodePng(await vscode.workspace.fs.readFile(source));
-  const typed = await vscode.window.showInputBox({
-    title: `Hotspot of ${getFileName(source)} (${image.width}×${image.height})`,
-    prompt: 'The pixel that points, as x,y from the top left',
-    value: '0,0',
-    validateInput: (text) => {
-      const parsed = parseHotspot(text, image.width, image.height);
+  const images: { uri: vscode.Uri; image: RgbaImage }[] = [];
+  const skipped = [...files.skipped];
 
-      return typeof parsed === 'string' ? parsed : undefined;
-    },
-  });
-  const hotspot =
-    typed === undefined
-      ? undefined
-      : parseHotspot(typed, image.width, image.height);
-
-  if (!hotspot || typeof hotspot === 'string') {
-    return;
+  for (const uri of files.accepted) {
+    try {
+      images.push({ uri, image: decodePng(await vscode.workspace.fs.readFile(uri)) });
+    } catch (error) {
+      skipped.push(`${getFileName(uri)} (${error instanceof Error ? error.message : String(error)})`);
+    }
+  }
+  if (!images.length) {
+    throw new Error(`No PNG could be read: ${skipped.join('; ')}`);
   }
 
-  const bytes = writeCur([
+  const canWriteBeside = (uri: vscode.Uri) => uri.scheme === 'file' && !archives.isReadOnlyUri(uri);
+
+  await openConverterDialog(
+    extensionUri,
     {
-      ...image,
-      hotspotX: hotspot.x,
-      hotspotY: hotspot.y,
-    },
-  ]);
-  const output = await pickSaveUri(`${getBaseName(source)}.cur`, 'cur');
+      title: 'Convert to Cursor',
+      heading: 'Convert PNG images to cursors',
+      about: 'Each PNG becomes a .cur cursor. The hotspot is the pixel that points, counted from the top left; a PNG cannot hold it.',
+      files: images.map(({ uri, image }) => ({ name: getFileName(uri), detail: `${image.width}×${image.height}` })),
+      skipped,
+      fields: [
+        { kind: 'number', id: 'hotspotX', label: 'Hotspot x', min: 0, unit: 'px' },
+        { kind: 'number', id: 'hotspotY', label: 'Hotspot y', min: 0, unit: 'px' },
+        OUTPUT_FIELD,
+      ],
+      values: { hotspotX: 0, hotspotY: 0, output: 'beside' },
+      review: ({ hotspotX, hotspotY, output }) => {
+        const review = createReview();
+        const problems = new Set(
+          images.flatMap(({ image }) => {
+            const parsed = parseHotspot(`${String(hotspotX)},${String(hotspotY)}`, image.width, image.height);
 
-  if (output) {
-    await vscode.workspace.fs.writeFile(output, bytes);
-    void vscode.window.showInformationMessage(`Wrote ${getFileName(output)}`);
-  }
+            return typeof parsed === 'string' ? [parsed] : [];
+          }),
+        );
+        const fallback = images.filter(({ uri }) => !canWriteBeside(uri)).length;
+
+        review.errors.push(...problems);
+        if (output === 'beside' && fallback) {
+          review.notes.push(`${fallback} of the images are in an archive or the base game, so their cursors go to a folder you choose.`);
+        }
+        return review;
+      },
+      convert: async ({ hotspotX, hotspotY, output }, run) => {
+        const outputs = await resolveOutputUris(
+          images.map(({ uri }) => uri),
+          images.map(({ uri }) => `${getBaseName(uri)}.cur`),
+          output,
+          canWriteBeside,
+        );
+
+        if (!outputs) {
+          return 'Nothing written';
+        }
+
+        let written = 0;
+
+        for (const [at, { uri, image }] of images.entries()) {
+          if (run.isCancelled()) {
+            break;
+          }
+          run.progress(`Converting ${getFileName(uri)}`, at / images.length);
+          try {
+            await vscode.workspace.fs.writeFile(
+              outputs[at],
+              writeCur([{ ...image, hotspotX: Number(hotspotX), hotspotY: Number(hotspotY) }]),
+            );
+            written++;
+            run.log(`${getFileName(uri)} → ${getFileName(outputs[at])}, hotspot ${String(hotspotX)},${String(hotspotY)}`);
+          } catch (error) {
+            run.log(`${getFileName(uri)}: ${error instanceof Error ? error.message : String(error)}`, true);
+          }
+        }
+        return `${written} of ${images.length} converted`;
+      },
+    },
+    values,
+  );
 };
 
-export const registerCursorConversionCommands = (archives: ArchiveModel): vscode.Disposable =>
+export const registerCursorConversionCommands = (
+  extensionUri: vscode.Uri,
+  archives: ArchiveModel,
+): vscode.Disposable =>
   vscode.Disposable.from(
     registerCommand('bigfs.exportCursorPng', (target: CommandTarget, frameIndex?: unknown) =>
       exportCursorAsPng(archives, target, frameIndex),
     ),
-    registerCommand('bigfs.convertPngToCursor', convertPngToCursor),
+    registerCommand('bigfs.convertPngToCursor', (target?: unknown, selection?: unknown, values?: ConverterValues) =>
+      convertPngsToCursors(extensionUri, archives, target, selection, values),
+    ),
   );

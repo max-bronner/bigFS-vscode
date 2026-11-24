@@ -8,21 +8,27 @@ const status = document.getElementById('status')!;
 const context = canvas.getContext('2d', { willReadFrequently: true })!;
 let queue = Promise.resolve();
 
-video.addEventListener('loadedmetadata', () =>
+const postMeta = () =>
   vscode.postMessage({
     kind: 'meta',
     width: video.videoWidth,
     height: video.videoHeight,
     duration: video.duration,
-  }),
-);
-video.addEventListener('error', () =>
+  });
+const postError = () =>
   vscode.postMessage({
     kind: 'error',
     message:
       'This video cannot be read here; install FFmpeg, or convert it to WebM first',
-  }),
-);
+  });
+
+if (video.error) {
+  postError();
+} else if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+  postMeta();
+}
+video.addEventListener('loadedmetadata', postMeta);
+video.addEventListener('error', postError);
 
 window.addEventListener('message', ({ data }: MessageEvent<ToVideoPage>) => {
   if (data.kind !== 'frame') {

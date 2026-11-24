@@ -20,7 +20,6 @@ import {
 } from './aptDocumentEdits';
 import type { RecordChange } from './aptDocumentEdits';
 import { keepEngineAnswers } from './aptEngineAnswers';
-import { keepAptToolbar } from './aptToolbar';
 import type { AptLibrary } from './aptLibrary';
 import { resolveMappedImages } from './aptMappedImages';
 import type { AptGameServices, AptMovieImports } from './aptMovieImports';
@@ -59,9 +58,7 @@ const HANDLERS: {
   engineAnswers: (message, { document, game }) =>
     keepEngineAnswers(game.state, document.name, message.values),
 
-  toolbar: async (message, { game }) => {
-    await keepAptToolbar(game.state, message.toolbar);
-  },
+  keepSettings: (message, { game }) => Promise.resolve(game.settings.keep(message.settings)),
 
   async script(message, { document, post }) {
     const block = Number(message.block);

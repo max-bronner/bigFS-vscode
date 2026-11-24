@@ -26,6 +26,7 @@ export const registerPreview = (
       context.extensionUri,
       regions,
       createRelatedModelSearch(locator, iniIndex, iniDocuments),
+      context.globalState,
     ),
     registerEditMappedImageRegion(archives, locator, regions),
     registerShowRuRegion(locator, regions),

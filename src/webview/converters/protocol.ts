@@ -1,19 +1,21 @@
-import type { TextureTarget } from '../../formats/texture/textureTargets';
+import type { ConverterKind } from '../../core/converterFileTypes';
 
-export type ConverterKind = 'image' | 'cursor' | 'video' | 'strings';
+export type { ConverterKind };
 
-export interface ImageSettings {
-  target: TextureTarget;
-  mipmaps: boolean;
-  output: 'beside' | 'folder';
+export interface ListedFile {
+  uri: string;
+  name: string;
 }
 
 export type FromConvertersPage =
   | { kind: 'ready' }
-  | { kind: 'pick'; converter: ConverterKind; settings: ImageSettings }
-  | { kind: 'decoded'; id: number; width: number; height: number; pixels: Uint8Array }
-  | { kind: 'decodeFailed'; id: number; message: string };
+  | { kind: 'pick'; converter: ConverterKind }
+  | { kind: 'listed'; converter: ConverterKind; uris: string[] }
+  | { kind: 'convert'; converter: ConverterKind; uris: string[] };
 
-export type ToConvertersPage =
-  | { kind: 'decode'; id: number; name: string; bytes: Uint8Array }
-  | { kind: 'log'; converter: ConverterKind; text: string; isError?: boolean };
+export type ToConvertersPage = {
+  kind: 'add';
+  converter: ConverterKind;
+  files: ListedFile[];
+  skipped: string[];
+};

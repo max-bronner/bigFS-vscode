@@ -60,7 +60,6 @@ export type ToPage =
       origins: Record<string, string>;
       texts?: Record<string, string>;
       answers?: EngineValues;
-      toolbar?: unknown;
     }
   | {
       kind: 'movieLoaded';
@@ -105,7 +104,7 @@ export type FromPage =
   | { kind: 'renderObject'; name: string }
   | { kind: 'script'; block: number }
   | { kind: 'engineAnswers'; values: EngineValues }
-  | { kind: 'toolbar'; toolbar: AptToolbar }
+  | { kind: 'keepSettings'; settings: Record<string, unknown> }
   | { kind: 'loadMovie'; name: string }
   | PlaySoundRequest
   | { kind: 'edit'; edit: AptEdit }

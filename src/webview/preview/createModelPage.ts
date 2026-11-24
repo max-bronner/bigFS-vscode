@@ -13,7 +13,8 @@ import { createDetailPicker } from '../shared/viewer/createDetailPicker';
 import type { DetailLevel } from '../../game/objects/detailModels';
 import { listFileClips } from './listFileClips';
 import { listFileUses } from './listFileUses';
-import { readPageState, savePageState } from './pageState';
+import type { PreviewSettings } from '../shared/createPreviewSettings';
+import { MODEL_PAGE_SECTION, MODEL_PAGE_SETTINGS } from './previewPageSettings';
 import type { FileUse, FromPreviewPage, ModelMessage } from './protocol';
 
 const OWN = '#own';
@@ -43,6 +44,7 @@ export interface ModelPage {
 
 export const createModelPage = (
   main: HTMLElement,
+  settings: PreviewSettings,
   post: (
     message: Extract<
       FromPreviewPage,
@@ -51,6 +53,7 @@ export const createModelPage = (
   ) => void,
 ): ModelPage => {
   const usedIn = element('div', 'Looking for the INI lines that name this file…', 'uses');
+  const pageSettings = settings.section(MODEL_PAGE_SECTION, MODEL_PAGE_SETTINGS);
   let thisFile: ClipChoice[] = [];
   let message: ModelMessage | undefined;
   let openedFile = '';
@@ -103,6 +106,7 @@ export const createModelPage = (
   const detailPicker = createDetailPicker((level) => {
     const file = message?.detail?.files[level];
 
+    pageSettings.set('detail', level);
     if (file) {
       const shown = file === openedFile.toLowerCase() ? undefined : file;
 
@@ -136,28 +140,27 @@ export const createModelPage = (
   const viewer = createViewer(main, {
     onPickClip: pickClip,
     partsHint: PARTS_HINT,
-    sky: {
-      initial: readPageState().sky,
-      onChange: (sky) => savePageState({ sky }),
-    },
+    settings,
   });
 
   const addSection = (key: SectionKey, title: string, content: Node[]) => {
     const section = viewer.addSection(
       title,
       content,
-      !readPageState().foldedSections?.includes(key),
+      !pageSettings.values.foldedSections.includes(key),
     );
 
     section.ontoggle = () => {
-      const folded = new Set(readPageState().foldedSections);
+      const folded = new Set(pageSettings.values.foldedSections);
 
       if (section.open) {
         folded.delete(key);
       } else {
         folded.add(key);
       }
-      savePageState({ foldedSections: [...folded] });
+      if (folded.size !== pageSettings.values.foldedSections.length) {
+        pageSettings.set('foldedSections', [...folded]);
+      }
     };
     return section;
   };
@@ -202,6 +205,16 @@ export const createModelPage = (
       if (keepsClip) {
         viewer.showStatus('');
         return;
+      }
+      const keptDetail = pageSettings.values.detail;
+      const keptFile =
+        isFirst && keptDetail !== 'high' && next.detail?.level === 'high'
+          ? next.detail.files[keptDetail]
+          : undefined;
+
+      if (keptFile) {
+        detailSwitch = { file: keptFile };
+        requestModel(detailSwitch.file);
       }
       if (!isFirst) {
         viewer.clearClip();

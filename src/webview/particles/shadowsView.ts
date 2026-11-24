@@ -12,16 +12,13 @@ import { createGroundRenderer } from './groundRenderer';
 import type { ViewerCamera } from '../shared/viewer/createViewer';
 import { getPlacedParts } from './composedParts';
 import { getModelOrigin } from './emitterOrigin';
-import { post, viewer } from './page';
-
-const DEFAULT_GROUND = '#5c5c57';
-const COLOUR = /^#[0-9a-f]{6}$/i;
+import { pageSettings, post, viewer } from './page';
 
 const shadows = {
-  isOn: false,
+  isOn: pageSettings.values.shadows,
   hasObject: false,
   sun: DEFAULT_SUN,
-  groundColour: DEFAULT_GROUND,
+  groundColour: pageSettings.values.groundColour,
   main: undefined as ObjectShadow | undefined,
 };
 const textures = new Map<string, WebGLTexture | null | 'loading'>();
@@ -56,33 +53,27 @@ const colour = element('input');
 colour.type = 'color';
 colour.id = 'groundColour';
 colour.hidden = true;
-colour.value = DEFAULT_GROUND;
+colour.value = shadows.groundColour;
 colour.title = 'Ground colour under the shadows';
 colour.oninput = () => {
   shadows.groundColour = colour.value;
   viewer.showStatus('ground colour');
 };
-colour.onchange = () => post({ kind: 'setGroundColour', colour: colour.value });
+colour.onchange = () => pageSettings.set('groundColour', colour.value);
 
 button.hidden = true;
 button.title =
   "Draw a ground, the shadows cast on it and the stock blobs; an object's own shadow textures always show";
-button.setAttribute('aria-pressed', 'false');
+button.setAttribute('aria-pressed', String(shadows.isOn));
 button.onclick = () => {
   shadows.isOn = !shadows.isOn;
   colour.hidden = !shadows.isOn;
   button.setAttribute('aria-pressed', String(shadows.isOn));
+  pageSettings.set('shadows', shadows.isOn);
   viewer.showStatus(`shadows ${shadows.isOn ? 'shown' : 'off'}`);
 };
 viewer.toggles.append(button);
 viewer.viewBar.append(colour);
-
-export const setGroundColour = (kept: string | undefined): void => {
-  if (kept && COLOUR.test(kept)) {
-    shadows.groundColour = kept;
-    colour.value = kept;
-  }
-};
 
 export const setMainShadow = (
   shadow: ObjectShadow | undefined,

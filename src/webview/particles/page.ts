@@ -4,6 +4,8 @@ import type { ParticleDef } from '../../formats/particles/particleDef';
 import type { FromPage, SceneMessage } from './protocol';
 import { getVsCodeApi } from '../shared/vscodeApi';
 import { createViewer } from '../shared/viewer/createViewer';
+import { createPreviewSettings, readKeptSettings } from '../shared/createPreviewSettings';
+import { PARTICLE_PAGE_SECTION, PARTICLE_PAGE_SETTINGS } from './pageSettings';
 
 const api = getVsCodeApi<FromPage>();
 
@@ -18,12 +20,15 @@ export const onClipPicked = (pick: (name: string) => void): void => {
   pickClip = pick;
 };
 
+const settings = createPreviewSettings(readKeptSettings(), (kept) =>
+  post({ kind: 'keepSettings', settings: kept }),
+);
+
+export const pageSettings = settings.section(PARTICLE_PAGE_SECTION, PARTICLE_PAGE_SETTINGS);
+
 export const viewer = createViewer($('viewer'), {
   onPickClip: (name) => pickClip(name),
-  settings: {
-    initial: $('viewer').dataset.settingsOpen === 'true',
-    onChange: (isOpen) => post({ kind: 'setViewerSettingsOpen', isOpen }),
-  },
+  settings,
 });
 
 export const isObjectPage = $('context').classList.contains('preview-object');

@@ -5,6 +5,8 @@ import { MapEdit, applyMapEdit } from '../../formats/map/mapEdit';
 import { markSounds } from '../../formats/map/mapScriptSounds';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
 import { renderWebviewPage } from '../../platform/webview/webviewPage';
+import { createPreviewSettingsStore } from '../../platform/webview/createPreviewSettingsStore';
+import type { PreviewSettingsStore } from '../../platform/webview/createPreviewSettingsStore';
 import { getPageBundleOptions, getPageBundleFolder } from '../../platform/webview/pageBundle';
 import type {
   DictEntryView,
@@ -40,6 +42,7 @@ const MAP_FORMAT: SnapshotFormat<MapFile> = {
 export const renderHtml = (
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
+  settingsBlock = '',
 ): string => {
   return renderWebviewPage({
     ...getPageBundleOptions(extensionUri, webview, 'map'),
@@ -80,7 +83,7 @@ export const renderHtml = (
   body.readonly .edit-only { display: none; }
   #notice { position: fixed; bottom: 8px; left: 310px; right: 310px; padding: 6px 10px; background: var(--vscode-inputValidation-errorBackground); border: 1px solid var(--vscode-inputValidation-errorBorder); }
 `,
-    body: `<section id="info"></section>
+    body: `${settingsBlock}<section id="info"></section>
 <main>
   <div id="layers">
     <label><input type="checkbox" id="layer-objects"> Objects</label>
@@ -169,16 +172,22 @@ export class MapEditorProvider implements vscode.CustomEditorProvider<MapDocumen
   >();
   public readonly onDidChangeCustomDocument = this.changes.event;
 
+  private readonly settings: PreviewSettingsStore;
+
   public constructor(
     private readonly index: SageIniIndex,
     private readonly extensionUri: vscode.Uri,
-  ) {}
+    state: vscode.Memento,
+  ) {
+    this.settings = createPreviewSettingsStore(state, 'map');
+  }
 
   public static register(
     index: SageIniIndex,
     extensionUri: vscode.Uri,
+    state: vscode.Memento,
   ): vscode.Disposable {
-    const provider = new MapEditorProvider(index, extensionUri);
+    const provider = new MapEditorProvider(index, extensionUri, state);
     const options = { supportsMultipleEditorsPerDocument: true };
 
     return vscode.Disposable.from(
@@ -239,7 +248,7 @@ export class MapEditorProvider implements vscode.CustomEditorProvider<MapDocumen
       enableScripts: true,
       localResourceRoots: [getPageBundleFolder(this.extensionUri)],
     };
-    panel.webview.html = renderHtml(panel.webview, this.extensionUri);
+    panel.webview.html = renderHtml(panel.webview, this.extensionUri, this.settings.renderBlock());
 
     let heightsSent = false;
     const send = () => {
@@ -260,6 +269,9 @@ export class MapEditorProvider implements vscode.CustomEditorProvider<MapDocumen
       try {
         if (message?.kind === 'ready') {
           heightsSent = false;
+        } else if (message?.kind === 'keepSettings') {
+          redraw = false;
+          void this.settings.keep(message.settings);
         } else if (message?.kind === 'edit') {
           this.edit(document, message.edit);
         } else if (message?.kind === 'playSound') {

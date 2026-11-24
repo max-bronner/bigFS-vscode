@@ -107,10 +107,11 @@ const STYLE = `
 export const renderAptPage = (
   webview: vscode.Webview,
   script: vscode.Uri,
+  settingsBlock = '',
 ): string =>
   renderWebviewPage({
     style: STYLE,
-    body: `<aside><input id="filter" placeholder="Filter characters, exports, text"><div id="kinds" role="toolbar" aria-label="Kinds of character"></div><div id="list"></div></aside>
+    body: `${settingsBlock}<aside><input id="filter" placeholder="Filter characters, exports, text"><div id="kinds" role="toolbar" aria-label="Kinds of character"></div><div id="list"></div></aside>
 <main>
   <p id="progress" class="muted">Opening the movie…</p>
   <div class="toolbar" id="stage-bar">

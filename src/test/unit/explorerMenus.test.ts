@@ -146,6 +146,18 @@ const parseWhen = (when: string): Condition => {
         (String(context[key]) === operand) === (operator === '==');
     }
 
+    if (operator === 'in') {
+      take();
+
+      const list = takeKey();
+
+      return (context) => {
+        const values = context[list];
+
+        return Array.isArray(values) && values.includes(context[key]);
+      };
+    }
+
     if (operator === '=~') {
       take();
 
@@ -433,6 +445,23 @@ suite('Explorer menus', () => {
     hasNone(menuFor('file', false, '.png'), ['bigfs.buildAnimatedCursor']);
   });
 
+  test('an INI or INC file, and no other, can be compared with another version', () => {
+    const compare = ['bigfs.compareWithOtherVersion'];
+
+    for (const extension of ['.ini', '.inc']) {
+      hasAll(menuFor('file', true, extension), compare);
+      hasAll(menuFor('looseFile', false, extension), compare);
+      hasAll(explorerMenuFor(extension), compare);
+      hasAll(new Set(listMenu('editor/title/context', { resourceExtname: extension }).map(({ command }) => command)), compare);
+    }
+
+    hasAll(new Set(listMenu('editor/context', { editorLangId: 'sage-ini' }).map(({ command }) => command)), compare);
+    hasNone(menuFor('file', false, '.tga'), compare);
+    hasNone(menuFor('folder', false), compare);
+    hasNone(explorerMenuFor('.tga'), compare);
+    hasNone(new Set(listMenu('editor/title/context', { resourceExtname: '.tga' }).map(({ command }) => command)), compare);
+  });
+
   test('the tree\'s title bar keeps its buttons and holds the mod-wide tasks behind "…"', () => {
     const titleBar = (menus['view/title'] ?? []).filter((item) =>
       isShown(item, { view: 'bigArchiveExplorer', 'bigfs.gameView': false }),
@@ -506,6 +535,29 @@ suite('Explorer menus', () => {
     assert.ok(parseWhen('!(viewItem =~ /ReadOnly$/)')({ viewItem: 'bigFile' }));
     assert.ok(!parseWhen('!(viewItem =~ /ReadOnly$/)')({ viewItem: 'bigFileReadOnly' }));
     assert.ok(parseWhen('a && b || c')({ c: true }));
+    assert.ok(parseWhen('a in list')({ a: 'x', list: ['x'] }));
+    assert.ok(!parseWhen('a in list')({ a: 'y', list: ['x'] }));
+  });
+
+  test('Restore Original asset.dat shows on an asset.dat with its original kept, and only there', () => {
+    const restore = 'bigfs.restoreAssetCatalogue';
+    const row = (isReadOnly: boolean, name: string, hasOriginal: boolean) =>
+      listMenu('view/item/context', {
+        view: 'bigArchiveExplorer',
+        viewItem: getContextValue('looseFile', isReadOnly, name, hasOriginal),
+      }).some(({ command }) => command === restore);
+    const explorer = (resourcePath: string, restorable: string[]) =>
+      listMenu('explorer/context', {
+        resourceFilename: path.basename(resourcePath),
+        resourcePath,
+        'bigfs.restorableAssetCatalogues': restorable,
+      }).some(({ command }) => command === restore);
+
+    assert.ok(row(false, 'asset.dat', true));
+    assert.ok(!row(false, 'asset.dat', false));
+    assert.ok(!row(true, 'asset.dat', true), 'a game install outside the workspace is never written');
+    assert.ok(explorer('/mod/Asset.dat', ['/mod/Asset.dat']));
+    assert.ok(!explorer('/mod/asset.dat', ['/other/asset.dat']));
   });
 
   test('every submenu is declared, used and holds something', () => {

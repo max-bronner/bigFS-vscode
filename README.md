@@ -62,6 +62,15 @@ regular expression and include and exclude filters, much like VS Code's own
 search, which cannot see inside archives. **Go to File in Archives…**
 (`Ctrl+Alt+P`) is Ctrl+P for archive files.
 
+**Compare with Other Version…** on an `.ini` or `.inc` file (right-click in
+either explorer, or the editor's tab) lists every other copy of the same game
+path, such as `data\ini\commandset.ini`: each archive and folder of the
+load order, a mod's and the other game's, each with its game and its place,
+the copy that wins and the retail original marked. The pick opens VS Code's
+diff editor with each side named after its archive and game, the other copy
+on the left and your file on the right; a game archive's side stays
+read-only. **Choose a File…** compares with any file on disk or in an archive.
+
 The tree's **…** menu holds the mod-wide tasks:
 
 - **Compare with Base Game** lists what your mod adds and changes, down to
@@ -74,6 +83,9 @@ The tree's **…** menu holds the mod-wide tasks:
   fill them with stand-in text.
 - **Sync with Assets…** compares an install's `asset.dat` catalogue with the
   files the game loads and writes the updated catalogue into your mod folder.
+  **Keep the original as asset.dat.org** (ticked) copies the catalogue there
+  first, once: a second sync never replaces it. **Restore Original
+  asset.dat**, in the file's menu and the viewer, copies it back.
 - **Validate INI Files**, **Find Unused Definitions**, **Check APT Movies**,
   **Open Balance Sheet** and **Armor Table**.
 
@@ -89,6 +101,9 @@ loose or in archives, so everything below works across both:
 - hover with the engine's field types, the game text of a string label in
   your chosen language, the picture of a `MappedImage` and the buttons of a
   `CommandSet`;
+- a colour swatch before every colour value (`R:40 G:60 B:200 A:255`) that
+  opens VS Code's colour picker and writes the choice back in the line's own
+  notation, and the colour in the hover;
 - go to definition, find references, rename, call and type hierarchy, through
   `#include` and `#define`;
 - problems for unknown fields, unclosed blocks, undefined references,
@@ -136,6 +151,11 @@ All 3D views (W3D files, object and particle previews) share one viewer with
 the same camera and controls: playback, animations from any skeleton, bones,
 parts, detail levels, house colour, shadows and a plain-colour mode.
 
+View settings carry over: the next model, object, effect, texture, map or
+APT movie you open starts with the toolbar choices you left in the last one
+of its kind, also after a restart. What belongs to one file, such as an
+object's Appearance, the state or animation picked, or an edit, does not.
+
 | File | What bigFS does |
 | --- | --- |
 | `.w3d` | 3D preview with the game's materials and animations, the INI lines that use the model, and its related files and texture sets |
@@ -180,13 +200,29 @@ fades, retiming) and recognises tweens already baked into a movie.
 ## Converters
 
 The **Converters** view (under the Explorer) brings the converters together,
-and each one is also on the right-click menu of the files it takes:
+and each one is also on the right-click menu of the files it takes and in the
+Command Palette. Each opens a dialog in the editor listing the files, its
+options with defaults and any warnings, then **Convert** shows the progress
+and each file's result. Several files convert at once: select them in the
+Explorer or the archive tree, or collect them on a converter's card in the
+view: each card lists its files, added with **Add files…** (Ctrl+A in the
+picker takes a whole folder) or by dropping files or folders on the **Drop
+Files** line below the cards, from Windows Explorer (or another file manager),
+VS Code's Explorer or the archive tree. A drop puts each file on the card of
+the one converter that takes it and a folder adds the files inside it; files
+several or no converters take (a `.png` fits both the texture and the cursor
+card) are skipped, with a short note in the status bar whose tooltip lists
+them. **×** removes a file, **Remove all** empties a card, and **Convert…**
+opens the converter's dialog on its files.
 
 - images (PNG, JPEG, BMP, GIF, WebP, TGA, DDS) to TGA 24 or 32-bit or DDS
   DXT1 or DXT5, with or without mipmaps;
 - PNG to cursor, cursors to PNG, and images to an animated cursor;
 - videos, images and numbered frames to VP6 (any video with FFmpeg,
-  otherwise WebM and Ogg);
+  otherwise WebM, Ogg and MP4), at a size picked from presets by aspect ratio
+  (16:9, 4:3, 16:10), the source size or a custom one, starting at the source
+  fitted to 1024 pixels wide. A wider movie is allowed with a warning: the
+  retail games crash on movies wider than 1024 pixels;
 - `.str` to `.csf` and back.
 
 A texture's own menu also exports it as PNG and replaces it from a PNG,

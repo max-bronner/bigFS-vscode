@@ -9,6 +9,8 @@ import {
   StrTableEditorProvider,
 } from './stringTableEditorProvider';
 import { registerCommand } from '../../platform/commands';
+import type { ConverterValues } from '../../core/converterDialog';
+import { convertStringTables } from './convertStringTables';
 
 export const registerStrings = (
   context: ExtensionContext,
@@ -19,7 +21,7 @@ export const registerStrings = (
       gameLanguage.choose(),
     ),
   );
-  registerSageStrLanguage(context, archives);
+  registerSageStrLanguage(context);
   context.subscriptions.push(
     window.registerCustomEditorProvider(
       STR_TABLE_VIEW_TYPE,
@@ -29,6 +31,9 @@ export const registerStrings = (
       CSF_VIEW_TYPE,
       new CsfEditorProvider(context.extensionUri),
       { supportsMultipleEditorsPerDocument: true },
+    ),
+    registerCommand('bigfs.convertStringTable', (target?: unknown, selection?: unknown, values?: ConverterValues) =>
+      convertStringTables(context.extensionUri, archives, target, selection, values),
     ),
     registerCommand('bigfs.openStringTable', (uri?: Uri) => {
       const target = uri ?? window.activeTextEditor?.document.uri;

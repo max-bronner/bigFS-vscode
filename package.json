@@ -2,7 +2,7 @@
   "name": "bigfs",
   "displayName": "bigFS",
   "description": "Mod the Battle for Middle-earth games: edit BIG archives in place, write INI with full language support, and preview models, interface movies, maps, textures and sounds.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "max-bronner",
   "icon": "assets/icon.png",
   "galleryBanner": {
@@ -66,6 +66,12 @@
           "type": "webview",
           "icon": "$(arrow-swap)",
           "visibility": "collapsed"
+        },
+        {
+          "id": "bigfs.converterDrop",
+          "name": "Drop Files",
+          "icon": "$(cloud-download)",
+          "visibility": "visible"
         }
       ]
     },
@@ -321,10 +327,20 @@
         "category": "bigFS"
       },
       {
+        "command": "bigfs.compareWithOtherVersion",
+        "title": "Compare with Other Version…",
+        "category": "bigFS"
+      },
+      {
         "command": "bigfs.syncAssetCatalogue",
         "title": "Sync with Assets…",
         "category": "bigFS",
         "icon": "$(sync)"
+      },
+      {
+        "command": "bigfs.restoreAssetCatalogue",
+        "title": "Restore Original asset.dat",
+        "category": "bigFS"
       },
       {
         "command": "bigfs.packageMod",
@@ -555,6 +571,11 @@
           "when": "view == bigArchiveExplorer && viewItem =~ /^big(Folder|File|GameFolder)(ReadOnly)?(:|$)/"
         },
         {
+          "command": "bigfs.compareWithOtherVersion",
+          "group": "3_compare@1",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile)(ReadOnly)?:(ini|inc)$/"
+        },
+        {
           "submenu": "bigfs.textureActions",
           "group": "4_format@1",
           "when": "view == bigArchiveExplorer && (viewItem =~ /^big(File|FileReadOnly|LooseFile):(tga|dds)$/ || viewItem =~ /^big(File|LooseFile):png$/)"
@@ -583,6 +604,11 @@
           "submenu": "bigfs.modelActions",
           "group": "4_format@6",
           "when": "view == bigArchiveExplorer && viewItem =~ /^big(File|LooseFile):w3d$/"
+        },
+        {
+          "command": "bigfs.restoreAssetCatalogue",
+          "group": "4_format@7",
+          "when": "view == bigArchiveExplorer && viewItem =~ /^bigLooseFile:dat\\+original$/"
         },
         {
           "command": "bigfs.cut",
@@ -627,6 +653,11 @@
       ],
       "explorer/context": [
         {
+          "command": "bigfs.compareWithOtherVersion",
+          "group": "3_compare@1",
+          "when": "resourceExtname =~ /^\\.(ini|inc)$/i"
+        },
+        {
           "submenu": "bigfs.textureActions",
           "group": "4_format@1",
           "when": "resourceExtname =~ /^\\.(tga|dds|png)$/i"
@@ -655,6 +686,11 @@
           "submenu": "bigfs.modelActions",
           "group": "4_format@6",
           "when": "resourceExtname =~ /^\\.w3d$/i"
+        },
+        {
+          "command": "bigfs.restoreAssetCatalogue",
+          "group": "4_format@7",
+          "when": "resourceFilename =~ /^asset\\.dat$/i && resourcePath in bigfs.restorableAssetCatalogues"
         },
         {
           "command": "bigfs.packFolder",
@@ -692,6 +728,13 @@
           "command": "bigfs.showWndPreview",
           "group": "navigation",
           "when": "editorLangId == sage-wnd"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "bigfs.compareWithOtherVersion",
+          "group": "3_compare@1",
+          "when": "resourceExtname =~ /^\\.(ini|inc)$/i"
         }
       ],
       "editor/context": [
@@ -810,9 +853,21 @@
         {
           "command": "bigfs.bulkEditIni",
           "group": "2_create@4"
+        },
+        {
+          "command": "bigfs.compareWithOtherVersion",
+          "group": "3_compare@1"
         }
       ],
       "commandPalette": [
+        {
+          "command": "bigfs.restoreAssetCatalogue",
+          "when": "activeCustomEditorId == bigfs.assetCatalogue"
+        },
+        {
+          "command": "bigfs.compareWithOtherVersion",
+          "when": "resourceExtname =~ /^\\.(ini|inc)$/i"
+        },
         {
           "command": "bigfs.reopenAptVisual",
           "when": "resourceScheme == bigfs-apt-text"
@@ -905,15 +960,7 @@
           "when": "false"
         },
         {
-          "command": "bigfs.convertPng",
-          "when": "false"
-        },
-        {
           "command": "bigfs.exportCursorPng",
-          "when": "false"
-        },
-        {
-          "command": "bigfs.convertPngToCursor",
           "when": "false"
         }
       ]

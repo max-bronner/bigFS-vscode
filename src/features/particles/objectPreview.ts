@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { EntryLocator } from '../../services/entryLocator';
 import { createDebouncer } from '../../core/debounce';
 import { createSingletonPanel } from '../../platform/webview/singletonPanel';
+import { createPreviewSettingsStore } from '../../platform/webview/createPreviewSettingsStore';
 import {
   findAnimation,
   parseW3dAnimations,
@@ -83,10 +84,6 @@ interface PreviewContext extends SceneContext {
   subObjects: Map<string, Promise<readonly string[] | undefined>>;
 }
 
-const GROUND_COLOUR_KEY = 'bigfs.objectPreview.groundColour';
-const SETTINGS_OPEN_KEY = 'bigfs.objectPreview.viewerSettingsOpen';
-const COLOUR = /^#[0-9a-f]{6}$/i;
-
 const PREVIEWED_FILES = '**/*.{w3d,W3D,dds,DDS,tga,TGA}';
 const MAX_PLANNED_CHOICES = 64;
 
@@ -109,7 +106,7 @@ const createObjectPreview = (
   const library = new EffectLibrary(index, locator, uri);
   const tools = createToolRegistry();
   const scripts = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview');
-  const { globalState } = context;
+  const settings = createPreviewSettingsStore(context.globalState, 'object');
   let focusOffset = 0;
   let isReady = false;
   let compositionGeneration = 0;
@@ -158,7 +155,7 @@ const createObjectPreview = (
         webview
           .asWebviewUri(vscode.Uri.joinPath(scripts, 'particles.js'))
           .toString(),
-        { isObject: true, isSettingsOpen: globalState.get<boolean>(SETTINGS_OPEN_KEY) === true },
+        { isObject: true, settingsBlock: settings.renderBlock() },
       );
       const files = vscode.workspace.createFileSystemWatcher(PREVIEWED_FILES);
 
@@ -232,8 +229,8 @@ const createObjectPreview = (
         }
         break;
       }
-      case 'setViewerSettingsOpen':
-        await globalState.update(SETTINGS_OPEN_KEY, message.isOpen);
+      case 'keepSettings':
+        await settings.keep(message.settings);
         break;
       case 'revealDefinition':
         await revealDefinition();
@@ -246,11 +243,6 @@ const createObjectPreview = (
         }
         break;
       }
-      case 'setGroundColour':
-        if (COLOUR.test(message.colour)) {
-          await globalState.update(GROUND_COLOUR_KEY, message.colour);
-        }
-        break;
       case 'loadDecal':
         await panel.post({
           kind: 'decal',
@@ -577,7 +569,6 @@ const createObjectPreview = (
       kind: 'object',
       object: scene,
       focus: findSceneFocus(source, header + focusOffset, scene),
-      groundColour: globalState.get<string>(GROUND_COLOUR_KEY),
       definition: {
         keyword: block!.keyword,
         parent: block!.name?.split(/\s+/)[1],

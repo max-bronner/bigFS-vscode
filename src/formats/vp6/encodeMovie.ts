@@ -19,14 +19,49 @@ export interface MovieOptions {
 
 export const MAX_SIDE = 255 * 16;
 
+export const MAX_GAME_WIDTH = 1024;
+
+export const validateMovieSize = (
+  width: number,
+  height: number,
+): string | undefined => {
+  if (!Number.isInteger(width) || !Number.isInteger(height)) {
+    return 'A movie is whole pixels a side';
+  }
+  if (width < 1 || height < 1 || width > MAX_SIDE || height > MAX_SIDE) {
+    return `A VP6 movie is 1 to ${MAX_SIDE} pixels a side`;
+  }
+  if (width % 2) {
+    return 'The width must be even; the game draws a movie of odd width skewed';
+  }
+  return undefined;
+};
+
+export const getGameWidthWarning = (width: number): string | undefined =>
+  width > MAX_GAME_WIDTH
+    ? `The BFME games' engine plays movies up to ${MAX_GAME_WIDTH} pixels wide, so the game may crash at this width.`
+    : undefined;
+
+const toEven = (value: number) => Math.max(2, 2 * Math.round(value / 2));
+
+export const fitMovieSize = (
+  width: number,
+  height: number,
+): [number, number] => {
+  const fit = Math.min(1, MAX_GAME_WIDTH / width, MAX_SIDE / height);
+
+  return [toEven(width * fit), toEven(height * fit)];
+};
+
 export const encodeMovie = async (
   source: FrameSource,
   options: MovieOptions,
 ): Promise<Uint8Array | undefined> => {
   const { width, height } = source;
+  const sizeError = validateMovieSize(width, height);
 
-  if (width < 1 || height < 1 || width > MAX_SIDE || height > MAX_SIDE) {
-    throw new Error(`A VP6 movie is 1 to ${MAX_SIDE} pixels a side`);
+  if (sizeError) {
+    throw new Error(sizeError);
   }
 
   const colour = new Vp6Encoder({ quality: options.quality });

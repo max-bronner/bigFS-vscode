@@ -69,6 +69,7 @@ export type MapToPage = MapMessage | MapNotice | SoundReply;
 export type FromMapPage =
   | { kind: 'ready' }
   | { kind: 'edit'; edit: MapEdit }
+  | { kind: 'keepSettings'; settings: Record<string, unknown> }
   | PlaySoundRequest;
 
 export type DictOwner = Extract<MapEdit, { kind: 'dict' }>['owner'];

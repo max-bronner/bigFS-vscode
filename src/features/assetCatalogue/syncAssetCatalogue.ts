@@ -7,7 +7,7 @@ import {
   window,
   workspace,
 } from 'vscode';
-import type { CancellationToken, Progress } from 'vscode';
+import type { CancellationToken, EventEmitter, Progress } from 'vscode';
 import { formatCount } from '../../core/messages';
 import { describeError } from '../../core/errors';
 import {
@@ -25,7 +25,7 @@ import type { RecordUpdate } from '../../game/asset/applyAssetChanges';
 import { compareAssetCatalogue, isRecordStale } from '../../game/asset/compareAssetCatalogue';
 import type { AssetFile, RecordCheck } from '../../game/asset/compareAssetCatalogue';
 import type { GameFile } from '../../game/install/gameView';
-import { writeFileAtomically } from '../../node/writeFileAtomically';
+import { getOriginalTime, writeKeepingOriginal } from '../../node/originalCopy';
 import {
   getPageBundleFolder,
   getPageBundleOptions,
@@ -37,11 +37,14 @@ import type { GameFileRef } from '../../services/archives/gameViewModel';
 import type { Services } from '../../services/createServices';
 import type {
   FromAssetCataloguePage,
+  OriginalState,
   SyncGroup,
   SyncMessage,
   SyncResultMessage,
 } from '../../webview/assetCatalogue/protocol';
-import { canHoldCatalogue, chooseCatalogueTarget } from './chooseCatalogueTarget';
+import { isChangeOf } from './catalogueChange';
+import type { CatalogueChange } from './catalogueChange';
+import { canHoldCatalogue, canWriteCatalogue, chooseCatalogueTarget } from './chooseCatalogueTarget';
 import { collectAssetCandidates } from './collectAssetCandidates';
 import { renderAssetCataloguePage } from './renderAssetCataloguePage';
 
@@ -168,12 +171,43 @@ const findFileUri = (
   return ref && (ref.kind === 'loose' ? ref.uri : getNodeUri(ref.node));
 };
 
-const toSyncMessage = (uri: Uri, findings: SyncFindings): SyncMessage => ({
+const isFile = async (uri: Uri): Promise<boolean> => {
+  try {
+    await workspace.fs.stat(uri);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const findOriginalState = async (
+  uri: Uri,
+  { archives }: Services,
+): Promise<OriginalState> => {
+  if (!(await canWriteCatalogue(uri, archives.getSources()))) {
+    return { kind: 'keepable' };
+  }
+
+  const time = await getOriginalTime(uri.fsPath);
+
+  if (time !== undefined) {
+    return { kind: 'kept', time };
+  }
+
+  return (await isFile(uri)) ? { kind: 'keepable' } : { kind: 'none' };
+};
+
+const toSyncMessage = (
+  uri: Uri,
+  findings: SyncFindings,
+  original: OriginalState,
+): SyncMessage => ({
   kind: 'sync',
   catalogue: uri.fsPath,
   target: canHoldCatalogue(findings.source)
     ? uri.fsPath
     : `asset.dat in a mod folder you choose (Override in Folder); ${findings.source.label} keeps its own`,
+  original,
   groups: {
     missing: findings.missing.map((file) => ({
       id: file.key,
@@ -195,7 +229,9 @@ const applySelection = async (
   uri: Uri,
   findings: SyncFindings,
   selected: Record<SyncGroup, string[]>,
+  isKeepingOriginal: boolean,
   services: Services,
+  changes: EventEmitter<CatalogueChange>,
 ): Promise<SyncResultMessage | undefined> => {
   const target = await chooseCatalogueTarget(uri, findings.source, services.archives.getSources());
 
@@ -214,19 +250,20 @@ const applySelection = async (
     .filter((record) => ticked.gone.has(record.name))
     .map((record) => record.name);
   const count = missing.length + stale.length + remove.length;
-  let exists = true;
-
-  try {
-    await workspace.fs.stat(target);
-  } catch {
-    exists = false;
-  }
-
+  const exists = await isFile(target);
+  const originalTime = exists ? await getOriginalTime(target.fsPath) : undefined;
+  const replaced = !exists
+    ? ''
+    : originalTime !== undefined
+      ? ` The file there is replaced; asset.dat.org, kept on ${new Date(originalTime).toLocaleString()}, stays as it is.`
+      : isKeepingOriginal
+        ? ' The file there is kept as asset.dat.org first, then replaced.'
+        : ' The file there is replaced, and no original is kept.';
   const answer = await window.showInformationMessage(
     `Write ${formatCount(count, 'change')} to ${target.fsPath}?`,
     {
       modal: true,
-      detail: `${missing.length} added, ${stale.length} written again, ${remove.length} removed.${exists ? ' The file there is replaced.' : ''}`,
+      detail: `${missing.length} added, ${stale.length} written again, ${remove.length} removed.${replaced}`,
     },
     'Write',
   );
@@ -265,24 +302,31 @@ const applySelection = async (
   );
   const synced = applyAssetChanges(findings.catalogue, { put, remove });
 
-  await writeFileAtomically(target.fsPath, writeAssetCatalogue(synced));
+  const kept = await writeKeepingOriginal(
+    target.fsPath,
+    writeAssetCatalogue(synced),
+    isKeepingOriginal,
+  );
 
-  if (!exists) {
+  changes.fire({ uri: target, cause: 'sync' });
+  if (!exists || kept === 'kept') {
     void commands.executeCommand('bigfs.refreshArchives');
   }
 
   return {
     kind: 'applied',
-    text: `Wrote ${target.fsPath}: ${formatCount(synced.records.length, 'record')}. Reopen it to see the change.`,
+    text: `Wrote ${target.fsPath}: ${formatCount(synced.records.length, 'record')}.${kept === 'kept' ? ' The original is kept as asset.dat.org.' : ''}`,
   };
 };
 
 const showSyncPanel = (
   uri: Uri,
-  findings: SyncFindings,
+  found: SyncFindings,
   services: Services,
   extensionUri: Uri,
+  changes: EventEmitter<CatalogueChange>,
 ): void => {
+  let findings = found;
   const panel = window.createWebviewPanel(
     'bigfs.assetSync',
     `Sync ${findings.source.label} ${ASSET_CATALOGUE_NAME}`,
@@ -300,8 +344,24 @@ const showSyncPanel = (
     }
   };
 
+  const subscription = changes.event(async (change) => {
+    if (change.cause !== 'restore' || !isChangeOf(change, uri)) {
+      return;
+    }
+
+    try {
+      findings = await compareWithProgress(uri, services);
+      post(toSyncMessage(uri, findings, await findOriginalState(uri, services)));
+    } catch (error) {
+      if (!(error instanceof CancellationError)) {
+        post({ kind: 'failed', text: `The restored catalogue was not compared: ${describeError(error)}` });
+      }
+    }
+  });
+
   panel.onDidDispose(() => {
     isDisposed = true;
+    subscription.dispose();
   });
 
   panel.webview.html = renderAssetCataloguePage(
@@ -309,7 +369,7 @@ const showSyncPanel = (
   );
   panel.webview.onDidReceiveMessage(async (message: FromAssetCataloguePage) => {
     if (message?.kind === 'ready') {
-      post(toSyncMessage(uri, findings));
+      post(toSyncMessage(uri, findings, await findOriginalState(uri, services)));
     } else if (message?.kind === 'open') {
       const uri = findFileUri(findings, message.group, message.id);
 
@@ -319,7 +379,14 @@ const showSyncPanel = (
     } else if (message?.kind === 'apply') {
       try {
         post(
-          (await applySelection(uri, findings, message.selected, services)) ?? {
+          (await applySelection(
+            uri,
+            findings,
+            message.selected,
+            message.isKeepingOriginal,
+            services,
+            changes,
+          )) ?? {
             kind: 'failed',
             text: 'Nothing was written.',
           },
@@ -364,9 +431,20 @@ const pickCatalogue = async ({ archives }: Services): Promise<Uri | undefined> =
   return (await window.showQuickPick(items, { title: 'Sync with Assets', placeHolder: 'Catalogue to compare with the game\'s files' }))?.uri;
 };
 
+const compareWithProgress = (uri: Uri, services: Services): Thenable<SyncFindings> =>
+  window.withProgress(
+    {
+      location: ProgressLocation.Notification,
+      title: `Comparing ${ASSET_CATALOGUE_NAME} with the game's files`,
+      cancellable: true,
+    },
+    (progress, token) => findDifferences(uri, services, progress, token),
+  );
+
 export const syncAssetCatalogue = async (
   services: Services,
   extensionUri: Uri,
+  changes: EventEmitter<CatalogueChange>,
   given?: Uri,
 ): Promise<void> => {
   const uri = given ?? (await pickCatalogue(services));
@@ -378,14 +456,7 @@ export const syncAssetCatalogue = async (
   let findings: SyncFindings;
 
   try {
-    findings = await window.withProgress(
-      {
-        location: ProgressLocation.Notification,
-        title: `Comparing ${ASSET_CATALOGUE_NAME} with the game's files`,
-        cancellable: true,
-      },
-      (progress, token) => findDifferences(uri, services, progress, token),
-    );
+    findings = await compareWithProgress(uri, services);
   } catch (error) {
     if (error instanceof CancellationError) {
       return;
@@ -393,5 +464,5 @@ export const syncAssetCatalogue = async (
     throw error;
   }
 
-  showSyncPanel(uri, findings, services, extensionUri);
+  showSyncPanel(uri, findings, services, extensionUri, changes);
 };

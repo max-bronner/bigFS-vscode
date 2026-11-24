@@ -12,6 +12,8 @@ import { showObject } from './objectDetails';
 import { markSelectedObject, showObjects } from './objectList';
 import type { MapToPage } from './protocol';
 import { state } from './state';
+import { createPreviewSettings, readKeptSettings } from '../shared/createPreviewSettings';
+import { LAYER_SECTION, LAYER_SETTINGS } from './layerSettings';
 
 const PROPERTY_KEYS = [
   'uniqueID',
@@ -97,12 +99,18 @@ document.getElementById('filter')!.addEventListener('input', (event) => {
   state.filter = (event.target as HTMLInputElement).value;
   showObjects(actions);
 });
+const layerSettings = createPreviewSettings(readKeptSettings(), (settings) =>
+  vscode.postMessage({ kind: 'keepSettings', settings }),
+).section(LAYER_SECTION, LAYER_SETTINGS);
+
 for (const name of Object.keys(state.layers) as (keyof typeof state.layers)[]) {
   const box = document.getElementById(`layer-${name}`) as HTMLInputElement;
 
+  state.layers[name] = layerSettings.values[name];
   box.checked = state.layers[name];
   box.onchange = () => {
     state.layers[name] = box.checked;
+    layerSettings.set(name, box.checked);
     draw();
   };
 }

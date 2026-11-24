@@ -10,12 +10,18 @@ let syncView: SyncView | undefined;
 
 window.addEventListener('message', ({ data }: MessageEvent<ToAssetCataloguePage>) => {
   if (data.kind === 'catalogue') {
-    renderCatalogueView(root, data, () => vscode.postMessage({ kind: 'sync' }));
+    renderCatalogueView(
+      root,
+      data,
+      () => vscode.postMessage({ kind: 'sync' }),
+      () => vscode.postMessage({ kind: 'restore' }),
+    );
   } else if (data.kind === 'sync') {
     syncView = renderSyncView(
       root,
       data,
-      (selected) => vscode.postMessage({ kind: 'apply', selected }),
+      (selected, isKeepingOriginal) =>
+        vscode.postMessage({ kind: 'apply', selected, isKeepingOriginal }),
       (group, id) => vscode.postMessage({ kind: 'open', group, id }),
     );
   } else if (data.kind === 'applied' || data.kind === 'failed') {

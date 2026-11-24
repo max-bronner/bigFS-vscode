@@ -19,6 +19,7 @@ import { renderWebviewPage } from '../../platform/webview/webviewPage';
 import type { SageIniIndex } from '../../services/ini/sageIniIndex';
 import { EffectLibrary } from '../../services/effectLibrary';
 import { createSingletonPanel } from '../../platform/webview/singletonPanel';
+import { createPreviewSettingsStore } from '../../platform/webview/createPreviewSettingsStore';
 import { DISCLOSURE_ROW_STYLE } from '../../platform/webview/disclosureRowStyle';
 import { registerCommand } from '../../platform/commands';
 import { describeError } from '../../core/errors';
@@ -44,10 +45,8 @@ interface FromParticlePage {
   on?: boolean;
   name?: string;
   keys?: KeyValue[];
-  isOpen?: boolean;
+  settings?: unknown;
 }
-
-const SETTINGS_OPEN_KEY = 'bigfs.particlePreview.viewerSettingsOpen';
 
 const createParticlePreview = (
   context: vscode.ExtensionContext,
@@ -60,6 +59,7 @@ const createParticlePreview = (
   const values = new Map<string, number>();
   const library = new EffectLibrary(index, locator, uri);
   const scripts = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview');
+  const settings = createPreviewSettingsStore(context.globalState, 'fx');
   let restartNext = true;
   let comparing = false;
   let updating: Promise<void> = Promise.resolve();
@@ -84,10 +84,7 @@ const createParticlePreview = (
         webview
           .asWebviewUri(vscode.Uri.joinPath(scripts, 'particles.js'))
           .toString(),
-        {
-          isObject: false,
-          isSettingsOpen: context.globalState.get<boolean>(SETTINGS_OPEN_KEY) === true,
-        },
+        { isObject: false, settingsBlock: settings.renderBlock() },
       );
       return [
         vscode.workspace.onDidChangeTextDocument((event) => {
@@ -150,8 +147,8 @@ const createParticlePreview = (
         values.clear();
         update();
         break;
-      case 'setViewerSettingsOpen':
-        await context.globalState.update(SETTINGS_OPEN_KEY, !!message.isOpen);
+      case 'keepSettings':
+        await settings.keep(message.settings);
         break;
       case 'apply':
         await apply();
@@ -464,13 +461,13 @@ const showParticlePreview = (
 
 export interface ParticlePageOptions {
   isObject: boolean;
-  isSettingsOpen: boolean;
+  settingsBlock: string;
 }
 
 export const renderParticlePage = (
   source: string,
   script: string,
-  { isObject, isSettingsOpen }: ParticlePageOptions,
+  { isObject, settingsBlock }: ParticlePageOptions,
 ): string =>
   renderWebviewPage({
     allow: { img: 'data:', script: source },
@@ -584,7 +581,8 @@ kbd { font-size: 10px; opacity: 0.7; }
 .effect-count { opacity: 0.7; font-size: 11px; }
 #objectLoading { margin: 8px 0; }
 `,
-    body: `<div id="viewer" data-settings-open="${isSettingsOpen}"></div>
+    body: `${settingsBlock}
+<div id="viewer"></div>
 <canvas id="handles"></canvas><div id="flash"></div><div id="hud"></div>
 <div id="context" class="${isObject ? 'preview-object' : 'preview-effect'}">
   <div id="header">
@@ -627,7 +625,7 @@ kbd { font-size: 10px; opacity: 0.7; }
   </div>
   <details class="viewer-section effect-only" open id="effectView"><summary>Emitter</summary>
     <div class="row">
-      <label title="The shape particles are born in; drag its yellow handles to size it"><input type="checkbox" id="showVolume" checked> Show the emitter's shape</label>
+      <label title="The shape particles are born in; drag its yellow handles to size it"><input type="checkbox" id="showVolume"> Show the emitter's shape</label>
     </div>
     <div class="row">
       <button id="pickModel" title="Show the effect on a model, started at one of its bones">On a model…</button> <select id="bone" hidden></select>

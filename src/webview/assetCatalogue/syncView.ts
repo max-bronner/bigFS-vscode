@@ -1,7 +1,13 @@
 import { createDisclosureRow } from '../shared/createDisclosureRow';
 import { element } from '../shared/element';
 import { groupSyncRows } from './groupSyncRows';
-import type { SyncGroup, SyncMessage, SyncResultMessage, SyncRow } from './protocol';
+import type {
+  OriginalState,
+  SyncGroup,
+  SyncMessage,
+  SyncResultMessage,
+  SyncRow,
+} from './protocol';
 
 const ROWS_SHOWN = 500;
 
@@ -17,6 +23,32 @@ const setTriState = (box: HTMLInputElement, selected: number, total: number) => 
   box.disabled = total === 0;
 };
 
+const renderOriginal = (
+  original: OriginalState,
+): { root?: HTMLElement; isKeeping: () => boolean } => {
+  if (original.kind === 'kept') {
+    return {
+      root: element('span', `asset.dat.org kept on ${new Date(original.time).toLocaleString()}; Apply leaves it as it is`, 'muted'),
+      isKeeping: () => false,
+    };
+  }
+
+  if (original.kind === 'none') {
+    return { isKeeping: () => false };
+  }
+
+  const label = element('label');
+  const box = element('input');
+
+  box.type = 'checkbox';
+  box.id = 'keep-original';
+  box.checked = true;
+  label.title = 'Copy asset.dat as it is now to asset.dat.org beside it before Apply writes, to restore later';
+  label.append(box, ' Keep the original as asset.dat.org');
+
+  return { root: label, isKeeping: () => box.checked };
+};
+
 export interface SyncView {
   showResult(result: SyncResultMessage): void;
 }
@@ -24,7 +56,7 @@ export interface SyncView {
 export const renderSyncView = (
   root: HTMLElement,
   message: SyncMessage,
-  onApply: (selected: Record<SyncGroup, string[]>) => void,
+  onApply: (selected: Record<SyncGroup, string[]>, isKeepingOriginal: boolean) => void,
   onOpen: (group: SyncGroup, id: string) => void,
 ): SyncView => {
   const selected: Record<SyncGroup, Set<string>> = {
@@ -38,6 +70,7 @@ export const renderSyncView = (
   const apply = element('button', 'Apply');
   const status = element('p', '', 'status');
   const refreshers: (() => void)[] = [];
+  const original = renderOriginal(message.original);
 
   const countSelected = () =>
     GROUPS.reduce((sum, { group }) => sum + selected[group].size, 0);
@@ -65,11 +98,14 @@ export const renderSyncView = (
   apply.addEventListener('click', () => {
     apply.disabled = true;
     status.textContent = 'Applying…';
-    onApply({
-      missing: [...selected.missing],
-      gone: [...selected.gone],
-      stale: [...selected.stale],
-    });
+    onApply(
+      {
+        missing: [...selected.missing],
+        gone: [...selected.gone],
+        stale: [...selected.stale],
+      },
+      original.isKeeping(),
+    );
   });
 
   const renderGroup = ({ group, title, action }: (typeof GROUPS)[number]): HTMLElement => {
@@ -197,6 +233,9 @@ export const renderSyncView = (
   const bar = element('div', undefined, 'sync-bar');
 
   toolbar.append(everythingLabel, apply);
+  if (original.root) {
+    toolbar.append(original.root);
+  }
   bar.append(toolbar, status);
   root.replaceChildren(
     element('h2', `Sync ${message.catalogue}`),

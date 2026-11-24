@@ -45,7 +45,6 @@ export type ToPage =
       kind: 'object';
       object: ObjectScene;
       focus: SceneFocus;
-      groundColour?: string;
       definition?: ObjectDefinitionPlace;
     }
   | { kind: 'composition'; composition: ObjectComposition }
@@ -99,7 +98,6 @@ export type FromPage =
   | { kind: 'setAppearance'; choice: AppearanceChoice }
   | { kind: 'setPartStates'; states: PartStatePicks }
   | { kind: 'loadPartAnimation'; name: string }
-  | { kind: 'setGroundColour'; colour: string }
   | { kind: 'planPreload'; choices: AppearanceChoice[] }
   | { kind: 'loadDecal'; name: string }
   | { kind: 'showState'; state?: number; conditions?: string[] }
@@ -109,5 +107,5 @@ export type FromPage =
   | { kind: 'reveal'; line: number }
   | { kind: 'revealDefinition' }
   | { kind: 'showEffectiveDefinition' }
-  | { kind: 'setViewerSettingsOpen'; isOpen: boolean }
+  | { kind: 'keepSettings'; settings: Record<string, unknown> }
   | PlaySoundRequest;

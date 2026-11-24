@@ -1,9 +1,9 @@
 import type { RegionEditor } from './createRegionEditor';
 import { getFitScale } from './getFitScale';
-import { readPageState, savePageState } from './pageState';
+import type { SettingsSection } from '../shared/createPreviewSettings';
+import { MAX_ZOOM } from './previewPageSettings';
+import type { TextureSettings } from './previewPageSettings';
 import type { TextureMessage } from './protocol';
-
-const MAX_ZOOM = 32;
 
 const MARGIN = 24;
 
@@ -13,6 +13,7 @@ const byId = <Element extends HTMLElement>(id: string) =>
 export const createTexturePage = (
   main: HTMLElement,
   regions: RegionEditor,
+  settings: SettingsSection<TextureSettings>,
   events: { onPopOut(): void },
 ) => {
   const toolbar = byId('toolbar');
@@ -21,7 +22,7 @@ export const createTexturePage = (
   const channelSelect = byId<HTMLSelectElement>('channels');
   const backgroundSelect = byId<HTMLSelectElement>('background');
   const state = {
-    zoom: readPageState().zoom ?? 0,
+    zoom: settings.values.zoom,
     levels: [] as TextureMessage['levels'],
     level: 0,
     format: '',
@@ -101,7 +102,7 @@ export const createTexturePage = (
 
   const setZoom = (zoom: number) => {
     state.zoom = zoom;
-    savePageState({ zoom });
+    settings.set('zoom', zoom);
     layout();
   };
 
@@ -117,12 +118,17 @@ export const createTexturePage = (
     setZoom(Math.min(MAX_ZOOM, getCurrentScale() * 2));
   byId('zoom-out').onclick = () =>
     setZoom(Math.max(1 / MAX_ZOOM, getCurrentScale() / 2));
-  channelSelect.onchange = drawTexture;
+  channelSelect.onchange = () => {
+    settings.set('channels', channelSelect.value as TextureSettings['channels']);
+    drawTexture();
+  };
   levelSelect.onchange = () => {
     state.level = Number(levelSelect.value);
     drawTexture();
   };
+  backgroundSelect.value = settings.values.background;
   backgroundSelect.onchange = () => {
+    settings.set('background', backgroundSelect.value as TextureSettings['background']);
     stage!.className = `stage ${backgroundSelect.value}`;
   };
   byId('popout').onclick = events.onPopOut;
@@ -137,7 +143,7 @@ export const createTexturePage = (
       level: 0,
     });
     toolbar.hidden = false;
-    channelSelect.value = message.hasAlpha ? 'rgba' : 'rgb';
+    channelSelect.value = settings.values.channels ?? (message.hasAlpha ? 'rgba' : 'rgb');
     levelSelect.hidden = message.levels.length < 2;
     levelSelect.replaceChildren(
       ...message.levels.map((level, index) => {
@@ -150,7 +156,7 @@ export const createTexturePage = (
       }),
     );
     stage = document.createElement('div');
-    stage.className = 'stage checker';
+    stage.className = `stage ${backgroundSelect.value}`;
     canvas = document.createElement('canvas');
     stage.append(canvas);
     regions.mount(stage);

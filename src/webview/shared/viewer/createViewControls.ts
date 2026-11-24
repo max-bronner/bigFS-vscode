@@ -2,18 +2,14 @@ import { DEFAULT_HOUSE_COLOUR } from '../../../formats/w3d/w3dHouseColour';
 import type { PlayerColour } from '../../../formats/w3d/w3dHouseColour';
 import type { Rgb } from '../../../formats/w3d/w3dMaterialChunks';
 import { element } from '../element';
+import type { SettingsSection } from '../createPreviewSettings';
 import type { ViewerModel } from './describeModel';
+import { SKIES } from './viewerSettings';
+import type { ViewerSettings } from './viewerSettings';
 
-const SKIES: [string, string][] = [
-  ['dark', '#1b1c1f'],
-  ['day', '#7a8ea6'],
-  ['black', '#000000'],
-  ['light', '#c8c8c8'],
-];
 const CUSTOM_SKY = 'custom';
 const NO_HOUSE_COLOUR = 'none';
 const CUSTOM_HOUSE_COLOUR = 'custom';
-const COLOUR = /^#[0-9a-f]{6}$/i;
 
 export interface ViewChoices {
   showBones: boolean;
@@ -25,11 +21,6 @@ export interface ViewChoices {
   showGrid: boolean;
   lod: number | undefined;
   sky: string;
-}
-
-export interface SkyMemory {
-  initial?: string;
-  onChange?(sky: string): void;
 }
 
 export interface ViewControls {
@@ -76,37 +67,46 @@ export const getKeptLevel = (levelCount: number, picked: number | undefined): nu
 
 export const createViewControls = (
   onChange: (status: string) => void,
-  skyMemory: SkyMemory = {},
+  settings: SettingsSection<ViewerSettings>,
 ): ViewControls => {
+  const kept = settings.values;
   const choices: ViewChoices = {
     showBones: false,
-    showBoneNames: false,
-    showMeshes: true,
-    showTextures: true,
+    showBoneNames: kept.boneNames,
+    showMeshes: kept.meshes,
+    showTextures: kept.textures,
     houseColour: DEFAULT_HOUSE_COLOUR,
-    showBoxes: false,
-    showGrid: true,
+    showBoxes: kept.boxes,
+    showGrid: kept.grid,
     lod: undefined,
-    sky: SKIES[0][1],
+    sky: kept.sky.toLowerCase(),
   };
   const bones = pressedButton(
     'Bones',
     'Bones (B): show the skeleton, attachment points in blue; hover a joint for its name',
     false,
   );
-  const names = pressedButton('Bone names', 'Name every bone beside its joint, not only the one under the pointer', false);
-  const model = pressedButton('Model', 'Draw the meshes', true);
-  const textures = pressedButton('Textures', 'Draw the textures; off, every part is one plain colour', true);
+  const names = pressedButton(
+    'Bone names',
+    'Name every bone beside its joint, not only the one under the pointer',
+    choices.showBoneNames,
+  );
+  const model = pressedButton('Model', 'Draw the meshes', choices.showMeshes);
+  const textures = pressedButton(
+    'Textures',
+    'Draw the textures; off, every part is one plain colour',
+    choices.showTextures,
+  );
   const house = element('select');
   const customHouse = element('input');
-  const boxes = pressedButton('Boxes', 'Draw the collision boxes as wireframes', false);
-  const grid = pressedButton('Grid', 'Draw the ground grid', true);
+  const boxes = pressedButton('Boxes', 'Draw the collision boxes as wireframes', choices.showBoxes);
+  const grid = pressedButton('Grid', 'Draw the ground grid', choices.showGrid);
   const levels = element('select');
   const sky = element('select');
   const customSky = element('input');
   let boxCount = 0;
-  let pickedBones: boolean | undefined;
-  let pickedLevel: number | undefined;
+  let pickedBones = kept.bones ?? undefined;
+  let pickedLevel = kept.lod ?? undefined;
 
   levels.title = 'HLOD level of detail';
   sky.title = 'Background colour of the view';
@@ -133,10 +133,14 @@ export const createViewControls = (
       | 'showBoxes'
       | 'showGrid',
     describe: (on: boolean) => string,
+    keptAs?: 'boneNames' | 'meshes' | 'textures' | 'boxes' | 'grid',
   ) => {
     const flip = () => {
       choices[key] = !choices[key];
       button.setAttribute('aria-pressed', String(choices[key]));
+      if (keptAs) {
+        settings.set(keptAs, choices[key]);
+      }
       onChange(describe(choices[key]));
     };
 
@@ -152,6 +156,7 @@ export const createViewControls = (
   const pickBones = () => {
     toggleBones();
     pickedBones = choices.showBones;
+    settings.set('bones', pickedBones);
   };
 
   bones.onclick = pickBones;
@@ -160,6 +165,7 @@ export const createViewControls = (
     names,
     'showBoneNames',
     (on) => `bone names ${on ? 'shown' : 'on hover'}`,
+    'boneNames',
   );
 
   names.onclick = () => {
@@ -168,8 +174,8 @@ export const createViewControls = (
       pickBones();
     }
   };
-  toggle(model, 'showMeshes', (on) => `model ${on ? 'shown' : 'hidden'}`);
-  toggle(textures, 'showTextures', (on) => `textures ${on ? 'shown' : 'off'}`);
+  toggle(model, 'showMeshes', (on) => `model ${on ? 'shown' : 'hidden'}`, 'meshes');
+  toggle(textures, 'showTextures', (on) => `textures ${on ? 'shown' : 'off'}`, 'textures');
 
   let playerColours: PlayerColour[] = [];
   const setHouseColour = (colour: Rgb | null, label: string) => {
@@ -178,7 +184,7 @@ export const createViewControls = (
   };
 
   const setPlayerColours = (next: PlayerColour[]) => {
-    const picked = house.value;
+    const picked = kept.house;
 
     playerColours = next.length ? next : [{ name: 'Blue', colour: DEFAULT_HOUSE_COLOUR }];
     house.replaceChildren(
@@ -187,8 +193,13 @@ export const createViewControls = (
       new Option('House: custom…', CUSTOM_HOUSE_COLOUR),
     );
     house.value = [...house.options].some((option) => option.value === picked) ? picked : '0';
-    if (house.value === '0' && picked !== '0') {
-      choices.houseColour = playerColours[0].colour;
+    if (house.value === NO_HOUSE_COLOUR) {
+      choices.houseColour = null;
+    } else if (house.value === CUSTOM_HOUSE_COLOUR) {
+      customHouse.value = kept.customHouse ?? toHex(DEFAULT_HOUSE_COLOUR);
+      choices.houseColour = fromHex(customHouse.value);
+    } else {
+      choices.houseColour = playerColours[Number(house.value)].colour;
     }
   };
 
@@ -196,6 +207,7 @@ export const createViewControls = (
     const isCustom = house.value === CUSTOM_HOUSE_COLOUR;
 
     customHouse.hidden = !isCustom;
+    settings.set('house', house.value);
     if (house.value === NO_HOUSE_COLOUR) {
       setHouseColour(null, 'off');
     } else if (isCustom) {
@@ -211,17 +223,18 @@ export const createViewControls = (
     }
   };
   customHouse.oninput = () => setHouseColour(fromHex(customHouse.value), customHouse.value);
+  customHouse.onchange = () => settings.set('customHouse', customHouse.value);
   setPlayerColours([]);
-  toggle(boxes, 'showBoxes', (on) => `boxes ${on ? 'shown' : 'hidden'} (${boxCount})`);
-  toggle(grid, 'showGrid', (on) => `grid ${on ? 'shown' : 'hidden'}`);
+  toggle(boxes, 'showBoxes', (on) => `boxes ${on ? 'shown' : 'hidden'} (${boxCount})`, 'boxes');
+  toggle(grid, 'showGrid', (on) => `grid ${on ? 'shown' : 'hidden'}`, 'grid');
   levels.onchange = () => {
     choices.lod = Number(levels.value);
     pickedLevel = choices.lod;
+    settings.set('lod', pickedLevel);
     onChange(`LOD ${choices.lod}`);
   };
   const setSky = (colour: string) => {
     choices.sky = colour;
-    skyMemory.onChange?.(colour);
     onChange('');
   };
 
@@ -231,6 +244,7 @@ export const createViewControls = (
     customSky.hidden = !isCustom;
     if (!isCustom) {
       setSky(sky.value);
+      settings.set('sky', sky.value);
       return;
     }
     customSky.value = choices.sky;
@@ -240,17 +254,13 @@ export const createViewControls = (
     }
   };
   customSky.oninput = () => setSky(customSky.value);
+  customSky.onchange = () => settings.set('sky', customSky.value);
 
-  const initialSky = skyMemory.initial;
+  const isListedSky = SKIES.some(([, value]) => value === choices.sky);
 
-  if (initialSky && COLOUR.test(initialSky)) {
-    const isListed = SKIES.some(([, value]) => value === initialSky.toLowerCase());
-
-    choices.sky = initialSky.toLowerCase();
-    sky.value = isListed ? choices.sky : CUSTOM_SKY;
-    customSky.value = choices.sky;
-    customSky.hidden = isListed;
-  }
+  sky.value = isListedSky ? choices.sky : CUSTOM_SKY;
+  customSky.value = choices.sky;
+  customSky.hidden = isListedSky;
 
   const setLevels = (lods: NonNullable<ViewerModel['hlod']>['lods']) => {
     levels.replaceChildren(
