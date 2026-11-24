@@ -77,7 +77,7 @@ jobs:
         with:
           node-version: 22
 
-      # An odd minor is the pre-release channel, an even one the stable channel
+      # Stable unless the changelog heads this version "## <version> (pre-release)"
       - name: Read the version and channel
         id: version
         run: |
@@ -88,9 +88,7 @@ jobs:
             echo "::error::package.json version '$version' is not major.minor.patch"
             exit 1
           fi
-          minor=${version#*.}
-          minor=${minor%%.*}
-          if (( minor % 2 )); then channel=pre-release; else channel=stable; fi
+          if tr -d '\r' < CHANGELOG.md | grep -qxF "## $version (pre-release)"; then channel=pre-release; else channel=stable; fi
           {
             echo "id=$id"
             echo "version=$version"
