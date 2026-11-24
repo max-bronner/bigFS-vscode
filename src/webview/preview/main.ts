@@ -1,4 +1,5 @@
 import { getVsCodeApi } from '../shared/vscodeApi';
+import { createPreviewSettings, readKeptSettings } from '../shared/createPreviewSettings';
 import { showAudio } from './audio';
 import { createModelPage } from './createModelPage';
 import type { ModelPage } from './createModelPage';
@@ -8,13 +9,20 @@ import { showMovie } from './movie';
 import type { MovieControl } from './movie';
 import type { FileUse, FromPreviewPage, ToPreviewPage } from './protocol';
 import { createTexturePage } from './texture';
+import { TEXTURE_SECTION, TEXTURE_SETTINGS } from './previewPageSettings';
 
 const vscode = getVsCodeApi<FromPreviewPage>();
 const main = document.getElementById('main')!;
-const regions = createRegionEditor(document.getElementById('regions')!, (message) =>
-  vscode.postMessage(message),
+const settings = createPreviewSettings(readKeptSettings(), (kept) =>
+  vscode.postMessage({ kind: 'keepSettings', settings: kept }),
 );
-const showTexture = createTexturePage(main, regions, {
+const textureSettings = settings.section(TEXTURE_SECTION, TEXTURE_SETTINGS);
+const regions = createRegionEditor(
+  document.getElementById('regions')!,
+  (message) => vscode.postMessage(message),
+  textureSettings,
+);
+const showTexture = createTexturePage(main, regions, textureSettings, {
   onPopOut: () => vscode.postMessage({ kind: 'popOut' }),
 });
 let modelPage: ModelPage | undefined;
@@ -25,7 +33,7 @@ let frameError: HTMLParagraphElement | undefined;
 window.addEventListener('message', ({ data }: MessageEvent<ToPreviewPage>) => {
   switch (data.kind) {
     case 'model':
-      modelPage ??= createModelPage(main, (message) => vscode.postMessage(message));
+      modelPage ??= createModelPage(main, settings, (message) => vscode.postMessage(message));
       modelPage.show(data);
       showUses = modelPage.setUses;
       break;

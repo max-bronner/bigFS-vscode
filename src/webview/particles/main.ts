@@ -1,4 +1,4 @@
-import { forgetDecals, receiveDecal, setGroundColour } from './shadowsView';
+import { forgetDecals, receiveDecal } from './shadowsView';
 import { pageSoundPlayer } from '../shared/pageSoundPlayer';
 import { getEffectStateAt } from '../../formats/particles/fxEffects';
 import { scaleEffect } from '../../formats/particles/particleScale';
@@ -17,7 +17,7 @@ import {
   skipDueSounds,
 } from './timeline';
 import { drawSystems, hasGraphics, loadTextures } from './graphics';
-import { $, library, post, state, viewer, world } from './page';
+import { $, library, pageSettings, post, state, viewer, world } from './page';
 import { getNextEventStep } from './clipEvents';
 import { listEnabledEffects } from './effectsPanel';
 import { showAbilities } from './abilitiesPanel';
@@ -406,6 +406,11 @@ $('scale').onclick = () => {
 };
 $('reset').onclick = () => post({ kind: 'reset' });
 
+const emitterShapes = $<HTMLInputElement>('showVolume');
+
+emitterShapes.checked = pageSettings.values.emitterShapes;
+emitterShapes.onchange = () => pageSettings.set('emitterShapes', emitterShapes.checked);
+
 const onKey = (key: string): boolean => {
   if (key === 'c') {
     compare();
@@ -461,7 +466,6 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPage>) => {
     return;
   }
   if (data.kind === 'object') {
-    setGroundColour(data.groundColour);
     showObject(data.object, data.focus, data.definition);
     return;
   }

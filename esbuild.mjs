@@ -48,6 +48,7 @@ const PAGES = [
   { name: 'scripts', entry: 'src/webview/scripts/main.ts' },
   { name: 'archiveSearch', entry: 'src/webview/archiveSearch/main.ts' },
   { name: 'converters', entry: 'src/webview/converters/main.ts' },
+  { name: 'converterDialog', entry: 'src/webview/converterDialog/main.ts' },
   { name: 'assetCatalogue', entry: 'src/webview/assetCatalogue/main.ts' },
 ];
 

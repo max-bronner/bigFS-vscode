@@ -31,6 +31,7 @@ import {
   createSageIniSemanticTokensProvider,
 } from './providers/sageIniSemanticTokensProvider';
 import { createSageIniHoverProvider } from './providers/sageIniHoverProvider';
+import { createSageIniColorProvider } from './providers/sageIniColorProvider';
 import { createSageIniDefinitionProvider } from './providers/sageIniDefinitionProvider';
 import { createSageIniReferenceProvider } from './providers/sageIniReferenceProvider';
 import { createSageIniCompletionProvider } from './providers/sageIniCompletionProvider';
@@ -91,6 +92,10 @@ export const registerIniLanguage = (
         (parsed, line, token, uri) =>
           describeSound((name) => soundLookup(name, uri), parsed, line, token, uri),
       ),
+    ),
+    languages.registerColorProvider(
+      selector,
+      createSageIniColorProvider(documents),
     ),
     languages.registerDefinitionProvider(
       selector,

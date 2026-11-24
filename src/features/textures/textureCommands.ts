@@ -10,13 +10,6 @@ import {
   encodeDds,
   encodeTga,
 } from '../../formats/texture/textureEncode';
-import {
-  TEXTURE_TARGETS,
-  encodeTexture,
-  getTargetExtension,
-  hasPowerOfTwoSides,
-  isDdsTarget,
-} from '../../formats/texture/textureTargets';
 import { decodePng, encodePng } from '../../node/png';
 import { registerCommand } from '../../platform/commands';
 import { describeError } from '../../core/errors';
@@ -158,53 +151,6 @@ export const registerTextureCommands = (
           void vscode.window.showInformationMessage(
             `Replaced ${getFileName(destination)} (${original.format})`,
           );
-        })(),
-    ),
-    registerCommand(
-      'bigfs.convertPng',
-      (target: CommandTarget) =>
-        run(async () => {
-          const source = resolveTargetUri(target);
-
-          if (!source) {
-            return;
-          }
-
-          const choice = await vscode.window.showQuickPick(
-            TEXTURE_TARGETS.map((each) => ({
-              ...each,
-              description: isDdsTarget(each.target)
-                ? `${each.description}, mipmaps`
-                : each.description,
-            })),
-            { placeHolder: 'Convert to' },
-          );
-
-          if (!choice) {
-            return;
-          }
-
-          const extension = getTargetExtension(choice.target);
-          const image = decodePng(await vscode.workspace.fs.readFile(source));
-
-          if (extension === 'dds' && !hasPowerOfTwoSides(image)) {
-            void vscode.window.showWarningMessage(
-              'DDS textures should be a power of two on each side; the game may not load this one.',
-            );
-          }
-
-          const output = await pickOutput(
-            archives,
-            source,
-            getFileName(source).replace(/\.png$/i, `.${extension}`),
-          );
-
-          if (output) {
-            await vscode.workspace.fs.writeFile(output, encodeTexture(image, choice.target, true));
-            void vscode.window.showInformationMessage(
-              `Wrote ${getFileName(output)}`,
-            );
-          }
         })(),
     ),
   );

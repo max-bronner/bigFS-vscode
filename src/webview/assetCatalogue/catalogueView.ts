@@ -23,6 +23,7 @@ export const renderCatalogueView = (
   root: HTMLElement,
   message: CatalogueMessage,
   onSync: () => void,
+  onRestore: () => void,
 ): void => {
   const sync = element('button', 'Sync with Assets…');
   const filter = element('input');
@@ -157,7 +158,16 @@ export const renderCatalogueView = (
 
   const toolbar = element('div', undefined, 'toolbar');
 
-  toolbar.append(sync, filter, summary);
+  toolbar.append(sync);
+  if (message.originalTime !== undefined) {
+    const restore = element('button', 'Restore Original asset.dat');
+
+    restore.id = 'restore';
+    restore.title = `Copy asset.dat.org, kept on ${new Date(message.originalTime).toLocaleString()}, back over this file`;
+    restore.addEventListener('click', onRestore);
+    toolbar.append(restore);
+  }
+  toolbar.append(filter, summary);
   root.replaceChildren(element('h2', message.path), toolbar);
 
   if (message.error) {

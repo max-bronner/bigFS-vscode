@@ -12,6 +12,10 @@ import {
   evaluateMacroBody,
   formatValue,
 } from '../../../formats/ini/sageIniPreprocessor';
+import {
+  findColorValue,
+  formatColorSwatch,
+} from '../../../formats/ini/sageIniColors';
 import type { SageIniIndex } from '../../../services/ini/sageIniIndex';
 import type { SageDefinition } from '../../../services/ini/sageIniTables';
 
@@ -196,8 +200,23 @@ export const createSageIniHoverProvider = (
       token.end,
     );
 
+    const color = findColorValue(statement, schema);
+
     if (token === statement.keyword) {
-      return new Hover(describeKeyword(statement, schema), range);
+      const text = describeKeyword(statement, schema);
+
+      if (color) {
+        text.appendMarkdown(`\n\n${formatColorSwatch(color)}`);
+      }
+
+      return new Hover(text, range);
+    }
+
+    if (color && token.start >= color.start && token.end <= color.end) {
+      return new Hover(
+        new MarkdownString(formatColorSwatch(color)),
+        new Range(statement.line, color.start, statement.line, color.end),
+      );
     }
 
     if (token.text.includes('#(')) {

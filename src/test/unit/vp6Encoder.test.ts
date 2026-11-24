@@ -1,6 +1,12 @@
 import * as assert from 'assert';
 import { Vp6Movie, parseVp6, writeVp6 } from '../../formats/vp6/container';
-import { encodeMovie } from '../../formats/vp6/encodeMovie';
+import {
+  encodeMovie,
+  fitMovieSize,
+  getGameWidthWarning,
+  validateMovieSize,
+} from '../../formats/vp6/encodeMovie';
+import type { FrameSource } from '../../formats/vp6/encodeMovie';
 import { Vp6Encoder, pictureFromRgba } from '../../formats/vp6/encoder';
 
 const buildFrame = (width: number, height: number, shift: number) => {
@@ -114,6 +120,108 @@ suite('VP6 encoder', () => {
 
     assert.deepStrictEqual(seeker.decodeFrame(count - 1), expected[count - 1]);
     assert.deepStrictEqual(seeker.decodeFrame(7), expected[7]);
+  });
+
+  test('every chunk it writes is padded to 4 bytes and the movie still decodes', async () => {
+    const [width, height] = [70, 38];
+    let next = 0;
+    const bytes = (await encodeMovie(
+      {
+        width,
+        height,
+        rateNumerator: 15,
+        rateDenominator: 1,
+        alpha: true,
+        next: async () =>
+          next < 4 ? buildFrame(width, height, next++ * 9) : undefined,
+      },
+      { quality: 54 },
+    ))!;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const sizes: number[] = [];
+
+    for (let at = 0; at < bytes.length; at += sizes[sizes.length - 1]) {
+      sizes.push(view.getUint32(at + 4, true));
+    }
+
+    assert.strictEqual(sizes.length, 3 + 8);
+    assert.deepStrictEqual(
+      sizes.filter((size) => size % 4),
+      [],
+    );
+
+    const movie = new Vp6Movie(bytes);
+
+    for (let index = 0; index < 4; index++) {
+      const shown = movie.decodeFrame(index);
+
+      assert.ok(
+        psnr(buildFrame(width, height, index * 9), shown, [0, 1, 2]) > 32,
+        `frame ${index}`,
+      );
+    }
+  });
+
+  test('a movie wider than the retail games play is warned about, and one VP6 cannot code or of odd width is refused', async () => {
+    const encode = (width: number) => {
+      let next = 0;
+
+      return encodeMovie(
+        {
+          width,
+          height: 16,
+          rateNumerator: 15,
+          rateDenominator: 1,
+          alpha: false,
+          next: async () =>
+            next++ < 1 ? buildFrame(width, 16, 0) : undefined,
+        },
+        { quality: 28 },
+      );
+    };
+
+    assert.ok(await encode(1026));
+    assert.match(getGameWidthWarning(1026)!, /up to 1024 pixels wide, so the game may crash/);
+    assert.strictEqual(getGameWidthWarning(1024), undefined);
+    await assert.rejects(encode(4096), /1 to 4080/);
+    await assert.rejects(encode(71), /even/);
+  });
+
+  const createSource = (): FrameSource => {
+    let index = 0;
+
+    return {
+      width: 64,
+      height: 32,
+      rateNumerator: 15,
+      rateDenominator: 1,
+      alpha: false,
+      next: async () => (index < 3 ? buildFrame(64, 32, index++ * 40) : undefined),
+    };
+  };
+
+  test('chunks of a kind it does not know are skipped, as the retail player skips them', async () => {
+    const bytes = (await encodeMovie(createSource(), { quality: 40 }))!;
+    const unknown = Uint8Array.from([...Buffer.from('XXXX'), 12, 0, 0, 0, 1, 2, 3, 4]);
+    const firstChunkEnd = 32 + new DataView(bytes.buffer, bytes.byteOffset).getUint32(36, true);
+    const spliced = Buffer.concat([
+      bytes.subarray(0, 32),
+      unknown,
+      bytes.subarray(32, firstChunkEnd),
+      unknown,
+      bytes.subarray(firstChunkEnd),
+    ]);
+    const movie = new Vp6Movie(spliced);
+
+    assert.strictEqual(movie.frameCount, 3);
+    assert.deepStrictEqual(movie.decodeFrame(2), new Vp6Movie(bytes).decodeFrame(2));
+  });
+
+  test('the default size is the source fitted to the game width with even sides', () => {
+    assert.deepStrictEqual(fitMovieSize(1920, 1080), [1024, 576]);
+    assert.deepStrictEqual(fitMovieSize(703, 401), [704, 402]);
+    assert.deepStrictEqual(fitMovieSize(640, 480), [640, 480]);
+    assert.strictEqual(validateMovieSize(...fitMovieSize(4000, 333)), undefined);
   });
 
   test('an empty file says so', () => {

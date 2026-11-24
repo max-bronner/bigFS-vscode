@@ -8,7 +8,7 @@ export const registerCursors = (
   { archives }: Services,
 ): void => {
   context.subscriptions.push(
-    registerCursorConversionCommands(archives),
+    registerCursorConversionCommands(context.extensionUri, archives),
     registerAnimationBuilder(context),
   );
 };

@@ -2,15 +2,7 @@ import * as vscode from 'vscode';
 import { createKeyedDebouncer } from '../../core/debounce';
 import { parseCsf, writeCsf } from '../../formats/csf/csf';
 import { parseStringRecords, quoteStringText } from '../../formats/str/sageStringRecords';
-import {
-  decodeIniText,
-  encodeWindows1252,
-  findUnencodableCharacters,
-} from '../../core/windows1252';
-import type { ArchiveModel } from '../../services/archives/archiveModel';
-import { toUri } from '../../services/archives/commandTarget';
-import type { CommandTarget } from '../../services/archives/commandTarget';
-import { registerCommand } from '../../platform/commands';
+import { findUnencodableCharacters } from '../../core/windows1252';
 
 export const STR_LANGUAGE = 'sage-str';
 
@@ -117,10 +109,7 @@ export const strToCsf = (source: string): Uint8Array =>
 
 const REFRESH_DELAY_MS = 250;
 
-export const registerSageStrLanguage = (
-  context: vscode.ExtensionContext,
-  archives: ArchiveModel,
-): void => {
+export const registerSageStrLanguage = (context: vscode.ExtensionContext): void => {
   const diagnostics = vscode.languages.createDiagnosticCollection(STR_LANGUAGE);
   const refresh = (document: vscode.TextDocument) => {
     if (document.languageId !== STR_LANGUAGE) {
@@ -149,89 +138,6 @@ export const registerSageStrLanguage = (
   };
 
   vscode.workspace.textDocuments.forEach(refresh);
-
-  const convert = async (target?: CommandTarget) => {
-    const source =
-      toUri(target) ?? vscode.window.activeTextEditor?.document.uri;
-
-    if (!source) {
-      return;
-    }
-
-    const isCsf = /\.csf$/i.test(source.path);
-    const sibling = source.with({
-      path: source.path.replace(/\.(csf|str)$/i, isCsf ? '.str' : '.csf'),
-    });
-    const isReadOnly = archives.isReadOnlyUri(source);
-    const output = isReadOnly
-      ? await vscode.window.showSaveDialog({
-          defaultUri: vscode.workspace.workspaceFolders?.[0]
-            ? vscode.Uri.joinPath(
-                vscode.workspace.workspaceFolders[0].uri,
-                sibling.path.slice(sibling.path.lastIndexOf('/') + 1),
-              )
-            : undefined,
-          filters: { 'String tables': [isCsf ? 'str' : 'csf'] },
-        })
-      : sibling;
-
-    if (!output) {
-      return;
-    }
-
-    const exists =
-      !isReadOnly &&
-      (await vscode.workspace.fs.stat(output).then(
-        () => true,
-        () => false,
-      ));
-
-    if (
-      exists &&
-      (await vscode.window.showWarningMessage(
-        `${output.path.slice(output.path.lastIndexOf('/') + 1)} exists. Replace it?`,
-        { modal: true },
-        'Replace',
-      )) !== 'Replace'
-    ) {
-      return;
-    }
-
-    const bytes = await vscode.workspace.fs.readFile(source);
-
-    if (isCsf) {
-      const { text, dropped, unencodable } = csfToStr(bytes);
-
-      await vscode.workspace.fs.writeFile(
-        output,
-        encodeWindows1252(text, 0x3f),
-      );
-
-      if (unencodable.length) {
-        void vscode.window.showWarningMessage(
-          `The .str file is Windows-1252, which lacks ${unencodable
-            .slice(0, 8)
-            .map((char) => JSON.stringify(char))
-            .join(' ')}${unencodable.length > 8 ? ' and more' : ''}; ${
-            unencodable.length === 1 ? 'it was' : 'they were'
-          } written as ?.`,
-        );
-      }
-
-      if (dropped) {
-        void vscode.window.showInformationMessage(
-          `${dropped} speech names or extra strings have no place in a .str file and were left out.`,
-        );
-      }
-    } else {
-      await vscode.workspace.fs.writeFile(
-        output,
-        strToCsf(decodeIniText(bytes)),
-      );
-    }
-
-    await vscode.commands.executeCommand('vscode.open', output);
-  };
 
   const refreshSoon = createKeyedDebouncer(
     refresh,
@@ -284,6 +190,5 @@ export const registerSageStrLanguage = (
           return end > start ? [new vscode.FoldingRange(start, end)] : [];
         }),
     }),
-    registerCommand('bigfs.convertStringTable', convert),
   );
 };

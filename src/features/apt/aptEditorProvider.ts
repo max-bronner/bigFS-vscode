@@ -269,6 +269,7 @@ export class AptEditorProvider
     panel.webview.html = renderAptPage(
       panel.webview,
       panel.webview.asWebviewUri(vscode.Uri.joinPath(this.scripts, 'apt.js')),
+      this.game.settings.renderBlock(),
     );
 
     const sentTextures = new Set<string>();

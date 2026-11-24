@@ -1,7 +1,8 @@
 import type { Box } from '../shared/pickBox';
 import { createPanelSplitter } from './createPanelSplitter';
 import type { VisibleBox } from './getOverlayWindow';
-import { readPageState, savePageState } from './pageState';
+import type { SettingsSection } from '../shared/createPreviewSettings';
+import type { TextureSettings } from './previewPageSettings';
 import { createRegionLayer } from './regionLayer';
 import { createRegionPanel } from './regionPanel';
 import type { FileUse, FromPreviewPage, RegionsMessage } from './protocol';
@@ -21,6 +22,7 @@ export interface RegionEditor {
 export const createRegionEditor = (
   panelRoot: HTMLElement,
   post: (message: FromPreviewPage) => void,
+  settings: SettingsSection<Pick<TextureSettings, 'panelWidth'>>,
 ): RegionEditor => {
   let content: RegionsMessage = { kind: 'regions', regions: [] };
   let uses: readonly FileUse[] = [];
@@ -47,9 +49,9 @@ export const createRegionEditor = (
   });
 
   const setPanelWidth = createPanelSplitter(panelRoot, {
-    onResize: (width) => savePageState({ panelWidth: width }),
+    onResize: (width) => settings.set('panelWidth', width),
   });
-  const saved = readPageState().panelWidth;
+  const saved = settings.values.panelWidth;
 
   if (saved) {
     setPanelWidth(saved);

@@ -26,12 +26,12 @@ import { createPartsPanel } from './createPartsPanel';
 import { createTransport } from './createTransport';
 import { createBoneLabels } from './createBoneLabels';
 import { createViewControls } from './createViewControls';
-import type { SkyMemory } from './createViewControls';
 import { describeDetailLevels, describeModel } from './describeModel';
 import { isFieldKey } from './isFieldKey';
 import type { ViewerModel } from './describeModel';
 import { adoptViewerStyle } from './viewerStyle';
-import { getVsCodeApi } from '../vscodeApi';
+import type { PreviewSettings } from '../createPreviewSettings';
+import { VIEWER_SECTION, VIEWER_SETTINGS } from './viewerSettings';
 
 export interface ViewerCamera {
   basis: CameraBasis;
@@ -64,16 +64,10 @@ export interface ViewerClip {
   playsOnce?: boolean;
 }
 
-export interface SettingsMemory {
-  initial?: boolean;
-  onChange?(isOpen: boolean): void;
-}
-
 export interface ViewerOptions {
   onPickClip(id: string): void;
   partsHint?: string;
-  sky?: SkyMemory;
-  settings?: SettingsMemory;
+  settings: PreviewSettings;
   target?: Vec3;
   radius?: number;
 }
@@ -122,7 +116,6 @@ const CONTROLS_HELP = [
   'Drag to orbit, right-drag to pan, scroll to zoom, double-click to reset the camera.',
   'Space plays and pauses, R restarts, . steps one frame, B shows the bones.',
 ].join('\n');
-const SETTINGS_STATE_KEY = 'viewerSettingsOpen';
 const MAX_FRAME_SECONDS = 0.25;
 
 const getBoundsSphere = ({ bounds }: ViewerModel): [Vec3, number] => [
@@ -151,23 +144,12 @@ const openContext = (canvas: HTMLCanvasElement, onTexturesChanged: () => void) =
   }
 };
 
-const createStateMemory = (): SettingsMemory => {
-  const api = getVsCodeApi<unknown>();
-  const read = () => (api.getState() as Record<string, unknown> | undefined) ?? {};
-
-  return {
-    initial: read()[SETTINGS_STATE_KEY] === true,
-    onChange: (isOpen) => api.setState({ ...read(), [SETTINGS_STATE_KEY]: isOpen }),
-  };
-};
-
 export const createViewer = (
   root: HTMLElement,
   {
     onPickClip,
     partsHint,
-    sky: skyMemory,
-    settings: settingsMemory = createStateMemory(),
+    settings,
     target = DEFAULT_TARGET,
     radius = DEFAULT_RADIUS,
   }: ViewerOptions,
@@ -191,6 +173,7 @@ export const createViewer = (
   const levelFacts = element('p');
   const graphics = openContext(canvas, () => invalidate());
   const orbit = createOrbit(canvas, target, radius, () => invalidate());
+  const viewerSettings = settings.section(VIEWER_SECTION, VIEWER_SETTINGS);
 
   let model: ViewerModel | undefined;
   let clip: ViewerClip | undefined;
@@ -261,7 +244,7 @@ export const createViewer = (
       applyTime();
       layers.forEach((layer) => layer.onRestart?.());
     },
-  });
+  }, viewerSettings);
   const picker = createClipPicker((id) => {
     transport.setPlaying(true);
     if (!id) {
@@ -275,7 +258,7 @@ export const createViewer = (
     showStatus(text);
     parts.refresh();
     invalidate();
-  }, skyMemory);
+  }, viewerSettings);
   const boneLabels = createBoneLabels(canvas, () => {
     if (view.choices.showBones) {
       invalidate();
@@ -493,9 +476,9 @@ export const createViewer = (
     const isOpen = !!viewBar.hidden;
 
     setSettingsOpen(isOpen);
-    settingsMemory.onChange?.(isOpen);
+    viewerSettings.set('isSettingsOpen', isOpen);
   };
-  setSettingsOpen(!!settingsMemory.initial);
+  setSettingsOpen(viewerSettings.values.isSettingsOpen);
   help.title = CONTROLS_HELP;
   help.tabIndex = 0;
   help.setAttribute('role', 'img');

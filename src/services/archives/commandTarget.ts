@@ -27,3 +27,18 @@ export const toUri = (target: unknown): Uri | undefined => {
 
   return (target as TreeItem).resourceUri;
 };
+
+export const toUris = (target: unknown, selection?: unknown): Uri[] => {
+  const given = Array.isArray(selection) && selection.length ? selection : [target];
+  const seen = new Set<string>();
+
+  return given.flatMap((each: unknown) => {
+    const uri = toUri(each);
+
+    if (!uri || seen.has(uri.toString())) {
+      return [];
+    }
+    seen.add(uri.toString());
+    return [uri];
+  });
+};

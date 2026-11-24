@@ -1,8 +1,10 @@
 import { element } from '../element';
 import { advancePlayhead } from './advancePlayhead';
+import type { SettingsSection } from '../createPreviewSettings';
+import { SPEEDS } from './viewerSettings';
+import type { ViewerSettings } from './viewerSettings';
 
 const STEP_SECONDS = 1 / 30;
-const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4];
 
 export interface TransportHooks {
   getLength(): number;
@@ -37,7 +39,10 @@ const createButton = (text: string, title: string) => {
   return button;
 };
 
-export const createTransport = (hooks: TransportHooks): Transport => {
+export const createTransport = (
+  hooks: TransportHooks,
+  settings: SettingsSection<Pick<ViewerSettings, 'speed' | 'loop'>>,
+): Transport => {
   const play = createButton('❚❚', 'Pause (Space)');
   const stop = createButton('■', 'Stop: back to the start, paused');
   const restartButton = createButton('↺', 'Restart (R)');
@@ -46,19 +51,25 @@ export const createTransport = (hooks: TransportHooks): Transport => {
   const slider = element('input');
   const time = element('span', '', 'viewer-time');
   const speedSelect = element('select');
-  const clock = { time: 0, materialSeconds: 0, playing: true, speed: 1, loops: true };
+  const clock = {
+    time: 0,
+    materialSeconds: 0,
+    playing: true,
+    speed: settings.values.speed,
+    loops: settings.values.loop,
+  };
   let isPausedByHand = false;
 
   play.id = 'viewerPlay';
   loop.id = 'viewerLoop';
-  loop.setAttribute('aria-pressed', 'true');
+  loop.setAttribute('aria-pressed', String(clock.loops));
   slider.type = 'range';
   slider.min = '0';
   slider.step = 'any';
   slider.title = 'Time';
   speedSelect.title = 'Playback speed';
   speedSelect.append(...SPEEDS.map((speed) => new Option(`${speed}×`, String(speed))));
-  speedSelect.value = '1';
+  speedSelect.value = String(clock.speed);
 
   const isPlaying = () => clock.playing && hooks.canPlay();
 
@@ -153,9 +164,11 @@ export const createTransport = (hooks: TransportHooks): Transport => {
   loop.onclick = () => {
     clock.loops = !clock.loops;
     loop.setAttribute('aria-pressed', String(clock.loops));
+    settings.set('loop', clock.loops);
   };
   speedSelect.onchange = () => {
     clock.speed = Number(speedSelect.value);
+    settings.set('speed', clock.speed);
   };
   slider.oninput = () => {
     const at = Number(slider.value);

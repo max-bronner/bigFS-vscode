@@ -27,6 +27,8 @@ import { readW3dHeader } from '../../formats/w3d/readW3dHeader';
 import { findDetailFiles } from '../../game/objects/detailModels';
 import type { TextureLayers } from '../../formats/w3d/w3dTextureSwaps';
 import { renderWebviewPage } from '../../platform/webview/webviewPage';
+import { createPreviewSettingsStore } from '../../platform/webview/createPreviewSettingsStore';
+import type { PreviewSettingsStore } from '../../platform/webview/createPreviewSettingsStore';
 import type {
   FileUse,
   FromPreviewPage,
@@ -37,6 +39,19 @@ import { getTextureCandidates } from '../../formats/ini/sageIniAssets';
 
 const getFileName = (uri: vscode.Uri) =>
   uri.path.slice(uri.path.lastIndexOf('/') + 1).toLowerCase();
+
+const findSettingsStore = (
+  uri: vscode.Uri,
+  stores: { model: PreviewSettingsStore; texture: PreviewSettingsStore },
+): PreviewSettingsStore | undefined => {
+  const extension = uri.path.slice(uri.path.lastIndexOf('.')).toLowerCase();
+
+  return extension === '.w3d'
+    ? stores.model
+    : extension === '.tga' || extension === '.dds'
+      ? stores.texture
+      : undefined;
+};
 
 const MAPPED_IMAGE_DEFINITION = /^MappedImage\s/i;
 
@@ -147,6 +162,7 @@ const buildMessage = async (
 export const renderHtml = (
   webview: vscode.Webview,
   modelScript: vscode.Uri,
+  settingsBlock = '',
 ): string =>
   renderWebviewPage({
     allow: {
@@ -214,7 +230,8 @@ export const renderHtml = (
   dl { display: grid; grid-template-columns: max-content auto; gap: 4px 16px; margin: 0; }
   dt { opacity: 0.8; }
 `,
-    body: `<header id="toolbar" hidden>
+    body: `${settingsBlock}
+<header id="toolbar" hidden>
   <button id="fit" aria-pressed="true" title="Fit to window">Fit</button>
   <button id="actual" aria-pressed="false" title="Actual size">1:1</button>
   <button id="zoom-out" title="Zoom out">−</button>
@@ -242,13 +259,21 @@ export const renderHtml = (
 export class PreviewEditorProvider
   implements vscode.CustomReadonlyEditorProvider
 {
+  private readonly settings: { model: PreviewSettingsStore; texture: PreviewSettingsStore };
+
   public constructor(
     private readonly tools: ToolBox,
     private readonly locator: EntryLocator,
     private readonly extensionUri: vscode.Uri,
     private readonly regions: TextureRegions,
     private readonly findRelated: FindRelatedModels,
-  ) {}
+    state: vscode.Memento,
+  ) {
+    this.settings = {
+      model: createPreviewSettingsStore(state, 'model'),
+      texture: createPreviewSettingsStore(state, 'texture'),
+    };
+  }
 
   public static register(
     tools: ToolBox,
@@ -256,6 +281,7 @@ export class PreviewEditorProvider
     extensionUri: vscode.Uri,
     regions: TextureRegions,
     findRelated: FindRelatedModels,
+    state: vscode.Memento,
   ): vscode.Disposable {
     return vscode.window.registerCustomEditorProvider(
       PREVIEW_VIEW_TYPE,
@@ -265,6 +291,7 @@ export class PreviewEditorProvider
         extensionUri,
         regions,
         findRelated,
+        state,
       ),
       { supportsMultipleEditorsPerDocument: true },
     );
@@ -393,9 +420,12 @@ export class PreviewEditorProvider
       enableScripts: true,
       localResourceRoots: [scripts],
     };
+    const settings = findSettingsStore(document.uri, this.settings);
+
     panel.webview.html = renderHtml(
       panel.webview,
       vscode.Uri.joinPath(scripts, 'model.js'),
+      settings?.renderBlock(),
     );
 
     let movie: Vp6Movie | undefined;
@@ -505,6 +535,8 @@ export class PreviewEditorProvider
               await post({ kind: 'animations', ...clips });
             }
           }
+        } else if (received.kind === 'keepSettings') {
+          await settings?.keep(received.settings);
         } else if (received.kind === 'popOut') {
           if (!panel.active) {
             panel.reveal();

@@ -1,9 +1,17 @@
 # Changelog
 
-## 0.3.0
+## 0.3.1
+
+Everything the 0.3.0 pre-release brought, now on the stable channel for everyone, and the changes since.
 
 ### New
 
+- Every converter (game texture, cursor, VP6 movie, string table) opens a dialog in the editor: the files, all options with defaults, warnings, **Convert** and **Cancel**, then the progress and each file's result. Each takes several files at once, from a multi-selection in the Explorer or the archive tree, or chosen when run from the Command Palette.
+- Each card of the **Converters** view lists its files, by **Add files…** or a drop on the **Drop Files** line below the cards (from Windows Explorer, VS Code's Explorer or the archive tree, no Shift needed), each removable, and **Convert…** opens that converter's dialog on them. A drop puts each file on the card of the one converter that takes it and a folder adds the files inside it; files several or no converters take are skipped, noted briefly in the status bar with the list in its tooltip.
+- **Convert to VP6 Movie…** offers sizes grouped by aspect ratio (16:9, 4:3, 16:10), the source size and a custom size, starting at the source fitted to 1024 pixels wide, and shows each source's size and aspect ratio.
+- **Sync with Assets…** can keep the catalogue as it was in `asset.dat.org` before Apply writes it (**Keep the original as asset.dat.org**, ticked while there is none). A kept original is never replaced, and **Restore Original asset.dat**, in the file's menu and the asset.dat viewer, copies it back.
+- **Compare with Other Version…** on an INI or INC file (archive explorer, VS Code's Explorer, the editor's tab and bigFS menus) offers every other copy of its game path: each archive and folder of its load order, mods and the other game included, marked with its game, its place and which copy wins, and the retail original. It opens VS Code's diff editor with each side named after its archive and game, the other copy on the left and your file on the right.
+- INI colour values get a swatch that opens VS Code's colour picker and writes the chosen colour back in the line's own notation, and the hover of a colour field shows the colour.
 - **Appearance** in the object preview: snow, levels, upgrades, faction, random skins, damage, construction, build variations and other forms, each switched as the game does, with model, textures, parts, house colour, effects and animation following. Composed parts and the upgrades or levels that add them tick each other, and **Reset look** goes back to the object as created.
 - **Abilities and effects** in the object preview lists everything an object can play: its abilities by button label, the improvements it sells, its weapons, level-ups and what it plays when damaged or dying. **▶** plays an entry once on the model with the unit's own animation, each effect at the time the INI gives it.
 - The object preview's composition groups parts of one kind into a row that unfolds to a checkbox per part and per sub-object. A group whose parts have states of their own gets a **State** list, a siege crew follows its engine's state, and what `GrantUpgradeCreate`, `OCLUpdate` and `SpawnBehavior` place is drawn, so trebuchet towers carry their trebuchet and Mallorn trees their archer.
@@ -22,6 +30,10 @@
 
 ### Changed
 
+- A VP6 movie wider than 1024 pixels is a warning, no longer refused: the retail game engine does not support it natively (the retail games crash on it), a patched game or another engine may. VP6's own limit of 4080 pixels still applies, and an odd width is rounded up to even.
+- Movie files with chunks bigFS does not know are read, the unknown chunks skipped as the game skips them.
+- Preview settings carry over to the next file of the same kind and are kept after VS Code restarts: the 3D viewer's bar and **⚙** row (Bones, Shadows, Move, speed, Loop, background, Detail, Textures, House colour, ground colour and the rest) in model, object and FX previews, a texture's zoom, channels, background and panel width, the map editor's layers, and the APT stage toolbar, which is now kept for every workspace rather than per workspace. What belongs to one file (its Appearance, state, animation, parts, edits and time) is not carried.
+- The FX preview's emitter shapes are off at first; turned on, they stay on for the next effect.
 - The 3D viewer has one bar: playback, the animation list, the time slider, speed, **Bones**, **Shadows** and **Move**. **⚙** opens a second row with the settings used less often, and controls a page cannot use are hidden instead of greyed.
 - The object preview's panel starts with the object's name, kind, file, **Go to definition** and chips for what differs from the object as created, then folds Appearance, states, effects, abilities, composition, voices and parts into sections. States are grouped by purpose and searchable, the same effect on several bones is one row, voices are grouped by when they play, and labels are shorter.
 - **Move** (or Shift+drag) moves the model or emitter over the ground in place of the Emitter motion list; the Readings switches are gone.
@@ -38,6 +50,9 @@
 
 ### Fixed
 
+- **Convert to VP6 Movie…** no longer writes movies the game crashes on: a movie is at most 1024 pixels wide by default and its width even, a larger source is scaled down to fit by default, and chunks are padded as the game's own movies are.
+- Converting a movie again under the same name showed the old movie in its preview, so a smaller size looked as if it had not been applied; the preview now reads the new file.
+- Converting a video through VS Code's browser engine (no FFmpeg) could wait forever when the video loaded before the reading page was ready.
 - A state picked in the object preview and Appearance work together: the state's look shows in Appearance, a look switched afterwards keeps the state's animation, and a mounted hero's states on foot play without the horse.
 - Textures stored as a JPEG with a PNG alpha are drawn, so Shadowfax wears his coat and house colour keeps the cloth's shading.
 - Composed parts hide and show their sub-objects as the game does (Grond's trolls without trunks, the mumak's howdah), parts added by upgrades wait for their upgrade, and troops whose levels name a macro show their levels.
@@ -46,6 +61,10 @@
 - Flames and glows built to face the camera do so in every 3D preview.
 - The object preview's voice buttons play, and a sound played from an INI lens or hover opens the Sound panel ready to play with Enter.
 - The archive tree's menu shows file actions by the row's own kind instead of the file open in the editor, and no longer offers writing actions on read-only rows.
+
+## 0.3.0 (pre-release)
+
+The changes listed under 0.3.1, published only on the pre-release channel.
 
 ## 0.2.3
 

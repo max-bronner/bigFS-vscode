@@ -27,6 +27,7 @@ import { getParentRow } from './getParentRow';
 import { isReadOnlySource } from '../../services/archives/sourceAccess';
 import { findAssetCatalogue } from '../../services/archives/findAssetCatalogue';
 import { ASSET_CATALOGUE_NAME } from '../../formats/asset/assetCatalogue';
+import { hasOriginal } from '../../node/originalCopy';
 
 const nameCollator = new Intl.Collator(undefined, {
   numeric: true,
@@ -93,7 +94,12 @@ const createGameItem = (
   item.contextValue =
     winner.ref.kind === 'entry'
       ? getContextValue('file', isReadOnly(winner.ref.node), node.name)
-      : getContextValue('looseFile', isLooseFileReadOnly(uri), node.name);
+      : getContextValue(
+          'looseFile',
+          isLooseFileReadOnly(uri),
+          node.name,
+          node.name.toLowerCase() === ASSET_CATALOGUE_NAME && hasOriginal(uri.fsPath),
+        );
   item.command = { command: 'vscode.open', title: 'Open', arguments: [uri] };
 
   return item;

@@ -14,7 +14,7 @@ import type { AptLibrary, MovieLocation } from './aptLibrary';
 import { toMovieKey } from './aptLibrary';
 import { describeError } from '../../core/errors';
 import { readEngineAnswers } from './aptEngineAnswers';
-import { readAptToolbar } from './aptToolbar';
+import type { PreviewSettingsStore } from '../../platform/webview/createPreviewSettingsStore';
 
 const listCodeStrings = (code: readonly AptInstruction[]): string[] =>
   code.flatMap(({ operand }) => {
@@ -34,6 +34,7 @@ export interface AptGameServices {
   index: SageIniIndex;
   documents: SageIniDocuments;
   state: vscode.Memento;
+  settings: PreviewSettingsStore;
 }
 
 type MovieMessage = Extract<ToPage, { kind: 'movie' }>;
@@ -368,7 +369,6 @@ export const createAptMovieImports = ({
         origins: {},
         texts: await resolveTexts([root.movie], document.uri),
         answers,
-        toolbar: readAptToolbar(game.state),
       });
       early.catch(() => undefined);
       walk.textures = {};
@@ -399,7 +399,6 @@ export const createAptMovieImports = ({
         document.uri,
       ),
       answers,
-      toolbar: readAptToolbar(game.state),
     };
   };
 

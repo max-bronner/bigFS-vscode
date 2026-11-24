@@ -100,8 +100,6 @@ export const parseVp6 = (
       });
       alpha = undefined;
       isAlphaKey = false;
-    } else {
-      throw new Error(`Unexpected chunk ${JSON.stringify(kind)} at ${at}`);
     }
 
     at += size;
@@ -260,7 +258,7 @@ const encodeLatin1 = (text: string) =>
 export const writeVp6 = (movie: Vp6Output): Uint8Array => {
   const hasAlpha = movie.frames.some((frame) => frame.alpha);
   const chunk = (kind: string, payload: Uint8Array) => {
-    const out = new Uint8Array(8 + payload.length);
+    const out = new Uint8Array((8 + payload.length + 3) & ~3);
 
     out.set(encodeLatin1(kind), 0);
     new DataView(out.buffer).setUint32(4, out.length, true);

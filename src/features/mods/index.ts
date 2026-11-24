@@ -1,6 +1,7 @@
 import type { ExtensionContext } from 'vscode';
 import type { Services } from '../../services/createServices';
 import { createNodeCommandRegistrar } from '../../services/archives/nodeCommands';
+import { registerCompareVersions } from './compareVersionsCommand';
 import { registerModCommands } from './modCommands';
 import { registerModDiffCommands } from './modDiffCommands';
 
@@ -14,5 +15,6 @@ export const registerMods = (
       archives,
     ),
   );
+  context.subscriptions.push(...registerCompareVersions(archives, gameView));
   registerModDiffCommands(context, gameView, iniDocuments);
 };

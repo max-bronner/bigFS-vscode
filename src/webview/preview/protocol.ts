@@ -114,6 +114,7 @@ export type ToPreviewPage =
 export type FromPreviewPage =
   | { kind: 'ready' }
   | { kind: 'popOut' }
+  | { kind: 'keepSettings'; settings: Record<string, unknown> }
   | {
       kind: 'editRegion';
       id: string;

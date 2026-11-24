@@ -40,10 +40,14 @@ import {
 } from './stage';
 import { SPEEDS } from './protocol';
 import type { AptToolbar } from './protocol';
-import { readToolbar } from './readToolbar';
+import { TOOLBAR_SECTION, TOOLBAR_SETTINGS } from './toolbarSettings';
+import { createPreviewSettings, readKeptSettings } from '../shared/createPreviewSettings';
 import { state } from './state';
 
 const vscode = getVsCodeApi<FromPage>();
+const toolbarSettings = createPreviewSettings(readKeptSettings(), (settings) =>
+  vscode.postMessage({ kind: 'keepSettings', settings }),
+).section(TOOLBAR_SECTION, TOOLBAR_SETTINGS);
 
 const showPanels = () => {
   showInspector();
@@ -140,7 +144,9 @@ const keepToolbar = () => {
     wireframe: view.wireframe,
   };
 
-  vscode.postMessage({ kind: 'toolbar', toolbar });
+  for (const key of Object.keys(toolbar) as (keyof AptToolbar)[]) {
+    toolbarSettings.set(key, toolbar[key]);
+  }
 };
 
 const toggle = (key: Switch) => {
@@ -259,8 +265,8 @@ const overlayEntries = (): MenuEntry[] => [
 
 attachMenu(overlaysButton, overlayEntries);
 
-const applyToolbar = (kept: unknown) => {
-  const toolbar = readToolbar(kept);
+const applyToolbar = () => {
+  const toolbar = toolbarSettings.values;
 
   zoomSelect.value = toolbar.zoom;
   setSpeed(toolbar.speed);
@@ -341,7 +347,7 @@ window.addEventListener('message', ({ data }: MessageEvent<ToPage>) => {
       storeTextures(data.textures);
       byId('summary').textContent = data.summary;
       if (isFirst) {
-        applyToolbar(data.toolbar);
+        applyToolbar();
       }
       if (isFirst || !data.movie.characters[state.selected]) {
         state.selected = 0;

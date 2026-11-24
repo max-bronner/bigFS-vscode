@@ -31,6 +31,11 @@ const isInsideInstall = async (
   }
 };
 
+export const canWriteCatalogue = async (
+  catalogue: Uri,
+  sources: readonly ArchiveSource[],
+): Promise<boolean> => !(await isInsideInstall(Uri.joinPath(catalogue, '..'), sources));
+
 export const chooseCatalogueTarget = async (
   catalogue: Uri,
   source: ArchiveSource,

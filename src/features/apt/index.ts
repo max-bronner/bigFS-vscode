@@ -1,5 +1,6 @@
 import type { ExtensionContext } from 'vscode';
 import type { Services } from '../../services/createServices';
+import { createPreviewSettingsStore } from '../../platform/webview/createPreviewSettingsStore';
 import { AptEditorProvider } from './aptEditorProvider';
 import { registerAptTextLanguage } from './aptTextLanguage';
 import { registerAptCommands } from './aptCommands';
@@ -19,6 +20,7 @@ export const registerApt = (
       index: iniIndex,
       documents: iniDocuments,
       state: context.workspaceState,
+      settings: createPreviewSettingsStore(context.globalState, 'apt'),
     },
   );
 

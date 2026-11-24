@@ -2,7 +2,7 @@ import type { Vec3 } from '../../formats/w3d/w3dPose';
 import { element } from '../shared/element';
 import { computeGroundPoint } from '../shared/computeGroundPoint';
 import { getModelOrigin, setModelOrigin } from './emitterOrigin';
-import { viewer } from './page';
+import { pageSettings, viewer } from './page';
 
 export const attachMove = (): void => {
   const { canvas } = viewer;
@@ -20,6 +20,7 @@ export const attachMove = (): void => {
 
   const setMoving = (on: boolean) => {
     isMoving = on;
+    pageSettings.set('move', on);
     move.setAttribute('aria-pressed', String(on));
     canvas.style.cursor = on ? 'move' : '';
   };
@@ -85,7 +86,7 @@ export const attachMove = (): void => {
     setModelOrigin([0, 0, 0]);
     centre.hidden = true;
   };
-  setMoving(false);
+  setMoving(pageSettings.values.move);
   viewer.addLayer({
     onKey: (key) => {
       if (key !== 'm') {
